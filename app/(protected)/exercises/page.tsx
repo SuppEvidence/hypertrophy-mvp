@@ -1,6 +1,7 @@
 import Link from "next/link";
+import type { Muscle, MovementGroup } from "@prisma/client";
 import { Archive, CheckCircle2, Copy, Pencil, Plus, Search } from "lucide-react";
-import { archiveExercise, listExercises, restoreExercise, getExerciseReferenceData } from "@/lib/server/exercises";
+import { archiveExercise, getExerciseReferenceData, listExercises, restoreExercise } from "@/lib/server/exercises";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -15,12 +16,18 @@ type PageProps = {
   }>;
 };
 
+type ReferenceMovementGroup = Pick<MovementGroup, "id" | "name">;
+type ReferenceMuscle = Pick<Muscle, "id" | "name">;
+
 const inputClass =
   "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-400";
 
 export default async function ExercisesPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const [{ muscles, movementGroups }, exercises] = await Promise.all([getExerciseReferenceData(), listExercises(params)]);
+
+  const typedMovementGroups = movementGroups as ReferenceMovementGroup[];
+  const typedMuscles = muscles as ReferenceMuscle[];
 
   return (
     <div className="space-y-5">
@@ -52,8 +59,10 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Movement</span>
               <select name="movementGroupId" defaultValue={params.movementGroupId ?? ""} className={inputClass}>
                 <option value="">All movements</option>
-                {movementGroups.map((movement) => (
-                  <option key={movement.id} value={movement.id}>{movement.name}</option>
+                {typedMovementGroups.map((movement) => (
+                  <option key={movement.id} value={movement.id}>
+                    {movement.name}
+                  </option>
                 ))}
               </select>
             </label>
@@ -62,8 +71,10 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Muscle</span>
               <select name="muscleId" defaultValue={params.muscleId ?? ""} className={inputClass}>
                 <option value="">All muscles</option>
-                {muscles.map((muscle) => (
-                  <option key={muscle.id} value={muscle.id}>{muscle.name}</option>
+                {typedMuscles.map((muscle) => (
+                  <option key={muscle.id} value={muscle.id}>
+                    {muscle.name}
+                  </option>
                 ))}
               </select>
             </label>
@@ -88,8 +99,13 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Button type="submit" variant="secondary">Apply filters</Button>
-            <Link href="/exercises" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-700">
+            <Button type="submit" variant="secondary">
+              Apply filters
+            </Button>
+            <Link
+              href="/exercises"
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-700"
+            >
               Reset
             </Link>
           </div>
@@ -112,6 +128,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
           const primary = exercise.primaryMuscles.map((link) => link.muscle.name).join(", ") || "—";
           const secondary = exercise.secondaryMuscles.map((link) => link.muscle.name).join(", ") || "—";
           const canArchive = !exercise.isSeed;
+
           return (
             <Card key={exercise.id}>
               <div className="flex items-start justify-between gap-3">
@@ -122,7 +139,9 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
                       {exercise.isSeed ? <Copy size={12} /> : <CheckCircle2 size={12} />}
                       {exercise.isSeed ? "Seed" : "Custom"}
                     </span>
-                    {exercise.isArchived ? <span className="rounded-full border border-amber-800 px-2 py-1 text-xs text-amber-200">Archived</span> : null}
+                    {exercise.isArchived ? (
+                      <span className="rounded-full border border-amber-800 px-2 py-1 text-xs text-amber-200">Archived</span>
+                    ) : null}
                   </div>
                   <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{exercise.movementGroup.name}</p>
                 </div>
@@ -132,9 +151,17 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
               </div>
 
               <div className="mt-3 grid gap-2 text-sm text-slate-400">
-                <p><span className="text-slate-500">Primary:</span> {primary}</p>
-                <p><span className="text-slate-500">Secondary:</span> {secondary}</p>
-                {exercise.tags.length ? <p><span className="text-slate-500">Tags:</span> {exercise.tags.join(", ")}</p> : null}
+                <p>
+                  <span className="text-slate-500">Primary:</span> {primary}
+                </p>
+                <p>
+                  <span className="text-slate-500">Secondary:</span> {secondary}
+                </p>
+                {exercise.tags.length ? (
+                  <p>
+                    <span className="text-slate-500">Tags:</span> {exercise.tags.join(", ")}
+                  </p>
+                ) : null}
               </div>
 
               {canArchive ? (
