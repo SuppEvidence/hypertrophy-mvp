@@ -1,4 +1,4 @@
-import type { ProgramPhase, ProgramType, RotationStyle, VolumeWindowType } from "@prisma/client";
+import type { ProgramPhase, ProgramType, RotationStyle, VolumeWindowType } from "@/lib/types/domain";
 
 export const programTypeOptions: Array<{ value: ProgramType; label: string }> = [
   { value: "FULL_BODY_EOD", label: "Full Body EOD" },
@@ -34,6 +34,10 @@ export const programTypeLabels = Object.fromEntries(programTypeOptions.map((item
 export const rotationStyleLabels = Object.fromEntries(rotationStyleOptions.map((item) => [item.value, item.label])) as Record<RotationStyle, string>;
 export const volumeWindowLabels = Object.fromEntries(volumeWindowOptions.map((item) => [item.value, item.label])) as Record<VolumeWindowType, string>;
 export const phaseLabels = Object.fromEntries(phaseOptions.map((item) => [item.value, item.label])) as Record<ProgramPhase, string>;
+
+export function isProgramType(value: string): value is ProgramType {
+  return programTypeOptions.some((option) => option.value === value);
+}
 
 export function defaultProgramValues(programType: ProgramType) {
   switch (programType) {

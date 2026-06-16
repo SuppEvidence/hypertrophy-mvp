@@ -1,4 +1,4 @@
-import type { VolumeWindowType } from "@prisma/client";
+import type { VolumeWindowType } from "@/lib/types/domain";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { calculateFatigueSummary, type FatigueSummary } from "@/lib/metrics/fatigue";
 import { estimateE1RM } from "@/lib/workouts/summary";

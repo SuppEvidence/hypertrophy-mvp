@@ -1,23 +1,12 @@
-import type {
-  Exercise,
-  ExercisePrimaryMuscle,
-  ExerciseSecondaryMuscle,
-  MovementGroup,
-  Muscle,
-} from "@prisma/client";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
-
-type EditableExercise = Exercise & {
-  primaryMuscles: Array<ExercisePrimaryMuscle & { muscle: Muscle }>;
-  secondaryMuscles: Array<ExerciseSecondaryMuscle & { muscle: Muscle }>;
-};
+import type { ExerciseFormExercise, ReferenceMovementGroup, ReferenceMuscle } from "@/lib/types/domain";
 
 type Props = {
-  exercise?: EditableExercise | null;
-  muscles: Muscle[];
-  movementGroups: MovementGroup[];
+  exercise?: ExerciseFormExercise | null;
+  muscles: ReferenceMuscle[];
+  movementGroups: ReferenceMovementGroup[];
   action: (formData: FormData) => Promise<void>;
 };
 
@@ -54,7 +43,6 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
               ))}
             </select>
           </label>
-
         </div>
 
         <label className="block space-y-2">

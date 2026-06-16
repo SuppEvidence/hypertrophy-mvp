@@ -1,4 +1,4 @@
-import type { ProgramType } from "@prisma/client";
+import type { ProgramType } from "@/lib/types/domain";
 
 const defaultNames: Record<ProgramType, string[]> = {
   FULL_BODY_EOD: ["A", "B", "C"],

@@ -1,12 +1,12 @@
 "use server";
 
-import type { ProgramPhase, ProgramType, RotationStyle, VolumeWindowType } from "@prisma/client";
+import type { ProgramPhase, ProgramType, RotationStyle, VolumeWindowType } from "@/lib/types/domain";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/auth/server";
 import { ensureProfile } from "@/lib/auth/profile";
 import { prisma } from "@/lib/db/prisma";
-import { defaultProgramValues } from "@/lib/programs/options";
+import { defaultProgramValues, isProgramType } from "@/lib/programs/options";
 import { programSchema } from "@/lib/validations/program";
 
 async function requireUserId() {
@@ -67,7 +67,8 @@ export async function getProgramFormReferenceData() {
 
 export async function createProgramFromPreset(formData: FormData) {
   const userId = await requireUserId();
-  const programType = String(formData.get("programType") ?? "CUSTOM") as ProgramType;
+  const rawProgramType = String(formData.get("programType") ?? "CUSTOM");
+  const programType: ProgramType = isProgramType(rawProgramType) ? rawProgramType : "CUSTOM";
   const defaults = defaultProgramValues(programType);
   const [muscles, existingActive, defaultSecondaryContribution] = await Promise.all([
     prisma.muscle.findMany({ where: { name: { in: defaults.priorityMuscles } } }),

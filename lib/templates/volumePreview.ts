@@ -1,4 +1,4 @@
-import type { VolumeWindowType } from "@prisma/client";
+import type { VolumeWindowType } from "@/lib/types/domain";
 import { volumeWindowDays } from "@/lib/programs/options";
 
 export function buildTemplateVolumePreview(args: {
