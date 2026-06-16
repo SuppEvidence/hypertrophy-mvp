@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { Muscle, MovementGroup } from "@prisma/client";
 import { Archive, CheckCircle2, Copy, Pencil, Plus, Search } from "lucide-react";
 import { archiveExercise, getExerciseReferenceData, listExercises, restoreExercise } from "@/lib/server/exercises";
 import { Button } from "@/components/ui/Button";
@@ -16,8 +15,8 @@ type PageProps = {
   }>;
 };
 
-type ReferenceMovementGroup = Pick<MovementGroup, "id" | "name">;
-type ReferenceMuscle = Pick<Muscle, "id" | "name">;
+type ReferenceMovementGroup = { id: string; name: string };
+type ReferenceMuscle = { id: string; name: string };
 
 const inputClass =
   "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-400";
@@ -26,8 +25,15 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const [{ muscles, movementGroups }, exercises] = await Promise.all([getExerciseReferenceData(), listExercises(params)]);
 
-  const typedMovementGroups = movementGroups as ReferenceMovementGroup[];
-  const typedMuscles = muscles as ReferenceMuscle[];
+  const typedMovementGroups: ReferenceMovementGroup[] = movementGroups.map((movement) => ({
+    id: movement.id,
+    name: movement.name,
+  }));
+
+  const typedMuscles: ReferenceMuscle[] = muscles.map((muscle) => ({
+    id: muscle.id,
+    name: muscle.name,
+  }));
 
   return (
     <div className="space-y-5">
