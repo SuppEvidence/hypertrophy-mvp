@@ -1,0 +1,10 @@
+{
+  "name": "Hypertrophy Tracker",
+  "short_name": "Hypertrophy",
+  "description": "A hypertrophy-focused workout planning and tracking app for experienced lifters.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "orientation": "portrait"
+}

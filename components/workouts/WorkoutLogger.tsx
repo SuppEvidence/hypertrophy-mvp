@@ -1,0 +1,330 @@
+import Link from "next/link";
+import { CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { AutosaveSetRow } from "@/components/workouts/AutosaveSetRow";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Field } from "@/components/ui/Field";
+import {
+  addSessionExercise,
+  addWorkoutSet,
+  finishWorkout,
+  getWorkoutLoggerData,
+  removeWorkoutSet,
+  startWorkout,
+  updateSessionExercise,
+} from "@/lib/server/workouts";
+import { buildWorkoutSummary } from "@/lib/workouts/summary";
+
+const selectClass =
+  "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400";
+
+function fmt(value: number) {
+  return value.toFixed(1).replace(/\.0$/, "");
+}
+
+function decimalToNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toAutosaveSet(set: {
+  id: string;
+  setNumber: number;
+  weight: unknown;
+  reps: number | null;
+  rir: unknown;
+  setTypeId: string;
+  isCompleted: boolean;
+}) {
+  return {
+    id: set.id,
+    setNumber: set.setNumber,
+    weight: decimalToNumber(set.weight),
+    reps: set.reps,
+    rir: decimalToNumber(set.rir),
+    setTypeId: set.setTypeId,
+    isCompleted: set.isCompleted,
+  };
+}
+
+function toAutosaveSetTypes(setTypes: Array<{ id: string; name: string }>) {
+  return setTypes.map((setType) => ({ id: setType.id, name: setType.name }));
+}
+
+export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWorkoutLoggerData>> }) {
+  const { programs, selectedProgram, templates, suggestedTemplate, selectedTemplate, exercises, setTypes, draftSessions, activeSession } = data;
+  const autosaveSetTypes = toAutosaveSetTypes(setTypes);
+  if (programs.length === 0 || !selectedProgram) {
+    return (
+      <Card>
+        <p className="text-sm text-slate-400">Create a program before logging workouts.</p>
+        <Link href="/programs/new" className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-950">
+          Create program
+        </Link>
+      </Card>
+    );
+  }
+
+  const summary = activeSession
+    ? buildWorkoutSummary({ secondaryContribution: Number(activeSession.program.secondaryContribution), sessionExercises: activeSession.exercises })
+    : null;
+
+  return (
+    <div className="space-y-5">
+      <Card className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Suggested next workout</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-100">{suggestedTemplate?.name ?? selectedTemplate?.name ?? "No template"}</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              {selectedProgram.name} · {selectedProgram.programType.replaceAll("_", " ")} · {selectedProgram.rotationStyle.replaceAll("_", " ").toLowerCase()}
+            </p>
+          </div>
+          {activeSession?.status === "COMPLETED" ? <CheckCircle2 className="text-emerald-300" size={22} /> : null}
+        </div>
+      </Card>
+
+      <Card className="space-y-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Program / template override</p>
+          <p className="mt-1 text-sm text-slate-400">Start from the suggested template or manually select another template.</p>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {programs.map((program) => (
+            <Link
+              key={program.id}
+              href={`/log?programId=${program.id}`}
+              className={`shrink-0 rounded-full border px-3 py-2 text-xs font-semibold ${
+                program.id === selectedProgram.id ? "border-slate-100 bg-slate-100 text-slate-950" : "border-slate-700 bg-slate-950 text-slate-300"
+              }`}
+            >
+              {program.name}
+            </Link>
+          ))}
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {templates.map((template) => (
+            <Link
+              key={template.id}
+              href={`/log?programId=${selectedProgram.id}&templateId=${template.id}`}
+              className={`shrink-0 rounded-full border px-3 py-2 text-xs font-semibold ${
+                template.id === selectedTemplate?.id ? "border-slate-100 bg-slate-100 text-slate-950" : "border-slate-700 bg-slate-950 text-slate-300"
+              }`}
+            >
+              {template.name}
+            </Link>
+          ))}
+        </div>
+        {data.hasUnfinishedSession && !activeSession ? (
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+            An unfinished workout exists. Resume it below, or explicitly start a new workout from the selected template.
+          </div>
+        ) : null}
+        {activeSession?.status === "DRAFT" ? (
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">
+            A draft workout is open. Finish it or use a draft link before starting another session.
+          </div>
+        ) : selectedTemplate ? (
+          <form action={startWorkout}>
+            <input type="hidden" name="programId" value={selectedProgram.id} />
+            <input type="hidden" name="templateId" value={selectedTemplate.id} />
+            <Button className="w-full">{data.hasUnfinishedSession ? "Start new workout anyway" : "Start selected template"}</Button>
+          </form>
+        ) : (
+          <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No template available yet. Build templates before logging.</p>
+        )}
+      </Card>
+
+      {draftSessions.length > 0 ? (
+        <Card className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resume active workout</p>
+          <div className="space-y-2">
+            {draftSessions.map((session) => (
+              <Link key={session.id} href={`/log?sessionId=${session.id}`} className="block rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300 hover:border-slate-600">
+                <span className="font-semibold text-slate-100">{session.name}</span>
+                <span className="block text-xs text-slate-500">{session.program.name} · {session.template?.name ?? "Manual"}</span>
+              </Link>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
+      {activeSession ? (
+        <Card className="space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active session</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-100">{activeSession.name}</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                {activeSession.program.name} · {activeSession.status.toLowerCase()}
+              </p>
+            </div>
+          </div>
+
+          {activeSession.status === "COMPLETED" && summary ? (
+            <CompletedSummary summary={summary} />
+          ) : (
+            <>
+              <div className="space-y-4">
+                {activeSession.exercises.length === 0 ? (
+                  <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No exercises in this session yet.</p>
+                ) : null}
+
+                {activeSession.exercises.map((item, index) => (
+                  <div key={item.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
+                    <div className="mb-3">
+                      <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link) => link.muscle.name).join(", ") || "—"}
+                      </p>
+                      {item.isSubstitution ? (
+                        <p className="mt-1 text-xs text-amber-200">Substituted from {item.substitutedFromExercise?.name ?? "planned exercise"}</p>
+                      ) : null}
+                    </div>
+
+                    <form action={updateSessionExercise.bind(null, item.id)} className="mb-3 space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+                      <label className="block space-y-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise / substitute</span>
+                        <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
+                          {exercises.map((exercise) => (
+                            <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
+                        <span>
+                          <span className="block text-sm font-semibold text-slate-200">Pain/discomfort flag</span>
+                          <span className="block text-xs text-slate-500">Session-level note for this exercise.</span>
+                        </span>
+                        <input name="painFlag" type="checkbox" defaultChecked={item.painFlag} className="h-5 w-5" />
+                      </label>
+                      <Field label="Pain note" name="painNote" defaultValue={item.painNote ?? ""} placeholder="Optional" />
+                      <Field label="Exercise note" name="notes" defaultValue={item.notes ?? ""} placeholder="Optional" />
+                      <Button variant="secondary" className="w-full">Save exercise row</Button>
+                    </form>
+
+                    <div className="mb-2 grid grid-cols-[0.6fr_1fr_1fr_1fr_1.4fr] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      <span>Set</span>
+                      <span>Weight</span>
+                      <span>Reps</span>
+                      <span>RIR</span>
+                      <span>Set type</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {item.sets.map((set) => (
+                        <AutosaveSetRow key={set.id} set={toAutosaveSet(set)} setTypes={autosaveSetTypes} />
+                      ))}
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <form action={addWorkoutSet}>
+                        <input type="hidden" name="sessionExerciseId" value={item.id} />
+                        <Button variant="ghost" className="w-full gap-2"><Plus size={16} /> Add set</Button>
+                      </form>
+                      {item.sets.length > 0 ? (
+                        <form action={removeWorkoutSet}>
+                          <input type="hidden" name="setId" value={item.sets[item.sets.length - 1].id} />
+                          <Button variant="danger" className="w-full gap-2"><Trash2 size={16} /> Last set</Button>
+                        </form>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Card className="space-y-3 bg-slate-950">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Add unplanned exercise</p>
+                <form action={addSessionExercise} className="space-y-3">
+                  <input type="hidden" name="sessionId" value={activeSession.id} />
+                  <select name="exerciseId" defaultValue={exercises[0]?.id} className={selectClass} required>
+                    {exercises.map((exercise) => (
+                      <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
+                    ))}
+                  </select>
+                  <Button variant="secondary" className="w-full">Add exercise</Button>
+                </form>
+              </Card>
+
+              {summary ? <DraftSummary summary={summary} /> : null}
+
+              <form action={finishWorkout.bind(null, activeSession.id)} className="space-y-3 rounded-2xl border border-slate-700 bg-slate-900 p-3">
+                <Field label="Session notes" name="notes" placeholder="Optional" />
+                <Button className="w-full">Finish workout</Button>
+              </form>
+            </>
+          )}
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+function DraftSummary({ summary }: { summary: NonNullable<ReturnType<typeof buildWorkoutSummary>> }) {
+  return (
+    <Card className="space-y-3 bg-slate-950">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current session summary</p>
+      <SummaryGrid summary={summary} />
+      <VolumeRows rows={summary.volumeRows} />
+    </Card>
+  );
+}
+
+function CompletedSummary({ summary }: { summary: NonNullable<ReturnType<typeof buildWorkoutSummary>> }) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-100">
+        Workout completed. Summary is based on completed sets only.
+      </div>
+      <SummaryGrid summary={summary} />
+      <VolumeRows rows={summary.volumeRows} />
+    </div>
+  );
+}
+
+function SummaryGrid({ summary }: { summary: NonNullable<ReturnType<typeof buildWorkoutSummary>> }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+      <Stat label="Completed sets" value={String(summary.completedSets)} />
+      <Stat label="Intensifiers" value={String(summary.intensifierCount)} />
+      <Stat label="Pain flags" value={String(summary.painFlagCount)} />
+      <Stat label="Substitutions" value={String(summary.substitutionCount)} />
+      <div className="col-span-2 md:col-span-4 rounded-xl border border-slate-800 bg-slate-950 p-3">
+        <p className="text-xs uppercase tracking-wide text-slate-500">Best e1RM in session</p>
+        <p className="mt-1 text-sm font-semibold text-slate-100">
+          {summary.bestSet ? `${summary.bestSet.exerciseName}: ${fmt(summary.bestSet.e1rm)} kg (${summary.bestSet.weight} × ${summary.bestSet.reps})` : "No completed weighted set yet"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-slate-100">{value}</p>
+    </div>
+  );
+}
+
+function VolumeRows({ rows }: { rows: Array<{ muscleId: string; muscleName: string; direct: number; effective: number }> }) {
+  if (rows.length === 0) return <p className="text-sm text-slate-500">No completed-set volume yet.</p>;
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-[1fr_auto_auto] gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        <span>Muscle</span>
+        <span>Direct</span>
+        <span>Effective</span>
+      </div>
+      {rows.map((row) => (
+        <div key={row.muscleId} className="grid grid-cols-[1fr_auto_auto] gap-2 rounded-xl border border-slate-800 bg-slate-950 p-2 text-sm">
+          <span className="text-slate-200">{row.muscleName}</span>
+          <span className="text-slate-400">{fmt(row.direct)}</span>
+          <span className="text-slate-400">{fmt(row.effective)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}

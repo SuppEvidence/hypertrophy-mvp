@@ -1,0 +1,376 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PreferredUnit {
+  KG
+  LB
+}
+
+enum ProgramType {
+  FULL_BODY_EOD
+  UPPER_LOWER
+  PPL
+  BRO_SPLIT
+  TORSO_LIMBS
+  CUSTOM
+}
+
+enum RotationStyle {
+  FIXED_SEQUENCE
+  WEEKDAY_BASED
+  MANUAL
+}
+
+enum VolumeWindowType {
+  WEEKLY
+  ROLLING_10D
+  ROLLING_14D
+  CUSTOM
+}
+
+enum ProgramPhase {
+  PUSH
+  HOLD
+  DELOAD
+  MAINTENANCE
+  OTHER
+}
+
+enum WorkoutSessionStatus {
+  DRAFT
+  COMPLETED
+}
+
+model Profile {
+  id        String   @id @db.Uuid
+  email     String?  @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  settings  UserSettings?
+  exercises Exercise[]
+  programs  Program[]
+  templates WorkoutTemplate[]
+  workoutSessions WorkoutSession[]
+  metrics MetricLog[]
+
+  @@map("profiles")
+}
+
+model UserSettings {
+  id                           String        @id @default(uuid()) @db.Uuid
+  userId                       String        @unique @db.Uuid @map("user_id")
+  preferredUnit                PreferredUnit @default(KG) @map("preferred_unit")
+  defaultSecondaryContribution Decimal       @default(0.5) @map("default_secondary_contribution") @db.Decimal(4, 2)
+  advancedMuscleMode           Boolean       @default(false) @map("advanced_muscle_mode")
+  metricVisibility             Json?         @map("metric_visibility")
+  createdAt                    DateTime      @default(now()) @map("created_at")
+  updatedAt                    DateTime      @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model Muscle {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  slug      String   @unique
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  primaryExerciseLinks   ExercisePrimaryMuscle[]
+  secondaryExerciseLinks ExerciseSecondaryMuscle[]
+  programPriorityLinks   ProgramPriorityMuscle[]
+  volumeTargets          MuscleVolumeTarget[]
+
+  @@map("muscles")
+}
+
+model MovementGroup {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  slug      String   @unique
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  exercises Exercise[]
+
+  @@map("movement_groups")
+}
+
+model SetType {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @unique
+  slug          String   @unique
+  multiplier    Decimal  @default(1.0) @db.Decimal(4, 2)
+  isIntensifier Boolean  @default(false) @map("is_intensifier")
+  isEditable    Boolean  @default(false) @map("is_editable")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  templateExercises TemplateExercise[]
+  workoutSets WorkoutSet[]
+
+  @@map("set_types")
+}
+
+model Exercise {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String?  @db.Uuid @map("user_id")
+  name            String
+  slug            String
+  catalogKey      String   @unique @map("catalog_key")
+  movementGroupId String   @db.Uuid @map("movement_group_id")
+  defaultMinReps  Int?     @map("default_min_reps")
+  defaultMaxReps  Int?     @map("default_max_reps")
+  tags            String[] @default([])
+  isSeed          Boolean  @default(false) @map("is_seed")
+  isActive        Boolean  @default(true) @map("is_active")
+  isArchived      Boolean  @default(false) @map("is_archived")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user             Profile?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movementGroup    MovementGroup             @relation(fields: [movementGroupId], references: [id], onDelete: Restrict)
+  primaryMuscles   ExercisePrimaryMuscle[]
+  secondaryMuscles ExerciseSecondaryMuscle[]
+  templateExercises TemplateExercise[]
+  sessionExercises WorkoutSessionExercise[]
+  substitutedSessionExercises WorkoutSessionExercise[] @relation("SubstitutedFromExercise")
+
+  @@index([userId, slug])
+  @@index([name])
+  @@index([movementGroupId])
+  @@map("exercises")
+}
+
+model ExercisePrimaryMuscle {
+  exerciseId String @db.Uuid @map("exercise_id")
+  muscleId   String @db.Uuid @map("muscle_id")
+
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  muscle   Muscle   @relation(fields: [muscleId], references: [id], onDelete: Restrict)
+
+  @@id([exerciseId, muscleId])
+  @@map("exercise_primary_muscles")
+}
+
+model ExerciseSecondaryMuscle {
+  exerciseId String @db.Uuid @map("exercise_id")
+  muscleId   String @db.Uuid @map("muscle_id")
+
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  muscle   Muscle   @relation(fields: [muscleId], references: [id], onDelete: Restrict)
+
+  @@id([exerciseId, muscleId])
+  @@map("exercise_secondary_muscles")
+}
+
+model Program {
+  id                    String           @id @default(uuid()) @db.Uuid
+  userId                String           @db.Uuid @map("user_id")
+  name                  String
+  programType           ProgramType      @map("program_type")
+  templateCount         Int              @default(3) @map("template_count")
+  rotationStyle         RotationStyle    @map("rotation_style")
+  volumeWindowType      VolumeWindowType @map("volume_window_type")
+  customWindowDays      Int?             @map("custom_window_days")
+  secondaryContribution Decimal          @default(0.5) @map("secondary_contribution") @db.Decimal(4, 2)
+  activePhase           ProgramPhase     @default(PUSH) @map("active_phase")
+  advancedMuscleMode    Boolean          @default(false) @map("advanced_muscle_mode")
+  isActive              Boolean          @default(false) @map("is_active")
+  isArchived            Boolean          @default(false) @map("is_archived")
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+
+  user            Profile                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  priorityMuscles ProgramPriorityMuscle[]
+  volumeTargets   MuscleVolumeTarget[]
+  templates       WorkoutTemplate[]
+  workoutSessions WorkoutSession[]
+
+  @@index([userId, isActive])
+  @@index([userId, isArchived])
+  @@map("programs")
+}
+
+model ProgramPriorityMuscle {
+  programId String @db.Uuid @map("program_id")
+  muscleId  String @db.Uuid @map("muscle_id")
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  muscle  Muscle  @relation(fields: [muscleId], references: [id], onDelete: Restrict)
+
+  @@id([programId, muscleId])
+  @@map("program_priority_muscles")
+}
+
+model MuscleVolumeTarget {
+  id               String   @id @default(uuid()) @db.Uuid
+  programId        String   @db.Uuid @map("program_id")
+  muscleId         String   @db.Uuid @map("muscle_id")
+  weeklyTargetSets Decimal  @default(0) @map("weekly_target_sets") @db.Decimal(5, 2)
+  minimumSets      Decimal? @map("minimum_sets") @db.Decimal(5, 2)
+  maximumSets      Decimal? @map("maximum_sets") @db.Decimal(5, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  muscle  Muscle  @relation(fields: [muscleId], references: [id], onDelete: Restrict)
+
+  @@unique([programId, muscleId])
+  @@index([muscleId])
+  @@map("muscle_volume_targets")
+}
+
+
+model WorkoutTemplate {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid @map("user_id")
+  programId     String   @db.Uuid @map("program_id")
+  name          String
+  sequenceIndex Int      @map("sequence_index")
+  weekday       Int?
+  isActive      Boolean  @default(true) @map("is_active")
+  isArchived    Boolean  @default(false) @map("is_archived")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user      Profile            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program   Program            @relation(fields: [programId], references: [id], onDelete: Cascade)
+  exercises TemplateExercise[]
+  workoutSessions WorkoutSession[]
+
+  @@unique([programId, sequenceIndex])
+  @@index([userId, isArchived])
+  @@index([programId, isArchived])
+  @@map("workout_templates")
+}
+
+model TemplateExercise {
+  id               String   @id @default(uuid()) @db.Uuid
+  templateId       String   @db.Uuid @map("template_id")
+  exerciseId       String   @db.Uuid @map("exercise_id")
+  sortOrder        Int      @default(0) @map("sort_order")
+  plannedSets      Int      @default(2) @map("planned_sets")
+  minReps          Int?     @map("min_reps")
+  maxReps          Int?     @map("max_reps")
+  rirTarget        Decimal? @map("rir_target") @db.Decimal(4, 1)
+  defaultSetTypeId String   @db.Uuid @map("default_set_type_id")
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  template       WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  exercise       Exercise        @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  defaultSetType SetType         @relation(fields: [defaultSetTypeId], references: [id], onDelete: Restrict)
+  sessionExercises WorkoutSessionExercise[]
+
+  @@index([templateId, sortOrder])
+  @@index([exerciseId])
+  @@index([defaultSetTypeId])
+  @@map("template_exercises")
+}
+
+model WorkoutSession {
+  id          String               @id @default(uuid()) @db.Uuid
+  userId      String               @db.Uuid @map("user_id")
+  programId   String               @db.Uuid @map("program_id")
+  templateId  String?              @db.Uuid @map("template_id")
+  name        String
+  performedAt DateTime             @default(now()) @map("performed_at")
+  status      WorkoutSessionStatus @default(DRAFT)
+  notes       String?
+  completedAt DateTime?            @map("completed_at")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+
+  user      Profile          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program   Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  template  WorkoutTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  exercises WorkoutSessionExercise[]
+
+  @@index([userId, status, performedAt])
+  @@index([programId, performedAt])
+  @@index([templateId])
+  @@map("workout_sessions")
+}
+
+model WorkoutSessionExercise {
+  id                        String   @id @default(uuid()) @db.Uuid
+  sessionId                 String   @db.Uuid @map("session_id")
+  exerciseId                String   @db.Uuid @map("exercise_id")
+  templateExerciseId         String?  @db.Uuid @map("template_exercise_id")
+  sortOrder                 Int      @default(0) @map("sort_order")
+  isSubstitution             Boolean  @default(false) @map("is_substitution")
+  substitutedFromExerciseId  String?  @db.Uuid @map("substituted_from_exercise_id")
+  painFlag                  Boolean  @default(false) @map("pain_flag")
+  painNote                  String?  @map("pain_note")
+  notes                     String?
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  session                 WorkoutSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise                Exercise         @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  substitutedFromExercise Exercise?        @relation("SubstitutedFromExercise", fields: [substitutedFromExerciseId], references: [id], onDelete: SetNull)
+  templateExercise        TemplateExercise? @relation(fields: [templateExerciseId], references: [id], onDelete: SetNull)
+  sets                    WorkoutSet[]
+
+  @@index([sessionId, sortOrder])
+  @@index([exerciseId])
+  @@index([templateExerciseId])
+  @@map("workout_session_exercises")
+}
+
+model WorkoutSet {
+  id                String   @id @default(uuid()) @db.Uuid
+  sessionExerciseId String   @db.Uuid @map("session_exercise_id")
+  setNumber         Int      @map("set_number")
+  weight            Decimal? @db.Decimal(7, 2)
+  reps              Int?
+  rir               Decimal? @db.Decimal(4, 1)
+  setTypeId         String   @db.Uuid @map("set_type_id")
+  isCompleted       Boolean  @default(false) @map("is_completed")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  sessionExercise WorkoutSessionExercise @relation(fields: [sessionExerciseId], references: [id], onDelete: Cascade)
+  setType         SetType                @relation(fields: [setTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionExerciseId, setNumber])
+  @@index([setTypeId])
+  @@map("workout_sets")
+}
+
+
+model MetricLog {
+  id                      String   @id @default(uuid()) @db.Uuid
+  userId                  String   @db.Uuid @map("user_id")
+  loggedAt                DateTime @default(now()) @map("logged_at")
+  bodyweight              Decimal? @db.Decimal(7, 2)
+  waist                   Decimal? @db.Decimal(7, 2)
+  sleepDuration           Decimal? @map("sleep_duration") @db.Decimal(4, 2)
+  sleepQuality            Int?     @map("sleep_quality")
+  stress                  Int?
+  readiness               Int?
+  manualFatigue           Int?     @map("manual_fatigue")
+  sorenessJointIrritation Int?     @map("soreness_joint_irritation")
+  steps                   Int?
+  notes                   String?
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, loggedAt])
+  @@map("metric_logs")
+}

@@ -1,0 +1,387 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/auth/server";
+import { ensureProfile } from "@/lib/auth/profile";
+import { prisma } from "@/lib/db/prisma";
+import { ensureProgramTemplates } from "@/lib/server/templates";
+import { finishWorkoutSchema, sessionExerciseSchema, startWorkoutSchema, workoutSetSchema } from "@/lib/validations/workout";
+
+async function requireUserId() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+  await ensureProfile(user);
+  return user.id;
+}
+
+function numberOrNull(value: FormDataEntryValue | null) {
+  if (value === null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function cleanText(value: FormDataEntryValue | null) {
+  return String(value ?? "").trim();
+}
+
+function parseNullableNumberInput(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export async function getWorkoutLoggerData(params?: { programId?: string; templateId?: string; sessionId?: string }) {
+  const userId = await requireUserId();
+
+  const programs = await prisma.program.findMany({
+    where: { userId, isArchived: false },
+    orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+  });
+
+  const selectedProgram =
+    programs.find((program) => program.id === params?.programId) ?? programs.find((program) => program.isActive) ?? programs[0] ?? null;
+
+  const templates = selectedProgram ? await ensureProgramTemplates(selectedProgram.id, userId) : [];
+  const suggestedTemplate = selectedProgram ? await getSuggestedTemplate(selectedProgram.id, userId, templates) : null;
+  const selectedTemplate =
+    templates.find((template) => template.id === params?.templateId) ?? suggestedTemplate ?? templates[0] ?? null;
+
+  const [exercises, setTypes, draftSessions] = await Promise.all([
+    prisma.exercise.findMany({
+      where: { isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
+      orderBy: [{ isSeed: "desc" }, { name: "asc" }],
+      include: {
+        movementGroup: true,
+        primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+        secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+      },
+    }),
+    prisma.setType.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.workoutSession.findMany({
+      where: { userId, status: "DRAFT" },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      include: { program: true, template: true },
+    }),
+  ]);
+
+  const requestedSession = params?.sessionId ? await getSessionForUser(params.sessionId, userId) : null;
+  const activeSession = requestedSession?.status === "DRAFT" || requestedSession?.status === "COMPLETED" ? requestedSession : null;
+  const hasUnfinishedSession = draftSessions.length > 0;
+
+  return { programs, selectedProgram, templates, suggestedTemplate, selectedTemplate, exercises, setTypes, draftSessions, activeSession, hasUnfinishedSession };
+}
+
+async function getSuggestedTemplate(
+  programId: string,
+  userId: string,
+  templates: Array<{ id: string; name: string; sequenceIndex: number; weekday: number | null }>,
+) {
+  if (templates.length === 0) return null;
+  const program = await prisma.program.findFirst({ where: { id: programId, userId } });
+  if (!program) return templates[0] ?? null;
+
+  if (program.rotationStyle === "WEEKDAY_BASED") {
+    const day = new Date().getDay();
+    return templates.find((template) => template.weekday === day) ?? templates[0] ?? null;
+  }
+
+  if (program.rotationStyle === "MANUAL") return templates[0] ?? null;
+
+  const lastCompleted = await prisma.workoutSession.findFirst({
+    where: { userId, programId, status: "COMPLETED", templateId: { not: null } },
+    orderBy: { performedAt: "desc" },
+    include: { template: true },
+  });
+  if (!lastCompleted?.template) return templates[0] ?? null;
+  const nextIndex = (lastCompleted.template.sequenceIndex + 1) % templates.length;
+  return templates.find((template) => template.sequenceIndex === nextIndex) ?? templates[0] ?? null;
+}
+
+async function getTemplateWithExercises(templateId: string, userId: string) {
+  return prisma.workoutTemplate.findFirst({
+    where: { id: templateId, userId, isArchived: false, program: { userId, isArchived: false } },
+    include: {
+      program: true,
+      exercises: {
+        orderBy: { sortOrder: "asc" },
+        include: { exercise: true, defaultSetType: true },
+      },
+    },
+  });
+}
+
+async function getSessionForUser(sessionId: string, userId: string) {
+  return prisma.workoutSession.findFirst({
+    where: { id: sessionId, userId },
+    include: {
+      program: true,
+      template: true,
+      exercises: {
+        orderBy: { sortOrder: "asc" },
+        include: {
+          templateExercise: true,
+          exercise: {
+            include: {
+              movementGroup: true,
+              primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+              secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+            },
+          },
+          substitutedFromExercise: true,
+          sets: { orderBy: { setNumber: "asc" }, include: { setType: true } },
+        },
+      },
+    },
+  });
+}
+
+export async function startWorkout(formData: FormData) {
+  const userId = await requireUserId();
+  const input = startWorkoutSchema.parse({ programId: formData.get("programId"), templateId: formData.get("templateId") });
+  const template = await getTemplateWithExercises(input.templateId, userId);
+  if (!template || template.programId !== input.programId) redirect("/log");
+
+  const session = await prisma.$transaction(async (tx) => {
+    const created = await tx.workoutSession.create({
+      data: {
+        userId,
+        programId: template.programId,
+        templateId: template.id,
+        name: template.name,
+        status: "DRAFT",
+      },
+    });
+
+    for (const [index, item] of template.exercises.entries()) {
+      const sessionExercise = await tx.workoutSessionExercise.create({
+        data: {
+          sessionId: created.id,
+          exerciseId: item.exerciseId,
+          templateExerciseId: item.id,
+          sortOrder: index,
+          isSubstitution: false,
+        },
+      });
+
+      for (let setIndex = 1; setIndex <= item.plannedSets; setIndex += 1) {
+        await tx.workoutSet.create({
+          data: {
+            sessionExerciseId: sessionExercise.id,
+            setNumber: setIndex,
+            setTypeId: item.defaultSetTypeId,
+            rir: item.rirTarget,
+            isCompleted: false,
+          },
+        });
+      }
+    }
+
+    return created;
+  });
+
+  revalidatePath("/log");
+  redirect(`/log?sessionId=${session.id}`);
+}
+
+export async function autosaveWorkoutSet(
+  setId: string,
+  payload: { weight?: string; reps?: string; rir?: string; setTypeId?: string; isCompleted?: boolean },
+) {
+  const userId = await requireUserId();
+  const existing = await prisma.workoutSet.findFirst({
+    where: { id: setId, sessionExercise: { session: { userId, status: "DRAFT" } } },
+    include: { sessionExercise: true },
+  });
+  if (!existing) return { ok: false, error: "Set not found or session is not editable." };
+
+  const input = workoutSetSchema.safeParse({
+    weight: parseNullableNumberInput(payload.weight),
+    reps: parseNullableNumberInput(payload.reps),
+    rir: parseNullableNumberInput(payload.rir),
+    setTypeId: payload.setTypeId,
+    isCompleted: Boolean(payload.isCompleted),
+  });
+  if (!input.success) return { ok: false, error: "Invalid set values." };
+
+  await prisma.workoutSet.update({
+    where: { id: existing.id },
+    data: {
+      weight: input.data.weight,
+      reps: input.data.reps,
+      rir: input.data.rir,
+      setTypeId: input.data.setTypeId,
+      isCompleted: input.data.isCompleted,
+    },
+  });
+
+  revalidatePath("/log");
+  return { ok: true };
+}
+
+export async function updateWorkoutSet(setId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const existing = await prisma.workoutSet.findFirst({
+    where: { id: setId, sessionExercise: { session: { userId, status: "DRAFT" } } },
+    include: { sessionExercise: { include: { session: true } } },
+  });
+  if (!existing) redirect("/log");
+
+  const input = workoutSetSchema.parse({
+    weight: numberOrNull(formData.get("weight")),
+    reps: numberOrNull(formData.get("reps")),
+    rir: numberOrNull(formData.get("rir")),
+    setTypeId: formData.get("setTypeId"),
+    isCompleted: formData.get("isCompleted") === "on",
+  });
+
+  await prisma.workoutSet.update({
+    where: { id: existing.id },
+    data: {
+      weight: input.weight,
+      reps: input.reps,
+      rir: input.rir,
+      setTypeId: input.setTypeId,
+      isCompleted: input.isCompleted,
+    },
+  });
+
+  revalidatePath("/log");
+  redirect(`/log?sessionId=${existing.sessionExercise.sessionId}`);
+}
+
+export async function addWorkoutSet(formData: FormData) {
+  const userId = await requireUserId();
+  const sessionExerciseId = String(formData.get("sessionExerciseId") ?? "");
+  const existing = await prisma.workoutSessionExercise.findFirst({
+    where: { id: sessionExerciseId, session: { userId, status: "DRAFT" } },
+    include: { session: true, sets: { orderBy: { setNumber: "desc" }, take: 1 }, templateExercise: true },
+  });
+  if (!existing) redirect("/log");
+
+  const fallbackSetType = await prisma.setType.findFirst({ orderBy: { sortOrder: "asc" } });
+  const setTypeId = existing.templateExercise?.defaultSetTypeId ?? fallbackSetType?.id;
+  if (!setTypeId) redirect(`/log?sessionId=${existing.sessionId}`);
+
+  await prisma.workoutSet.create({
+    data: {
+      sessionExerciseId: existing.id,
+      setNumber: (existing.sets[0]?.setNumber ?? 0) + 1,
+      setTypeId,
+      isCompleted: false,
+    },
+  });
+
+  revalidatePath("/log");
+  redirect(`/log?sessionId=${existing.sessionId}`);
+}
+
+export async function removeWorkoutSet(formData: FormData) {
+  const userId = await requireUserId();
+  const setId = String(formData.get("setId") ?? "");
+  const existing = await prisma.workoutSet.findFirst({
+    where: { id: setId, sessionExercise: { session: { userId, status: "DRAFT" } } },
+    include: { sessionExercise: true },
+  });
+  if (!existing) redirect("/log");
+
+  await prisma.workoutSet.delete({ where: { id: existing.id } });
+  revalidatePath("/log");
+  redirect(`/log?sessionId=${existing.sessionExercise.sessionId}`);
+}
+
+export async function updateSessionExercise(sessionExerciseId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const existing = await prisma.workoutSessionExercise.findFirst({
+    where: { id: sessionExerciseId, session: { userId, status: "DRAFT" } },
+    include: { session: true, exercise: true },
+  });
+  if (!existing) redirect("/log");
+
+  const input = sessionExerciseSchema.parse({
+    exerciseId: formData.get("exerciseId"),
+    painFlag: formData.get("painFlag") === "on",
+    painNote: formData.get("painNote") ?? "",
+    notes: formData.get("notes") ?? "",
+  });
+
+  const exercise = await prisma.exercise.findFirst({
+    where: { id: input.exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
+  });
+  if (!exercise) redirect(`/log?sessionId=${existing.sessionId}`);
+
+  await prisma.workoutSessionExercise.update({
+    where: { id: existing.id },
+    data: {
+      exerciseId: input.exerciseId,
+      isSubstitution: input.exerciseId !== existing.exerciseId || existing.isSubstitution,
+      substitutedFromExerciseId: input.exerciseId !== existing.exerciseId ? existing.exerciseId : existing.substitutedFromExerciseId,
+      painFlag: input.painFlag,
+      painNote: input.painNote || null,
+      notes: input.notes || null,
+    },
+  });
+
+  revalidatePath("/log");
+  redirect(`/log?sessionId=${existing.sessionId}`);
+}
+
+export async function addSessionExercise(formData: FormData) {
+  const userId = await requireUserId();
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const exerciseId = String(formData.get("exerciseId") ?? "");
+  const session = await prisma.workoutSession.findFirst({
+    where: { id: sessionId, userId, status: "DRAFT" },
+    include: { exercises: { orderBy: { sortOrder: "desc" }, take: 1 } },
+  });
+  if (!session) redirect("/log");
+
+  const exercise = await prisma.exercise.findFirst({
+    where: { id: exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
+  });
+  if (!exercise) redirect(`/log?sessionId=${session.id}`);
+
+  const normalSetType = await prisma.setType.findFirst({ where: { slug: "normal" } }) ?? await prisma.setType.findFirst({ orderBy: { sortOrder: "asc" } });
+  if (!normalSetType) redirect(`/log?sessionId=${session.id}`);
+
+  await prisma.$transaction(async (tx) => {
+    const created = await tx.workoutSessionExercise.create({
+      data: {
+        sessionId: session.id,
+        exerciseId,
+        sortOrder: (session.exercises[0]?.sortOrder ?? -1) + 1,
+        isSubstitution: false,
+      },
+    });
+    await tx.workoutSet.create({
+      data: {
+        sessionExerciseId: created.id,
+        setNumber: 1,
+        setTypeId: normalSetType.id,
+        isCompleted: false,
+      },
+    });
+  });
+
+  revalidatePath("/log");
+  redirect(`/log?sessionId=${session.id}`);
+}
+
+export async function finishWorkout(sessionId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const session = await prisma.workoutSession.findFirst({ where: { id: sessionId, userId, status: "DRAFT" } });
+  if (!session) redirect("/log");
+  const input = finishWorkoutSchema.parse({ notes: formData.get("notes") ?? "" });
+
+  await prisma.workoutSession.update({
+    where: { id: session.id },
+    data: { status: "COMPLETED", completedAt: new Date(), notes: input.notes || null },
+  });
+
+  revalidatePath("/log");
+  redirect(`/log?sessionId=${session.id}`);
+}
