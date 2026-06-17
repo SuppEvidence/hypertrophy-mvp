@@ -13,10 +13,74 @@ import {
   startWorkout,
   updateSessionExercise,
 } from "@/lib/server/workouts";
-import { buildWorkoutSummary } from "@/lib/workouts/summary";
+import { buildWorkoutSummary, type LoggedExerciseForSummary } from "@/lib/workouts/summary";
 
 const selectClass =
   "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400";
+
+type LoggerProgram = {
+  id: string;
+  name: string;
+  programType: string;
+  rotationStyle: string;
+};
+
+type LoggerTemplate = {
+  id: string;
+  name: string;
+};
+
+type LoggerExerciseOption = {
+  id: string;
+  name: string;
+};
+
+type LoggerSetTypeOption = {
+  id: string;
+  name: string;
+};
+
+type LoggerDraftSession = {
+  id: string;
+  name: string;
+  program: { name: string };
+  template: { name: string } | null;
+};
+
+type LoggerSet = {
+  id: string;
+  setNumber: number;
+  weight: unknown;
+  reps: number | null;
+  rir: unknown;
+  setTypeId: string;
+  isCompleted: boolean;
+  setType: {
+    multiplier: unknown;
+    isIntensifier: boolean;
+  };
+};
+
+type LoggerSessionExercise = LoggedExerciseForSummary & {
+  id: string;
+  exerciseId: string;
+  painNote: string | null;
+  notes: string | null;
+  substitutedFromExercise: { name: string } | null;
+  exercise: LoggedExerciseForSummary["exercise"] & {
+    name: string;
+    movementGroup: { name: string };
+  };
+  sets: LoggerSet[];
+};
+
+type LoggerActiveSession = {
+  id: string;
+  name: string;
+  status: "DRAFT" | "COMPLETED" | string;
+  program: LoggerProgram & { secondaryContribution: unknown };
+  exercises: LoggerSessionExercise[];
+};
 
 function fmt(value: number) {
   return value.toFixed(1).replace(/\.0$/, "");
@@ -48,13 +112,22 @@ function toAutosaveSet(set: {
   };
 }
 
-function toAutosaveSetTypes(setTypes: Array<{ id: string; name: string }>) {
-  return setTypes.map((setType: any) => ({ id: setType.id, name: setType.name }));
+function toAutosaveSetTypes(setTypes: LoggerSetTypeOption[]) {
+  return setTypes.map((setType: LoggerSetTypeOption) => ({ id: setType.id, name: setType.name }));
 }
 
 export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWorkoutLoggerData>> }) {
-  const { programs, selectedProgram, templates, suggestedTemplate, selectedTemplate, exercises, setTypes, draftSessions, activeSession } = data;
+  const programs = data.programs as LoggerProgram[];
+  const selectedProgram = data.selectedProgram as LoggerProgram | null;
+  const templates = data.templates as LoggerTemplate[];
+  const suggestedTemplate = data.suggestedTemplate as LoggerTemplate | null;
+  const selectedTemplate = data.selectedTemplate as LoggerTemplate | null;
+  const exercises = data.exercises as LoggerExerciseOption[];
+  const setTypes = data.setTypes as LoggerSetTypeOption[];
+  const draftSessions = data.draftSessions as LoggerDraftSession[];
+  const activeSession = data.activeSession as LoggerActiveSession | null;
   const autosaveSetTypes = toAutosaveSetTypes(setTypes);
+
   if (programs.length === 0 || !selectedProgram) {
     return (
       <Card>
@@ -91,7 +164,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
           <p className="mt-1 text-sm text-slate-400">Start from the suggested template or manually select another template.</p>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {programs.map((program: any) => (
+          {programs.map((program: LoggerProgram) => (
             <Link
               key={program.id}
               href={`/log?programId=${program.id}`}
@@ -104,7 +177,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
           ))}
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {templates.map((template: any) => (
+          {templates.map((template: LoggerTemplate) => (
             <Link
               key={template.id}
               href={`/log?programId=${selectedProgram.id}&templateId=${template.id}`}
@@ -140,7 +213,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
         <Card className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resume active workout</p>
           <div className="space-y-2">
-            {draftSessions.map((session: any) => (
+            {draftSessions.map((session: LoggerDraftSession) => (
               <Link key={session.id} href={`/log?sessionId=${session.id}`} className="block rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300 hover:border-slate-600">
                 <span className="font-semibold text-slate-100">{session.name}</span>
                 <span className="block text-xs text-slate-500">{session.program.name} · {session.template?.name ?? "Manual"}</span>
@@ -171,12 +244,12 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
                   <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No exercises in this session yet.</p>
                 ) : null}
 
-                {activeSession.exercises.map((item, index) => (
+                {activeSession.exercises.map((item: LoggerSessionExercise, index: number) => (
                   <div key={item.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
                     <div className="mb-3">
                       <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: any) => link.muscle.name).join(", ") || "—"}
+                        {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: { muscle: { name: string } }) => link.muscle.name).join(", ") || "—"}
                       </p>
                       {item.isSubstitution ? (
                         <p className="mt-1 text-xs text-amber-200">Substituted from {item.substitutedFromExercise?.name ?? "planned exercise"}</p>
@@ -187,7 +260,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
                       <label className="block space-y-2">
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise / substitute</span>
                         <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
-                          {exercises.map((exercise: any) => (
+                          {exercises.map((exercise: LoggerExerciseOption) => (
                             <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
                           ))}
                         </select>
@@ -213,7 +286,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
                     </div>
 
                     <div className="space-y-2">
-                      {item.sets.map((set: any) => (
+                      {item.sets.map((set: LoggerSet) => (
                         <AutosaveSetRow key={set.id} set={toAutosaveSet(set)} setTypes={autosaveSetTypes} />
                       ))}
                     </div>
@@ -239,7 +312,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
                 <form action={addSessionExercise} className="space-y-3">
                   <input type="hidden" name="sessionId" value={activeSession.id} />
                   <select name="exerciseId" defaultValue={exercises[0]?.id} className={selectClass} required>
-                    {exercises.map((exercise: any) => (
+                    {exercises.map((exercise: LoggerExerciseOption) => (
                       <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
                     ))}
                   </select>
@@ -290,7 +363,7 @@ function SummaryGrid({ summary }: { summary: NonNullable<ReturnType<typeof build
       <Stat label="Intensifiers" value={String(summary.intensifierCount)} />
       <Stat label="Pain flags" value={String(summary.painFlagCount)} />
       <Stat label="Substitutions" value={String(summary.substitutionCount)} />
-      <div className="col-span-2 md:col-span-4 rounded-xl border border-slate-800 bg-slate-950 p-3">
+      <div className="col-span-2 rounded-xl border border-slate-800 bg-slate-950 p-3 md:col-span-4">
         <p className="text-xs uppercase tracking-wide text-slate-500">Best e1RM in session</p>
         <p className="mt-1 text-sm font-semibold text-slate-100">
           {summary.bestSet ? `${summary.bestSet.exerciseName}: ${fmt(summary.bestSet.e1rm)} kg (${summary.bestSet.weight} × ${summary.bestSet.reps})` : "No completed weighted set yet"}
@@ -318,7 +391,7 @@ function VolumeRows({ rows }: { rows: Array<{ muscleId: string; muscleName: stri
         <span>Direct</span>
         <span>Effective</span>
       </div>
-      {rows.map((row: any) => (
+      {rows.map((row: { muscleId: string; muscleName: string; direct: number; effective: number }) => (
         <div key={row.muscleId} className="grid grid-cols-[1fr_auto_auto] gap-2 rounded-xl border border-slate-800 bg-slate-950 p-2 text-sm">
           <span className="text-slate-200">{row.muscleName}</span>
           <span className="text-slate-400">{fmt(row.direct)}</span>
