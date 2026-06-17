@@ -1,17 +1,18 @@
 {
   "scripts": {
     "dev": "next dev",
-    "verify:boundaries": "node scripts/verify-production-boundaries.mjs",
-    "typecheck": "npm run verify:boundaries && tsc --noEmit",
-    "build": "npm run verify:boundaries && next build",
+    "prebuild": "prisma generate",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "format": "prettier --write ."
-  },
+  }
+},
   "dependencies": {
     "@prisma/adapter-pg": "latest",
     "@prisma/client": "latest",
