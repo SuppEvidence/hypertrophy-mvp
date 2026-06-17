@@ -12,12 +12,104 @@ import {
 } from "@/lib/server/templates";
 import { buildTemplateTargetNotices, buildTemplateVolumePreview } from "@/lib/templates/volumePreview";
 import { programTypeLabels, rotationStyleLabels, volumeWindowLabels } from "@/lib/programs/options";
+import type { ProgramType, RotationStyle, VolumeWindowType } from "@/lib/types/domain";
 
-type BuilderData = Awaited<ReturnType<typeof import("@/lib/server/templates").getTemplateBuilderData>>;
+type MuscleReference = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
 
-type Props = BuilderData;
+type MuscleLink = {
+  muscleId: string;
+  muscle: MuscleReference;
+};
 
-const selectClass = "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-400";
+type ProgramForTemplateBuilder = {
+  id: string;
+  name: string;
+  programType: ProgramType;
+  rotationStyle: RotationStyle;
+  volumeWindowType: VolumeWindowType;
+  customWindowDays: number | null;
+  secondaryContribution: unknown;
+  priorityMuscles?: Array<{ muscleId: string }>;
+  volumeTargets?: Array<{
+    muscleId: string;
+    weeklyTargetSets: unknown;
+    muscle: MuscleReference;
+  }>;
+};
+
+type WorkoutTemplateForBuilder = {
+  id: string;
+  name: string;
+  sequenceIndex?: number;
+  weekday?: number | null;
+};
+
+type MovementGroupReference = {
+  id?: string;
+  name: string;
+};
+
+type ExerciseForTemplateBuilder = {
+  id: string;
+  name: string;
+  movementGroup: MovementGroupReference;
+  primaryMuscles: MuscleLink[];
+  secondaryMuscles: MuscleLink[];
+};
+
+type SetTypeForTemplateBuilder = {
+  id: string;
+  name: string;
+  slug: string;
+  multiplier: unknown;
+};
+
+type TemplateExerciseForBuilder = {
+  id: string;
+  exerciseId: string;
+  plannedSets: number;
+  minReps: number | null;
+  maxReps: number | null;
+  rirTarget: unknown | null;
+  defaultSetTypeId: string;
+  notes: string | null;
+  defaultSetType: { multiplier: unknown };
+  exercise: ExerciseForTemplateBuilder;
+};
+
+type TemplateTargetNotice = {
+  muscleId: string;
+  muscleName: string;
+  effective: number;
+  target: number;
+  status: "below" | "above" | "excessive" | "on";
+};
+
+type TemplateVolumePreviewRow = {
+  muscleId: string;
+  muscleName: string;
+  direct: number;
+  effective: number;
+  target: number | null;
+};
+
+type Props = {
+  programs: ProgramForTemplateBuilder[];
+  selectedProgram: ProgramForTemplateBuilder | null;
+  templates: WorkoutTemplateForBuilder[];
+  selectedTemplate: WorkoutTemplateForBuilder | null;
+  templateExercises: TemplateExerciseForBuilder[];
+  exercises: ExerciseForTemplateBuilder[];
+  setTypes: SetTypeForTemplateBuilder[];
+};
+
+const selectClass =
+  "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-400";
+
 export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, exercises, setTypes }: Props) {
   if (!selectedProgram) {
     return (
@@ -31,9 +123,9 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
     );
   }
 
-  const preview = buildTemplateVolumePreview({ program: selectedProgram, templateExercises });
-  const targetNotices = buildTemplateTargetNotices({ program: selectedProgram, preview });
-  const normalSetType = setTypes.find((setType) => setType.slug === "normal") ?? setTypes[0];
+  const preview = buildTemplateVolumePreview({ program: selectedProgram, templateExercises }) as TemplateVolumePreviewRow[];
+  const targetNotices = buildTemplateTargetNotices({ program: selectedProgram, preview }) as TemplateTargetNotice[];
+  const normalSetType = setTypes.find((setType: SetTypeForTemplateBuilder) => setType.slug === "normal") ?? setTypes[0];
 
   return (
     <div className="space-y-4">
@@ -46,7 +138,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
           </p>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {programs.map((program: any) => (
+          {programs.map((program: ProgramForTemplateBuilder) => (
             <Link
               key={program.id}
               href={`/templates?programId=${program.id}`}
@@ -68,7 +160,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
           <p className="mt-1 text-sm text-slate-400">Generated from the program template count. Template content is now persisted.</p>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {templates.map((template: any) => (
+          {templates.map((template: WorkoutTemplateForBuilder) => (
             <Link
               key={template.id}
               href={`/templates?programId=${selectedProgram.id}&templateId=${template.id}`}
@@ -102,7 +194,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
               <label className="block space-y-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise</span>
                 <select name="exerciseId" className={selectClass} required>
-                  {exercises.map((exercise: any) => (
+                  {exercises.map((exercise: ExerciseForTemplateBuilder) => (
                     <option key={exercise.id} value={exercise.id}>
                       {exercise.name} · {exercise.movementGroup.name}
                     </option>
@@ -117,7 +209,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                 <label className="block space-y-2 col-span-2 md:col-span-1">
                   <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Set type</span>
                   <select name="defaultSetTypeId" className={selectClass} defaultValue={normalSetType?.id} required>
-                    {setTypes.map((setType: any) => (
+                    {setTypes.map((setType: SetTypeForTemplateBuilder) => (
                       <option key={setType.id} value={setType.id}>
                         {setType.name} ×{Number(setType.multiplier)}
                       </option>
@@ -139,16 +231,16 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
               <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No exercises in this template yet.</p>
             ) : (
               <div className="space-y-3">
-                {templateExercises.map((item, index) => (
+                {templateExercises.map((item: TemplateExerciseForBuilder, index: number) => (
                   <div key={item.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: any) => link.muscle.name).join(", ") || "—"}
+                          {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: MuscleLink) => link.muscle.name).join(", ") || "—"}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Secondary: {item.exercise.secondaryMuscles.map((link: any) => link.muscle.name).join(", ") || "—"}
+                          Secondary: {item.exercise.secondaryMuscles.map((link: MuscleLink) => link.muscle.name).join(", ") || "—"}
                         </p>
                       </div>
                       <div className="flex gap-1">
@@ -169,7 +261,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                       <label className="block space-y-2">
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise</span>
                         <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
-                          {exercises.map((exercise: any) => (
+                          {exercises.map((exercise: ExerciseForTemplateBuilder) => (
                             <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
                           ))}
                         </select>
@@ -183,7 +275,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                         <label className="block space-y-2 col-span-2 md:col-span-1">
                           <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Set type</span>
                           <select name="defaultSetTypeId" defaultValue={item.defaultSetTypeId} className={selectClass} required>
-                            {setTypes.map((setType: any) => (
+                            {setTypes.map((setType: SetTypeForTemplateBuilder) => (
                               <option key={setType.id} value={setType.id}>{setType.name} ×{Number(setType.multiplier)}</option>
                             ))}
                           </select>
@@ -213,7 +305,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                 <p className="font-semibold text-amber-100">Target coverage notice</p>
                 <p className="mt-1 text-xs text-amber-100/80">Planned template volume is not aligned with one or more selected-window targets. This may be expected if target exposure is distributed across several templates.</p>
                 <div className="mt-2 space-y-1 text-xs text-amber-100/90">
-                  {targetNotices.slice(0, 5).map((notice: any) => (
+                  {targetNotices.slice(0, 5).map((notice: TemplateTargetNotice) => (
                     <p key={notice.muscleId}>
                       {notice.muscleName}: effective {notice.effective.toFixed(1)} / target {notice.target.toFixed(1)} · {notice.status === "below" ? "below target" : notice.status === "above" ? "above target" : "excessive"}
                     </p>
@@ -226,7 +318,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
               <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">Add exercises to see planned volume.</p>
             ) : (
               <div className="space-y-2">
-                {preview.map((row: any) => {
+                {preview.map((row: TemplateVolumePreviewRow) => {
                   const targetWarning = row.target !== null && row.effective > row.target;
                   return (
                     <div key={row.muscleId} className="grid grid-cols-[1fr_auto] gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
