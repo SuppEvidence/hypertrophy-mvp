@@ -86,8 +86,8 @@ export async function getExercisePerformanceData(params?: { exerciseId?: string 
       })
     : [];
 
-  const exposures = rawExposures.map((item) => {
-    const sets: ExposureSet[] = item.sets.map((set) => {
+  const exposures = rawExposures.map((item: any) => {
+    const sets: ExposureSet[] = item.sets.map((set: any) => {
       const weight = toNumber(set.weight);
       const rir = toNumber(set.rir);
       const e1rm = estimateE1RM(weight, set.reps);
@@ -104,7 +104,7 @@ export async function getExercisePerformanceData(params?: { exerciseId?: string 
         volumeLoad: set.isCompleted && weight !== null && set.reps !== null ? round(weight * set.reps, 0) : null,
       };
     });
-    const completedSets = sets.filter((set) => set.isCompleted);
+    const completedSets = sets.filter((set: any) => set.isCompleted);
     const bestSet = getBestSet(completedSets);
     const volumeLoad = calculateVolumeLoad(completedSets);
 
@@ -130,11 +130,11 @@ export async function getExercisePerformanceData(params?: { exerciseId?: string 
   });
 
   const chronological = [...exposures].reverse();
-  const e1rmTrend = chronological.map((item) => ({ label: item.performedAt, value: item.bestSet?.e1rm ?? null }));
-  const volumeLoadTrend = chronological.map((item) => ({ label: item.performedAt, value: item.volumeLoad }));
+  const e1rmTrend = chronological.map((item: any) => ({ label: item.performedAt, value: item.bestSet?.e1rm ?? null }));
+  const volumeLoadTrend = chronological.map((item: any) => ({ label: item.performedAt, value: item.volumeLoad }));
   const trend = getTrendStatus(e1rmTrend);
 
-  const lifetimeBest = exposures.reduce<null | { e1rm: number; weight: number | null; reps: number | null; performedAt: string; programName: string }>((best, exposure) => {
+  const lifetimeBest = exposures.reduce<null | { e1rm: number; weight: number | null; reps: number | null; performedAt: string; programName: string }>((best, exposure: any) => {
     if (!exposure.bestSet?.e1rm) return best;
     if (!best || exposure.bestSet.e1rm > best.e1rm) {
       return {
@@ -151,8 +151,8 @@ export async function getExercisePerformanceData(params?: { exerciseId?: string 
   const activeProgram = await prisma.program.findFirst({ where: { userId, isActive: true, isArchived: false } });
   const programBest = activeProgram
     ? exposures
-        .filter((exposure) => exposure.programName === activeProgram.name && exposure.bestSet?.e1rm)
-        .reduce<null | { e1rm: number; weight: number | null; reps: number | null; performedAt: string; programName: string }>((best, exposure) => {
+        .filter((exposure: any) => exposure.programName === activeProgram.name && exposure.bestSet?.e1rm)
+        .reduce<null | { e1rm: number; weight: number | null; reps: number | null; performedAt: string; programName: string }>((best, exposure: any) => {
           if (!exposure.bestSet?.e1rm) return best;
           if (!best || exposure.bestSet.e1rm > best.e1rm) {
             return {
@@ -178,8 +178,8 @@ export async function getExercisePerformanceData(params?: { exerciseId?: string 
           id: selectedExercise.id,
           name: selectedExercise.name,
           movementGroupName: selectedExercise.movementGroup.name,
-          primaryMuscles: selectedExercise.primaryMuscles.map((link) => link.muscle.name),
-          secondaryMuscles: selectedExercise.secondaryMuscles.map((link) => link.muscle.name),
+          primaryMuscles: selectedExercise.primaryMuscles.map((link: any) => link.muscle.name),
+          secondaryMuscles: selectedExercise.secondaryMuscles.map((link: any) => link.muscle.name),
         }
       : null,
     activeProgramName: activeProgram?.name ?? null,
@@ -213,7 +213,7 @@ async function buildComparableExerciseContext(userId: string, exerciseId: string
   const byExercise = new Map<string, { exerciseName: string; latestExposureAt: string; bestE1rm: number | null; exposures: number }>();
 
   for (const item of items) {
-    const sets = item.sets.map((set) => ({ weight: toNumber(set.weight), reps: set.reps, isCompleted: set.isCompleted }));
+    const sets = item.sets.map((set: any) => ({ weight: toNumber(set.weight), reps: set.reps, isCompleted: set.isCompleted }));
     const bestSet = getBestSet(sets);
     const existing = byExercise.get(item.exerciseId);
     const currentBest = bestSet ? round(bestSet.e1rm) : null;

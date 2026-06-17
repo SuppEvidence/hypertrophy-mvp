@@ -15,7 +15,7 @@ export default function MorePage() {
     <div className="space-y-5">
       <PageHeader title="More" description="Secondary app areas for the authenticated app shell." />
       <div className="space-y-3">
-        {moreItems.map((item) => {
+        {moreItems.map((item: any) => {
           const Icon = item.icon;
           return (
             <Link key={item.href} href={item.href}>

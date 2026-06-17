@@ -58,7 +58,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             <h1 className="mt-1 text-xl font-bold">Tracker MVP</h1>
           </div>
           <nav className="space-y-1">
-            {navItems.map((item) => {
+            {navItems.map((item: any) => {
               const Icon = item.icon;
               return (
                 <Link
@@ -104,7 +104,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-800 bg-slate-950/95 px-2 py-2 backdrop-blur md:hidden">
         <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
-          {mobileNavItems.map((item) => {
+          {mobileNavItems.map((item: any) => {
             const Icon = item.icon;
             return (
               <Link

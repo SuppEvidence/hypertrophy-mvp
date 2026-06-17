@@ -87,7 +87,7 @@ export default async function DashboardPage() {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Priority muscle status</p>
           {dashboard.priorityRows.length > 0 ? (
             <div className="mt-3 space-y-2">
-              {dashboard.priorityRows.map((row) => (
+              {dashboard.priorityRows.map((row: any) => (
                 <div key={row.muscleId} className={`rounded-2xl border p-3 ${statusClass(row.status)}`}>
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-semibold">{row.muscleName}</p>
@@ -125,7 +125,7 @@ export default async function DashboardPage() {
       <Card>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Decision flags</p>
         <div className="mt-3 space-y-2">
-          {dashboard.flags.length > 0 ? dashboard.flags.map((flag) => (
+          {dashboard.flags.length > 0 ? dashboard.flags.map((flag: any) => (
             <div key={`${flag.type}-${flag.title}`} className={`rounded-2xl border p-3 ${flagClass(flag.severity)}`}>
               <p className="font-semibold text-slate-100">{flag.title}</p>
               <p className="mt-1 text-sm text-slate-400">{flag.detail}</p>
@@ -140,7 +140,7 @@ export default async function DashboardPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Actual vs target volume</p>
             {dashboard.volumeRows.length > 0 ? (
               <div className="mt-3 space-y-2">
-                {dashboard.volumeRows.slice(0, 12).map((row) => (
+                {dashboard.volumeRows.slice(0, 12).map((row: any) => (
                   <div key={row.muscleId} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-semibold text-slate-100">{row.muscleName}</p>
@@ -165,7 +165,7 @@ export default async function DashboardPage() {
             <p className="mt-1 text-sm text-slate-400">Compared exercises: {dashboard.performanceTrend.comparedExercises}</p>
             {dashboard.performanceTrend.declining.length > 0 ? (
               <div className="mt-3 space-y-2">
-                {dashboard.performanceTrend.declining.slice(0, 3).map((item) => (
+                {dashboard.performanceTrend.declining.slice(0, 3).map((item: any) => (
                   <div key={item.exerciseName} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300">
                     <p className="font-semibold text-slate-100">{item.exerciseName}</p>
                     <p className="mt-1">{item.changePct}% · {item.previousE1rm} → {item.latestE1rm} e1RM</p>
@@ -189,7 +189,7 @@ export default async function DashboardPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Movement coverage</p>
             {dashboard.movementCoverage.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-2">
-                {dashboard.movementCoverage.slice(0, 12).map((row) => (
+                {dashboard.movementCoverage.slice(0, 12).map((row: any) => (
                   <span key={row.movementGroupId} className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm text-slate-200">
                     {row.movementGroupName}: {row.completedSets}
                   </span>

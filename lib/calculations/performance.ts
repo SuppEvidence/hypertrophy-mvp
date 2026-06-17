@@ -31,7 +31,7 @@ export function getBestSet<T extends CompletedSetInput>(sets: T[]) {
 }
 
 export function getTrendStatus(points: Array<{ value: number | null }>) {
-  const valid = points.map((point) => point.value).filter((value): value is number => value !== null && Number.isFinite(value));
+  const valid = points.map((point: any) => point.value).filter((value): value is number => value !== null && Number.isFinite(value));
   if (valid.length < 4) return { status: "Insufficient data", changePct: null as number | null };
 
   const midpoint = Math.floor(valid.length / 2);

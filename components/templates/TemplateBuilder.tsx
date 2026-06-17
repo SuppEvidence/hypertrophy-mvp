@@ -46,7 +46,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
           </p>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {programs.map((program) => (
+          {programs.map((program: any) => (
             <Link
               key={program.id}
               href={`/templates?programId=${program.id}`}
@@ -68,7 +68,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
           <p className="mt-1 text-sm text-slate-400">Generated from the program template count. Template content is now persisted.</p>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {templates.map((template) => (
+          {templates.map((template: any) => (
             <Link
               key={template.id}
               href={`/templates?programId=${selectedProgram.id}&templateId=${template.id}`}
@@ -102,7 +102,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
               <label className="block space-y-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise</span>
                 <select name="exerciseId" className={selectClass} required>
-                  {exercises.map((exercise) => (
+                  {exercises.map((exercise: any) => (
                     <option key={exercise.id} value={exercise.id}>
                       {exercise.name} · {exercise.movementGroup.name}
                     </option>
@@ -117,7 +117,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                 <label className="block space-y-2 col-span-2 md:col-span-1">
                   <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Set type</span>
                   <select name="defaultSetTypeId" className={selectClass} defaultValue={normalSetType?.id} required>
-                    {setTypes.map((setType) => (
+                    {setTypes.map((setType: any) => (
                       <option key={setType.id} value={setType.id}>
                         {setType.name} ×{Number(setType.multiplier)}
                       </option>
@@ -145,10 +145,10 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                       <div>
                         <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link) => link.muscle.name).join(", ") || "—"}
+                          {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: any) => link.muscle.name).join(", ") || "—"}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Secondary: {item.exercise.secondaryMuscles.map((link) => link.muscle.name).join(", ") || "—"}
+                          Secondary: {item.exercise.secondaryMuscles.map((link: any) => link.muscle.name).join(", ") || "—"}
                         </p>
                       </div>
                       <div className="flex gap-1">
@@ -169,7 +169,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                       <label className="block space-y-2">
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise</span>
                         <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
-                          {exercises.map((exercise) => (
+                          {exercises.map((exercise: any) => (
                             <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
                           ))}
                         </select>
@@ -183,7 +183,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                         <label className="block space-y-2 col-span-2 md:col-span-1">
                           <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Set type</span>
                           <select name="defaultSetTypeId" defaultValue={item.defaultSetTypeId} className={selectClass} required>
-                            {setTypes.map((setType) => (
+                            {setTypes.map((setType: any) => (
                               <option key={setType.id} value={setType.id}>{setType.name} ×{Number(setType.multiplier)}</option>
                             ))}
                           </select>
@@ -213,7 +213,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                 <p className="font-semibold text-amber-100">Target coverage notice</p>
                 <p className="mt-1 text-xs text-amber-100/80">Planned template volume is not aligned with one or more selected-window targets. This may be expected if target exposure is distributed across several templates.</p>
                 <div className="mt-2 space-y-1 text-xs text-amber-100/90">
-                  {targetNotices.slice(0, 5).map((notice) => (
+                  {targetNotices.slice(0, 5).map((notice: any) => (
                     <p key={notice.muscleId}>
                       {notice.muscleName}: effective {notice.effective.toFixed(1)} / target {notice.target.toFixed(1)} · {notice.status === "below" ? "below target" : notice.status === "above" ? "above target" : "excessive"}
                     </p>
@@ -226,7 +226,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
               <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">Add exercises to see planned volume.</p>
             ) : (
               <div className="space-y-2">
-                {preview.map((row) => {
+                {preview.map((row: any) => {
                   const targetWarning = row.target !== null && row.effective > row.target;
                   return (
                     <div key={row.muscleId} className="grid grid-cols-[1fr_auto] gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">

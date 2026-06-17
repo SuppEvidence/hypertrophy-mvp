@@ -102,7 +102,7 @@ export function SettingsForm({ settings, setTypes }: SettingsFormProps) {
         </div>
 
         <div className="space-y-3">
-          {setTypes.map((setType) => (
+          {setTypes.map((setType: any) => (
             <form key={setType.id} action={updateSetTypeMultiplier} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
               <input type="hidden" name="setTypeId" value={setType.id} />
               <div className="flex items-start justify-between gap-3">

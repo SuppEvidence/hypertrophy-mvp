@@ -105,14 +105,14 @@ export async function getDashboardData(userId: string) {
   ]);
 
   const volumeRows = buildMuscleVolumeRows(activeProgram, sessions);
-  const priorityRows = volumeRows.filter((row) => row.isPriority);
+  const priorityRows = volumeRows.filter((row: any) => row.isPriority);
   const fatigueTrend = buildFatigueTrend(metrics);
   const performanceTrend = buildPerformanceTrend(sessions);
   const intensifiers = buildIntensifierSummary(sessions);
   const movementCoverage = buildMovementCoverage(sessions);
   const bodyMetrics = buildBodyMetricContext(metrics);
-  const templateIdsWithSessions = new Set(sessions.map((session) => session.templateId).filter(Boolean));
-  const missedTemplateNames = templates.filter((template) => !templateIdsWithSessions.has(template.id)).map((template) => template.name);
+  const templateIdsWithSessions = new Set(sessions.map((session: any) => session.templateId).filter(Boolean));
+  const missedTemplateNames = templates.filter((template: any) => !templateIdsWithSessions.has(template.id)).map((template: any) => template.name);
   const flags = buildDecisionFlags({ volumeRows, fatigueTrend, performanceTrend, intensifiers, missedTemplateNames });
 
   return {
@@ -124,7 +124,7 @@ export async function getDashboardData(userId: string) {
       volumeWindowLabel: volumeWindowLabels[activeProgram.volumeWindowType],
       templateCount: activeProgram.templateCount,
       secondaryContribution: toNumber(activeProgram.secondaryContribution) ?? 0,
-      priorityMuscles: activeProgram.priorityMuscles.map((link) => link.muscle.name),
+      priorityMuscles: activeProgram.priorityMuscles.map((link: any) => link.muscle.name),
     },
     windowDays,
     windowStart: windowStart.toISOString(),

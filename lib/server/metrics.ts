@@ -71,7 +71,7 @@ export async function createMetricLog(formData: FormData) {
 export async function getMetricsPageData() {
   const userId = await requireUserId();
   const logs = await prisma.metricLog.findMany({ where: { userId }, orderBy: { loggedAt: "desc" }, take: 10 });
-  return logs.map((log) => ({
+  return logs.map((log: any) => ({
     id: log.id,
     loggedAt: log.loggedAt.toISOString(),
     bodyweight: numberOrNull(log.bodyweight),

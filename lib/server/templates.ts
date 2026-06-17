@@ -32,7 +32,7 @@ export async function ensureProgramTemplates(programId: string, userId: string) 
     where: { programId, userId },
     orderBy: { sequenceIndex: "asc" },
   });
-  const byIndex = new Map(allTemplates.map((template) => [template.sequenceIndex, template]));
+  const byIndex = new Map(allTemplates.map((template: any) => [template.sequenceIndex, template]));
 
   await prisma.$transaction(async (tx) => {
     for (let index = 0; index < program.templateCount; index += 1) {

@@ -30,10 +30,10 @@ export const phaseOptions: Array<{ value: ProgramPhase; label: string }> = [
   { value: "OTHER", label: "Other" },
 ];
 
-export const programTypeLabels = Object.fromEntries(programTypeOptions.map((item) => [item.value, item.label])) as Record<ProgramType, string>;
-export const rotationStyleLabels = Object.fromEntries(rotationStyleOptions.map((item) => [item.value, item.label])) as Record<RotationStyle, string>;
-export const volumeWindowLabels = Object.fromEntries(volumeWindowOptions.map((item) => [item.value, item.label])) as Record<VolumeWindowType, string>;
-export const phaseLabels = Object.fromEntries(phaseOptions.map((item) => [item.value, item.label])) as Record<ProgramPhase, string>;
+export const programTypeLabels = Object.fromEntries(programTypeOptions.map((item: any) => [item.value, item.label])) as Record<ProgramType, string>;
+export const rotationStyleLabels = Object.fromEntries(rotationStyleOptions.map((item: any) => [item.value, item.label])) as Record<RotationStyle, string>;
+export const volumeWindowLabels = Object.fromEntries(volumeWindowOptions.map((item: any) => [item.value, item.label])) as Record<VolumeWindowType, string>;
+export const phaseLabels = Object.fromEntries(phaseOptions.map((item: any) => [item.value, item.label])) as Record<ProgramPhase, string>;
 
 export function isProgramType(value: string): value is ProgramType {
   return programTypeOptions.some((option) => option.value === value);

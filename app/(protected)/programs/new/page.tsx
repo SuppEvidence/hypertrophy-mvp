@@ -15,7 +15,7 @@ export default async function NewProgramPage() {
         <h2 className="font-semibold text-slate-100">Quick presets</h2>
         <p className="mt-1 text-sm text-slate-400">Creates sensible defaults for structure, volume window, rotation, and secondary contribution.</p>
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          {programTypeOptions.map((option) => (
+          {programTypeOptions.map((option: any) => (
             <form key={option.value} action={createProgramFromPreset}>
               <input type="hidden" name="programType" value={option.value} />
               <Button variant="secondary" className="w-full justify-start">Create {option.label}</Button>

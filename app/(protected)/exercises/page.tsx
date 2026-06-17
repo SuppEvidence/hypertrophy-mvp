@@ -25,12 +25,12 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const [{ muscles, movementGroups }, exercises] = await Promise.all([getExerciseReferenceData(), listExercises(params)]);
 
-  const typedMovementGroups: ReferenceMovementGroup[] = movementGroups.map((movement) => ({
+  const typedMovementGroups: ReferenceMovementGroup[] = movementGroups.map((movement: any) => ({
     id: movement.id,
     name: movement.name,
   }));
 
-  const typedMuscles: ReferenceMuscle[] = muscles.map((muscle) => ({
+  const typedMuscles: ReferenceMuscle[] = muscles.map((muscle: any) => ({
     id: muscle.id,
     name: muscle.name,
   }));
@@ -65,7 +65,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Movement</span>
               <select name="movementGroupId" defaultValue={params.movementGroupId ?? ""} className={inputClass}>
                 <option value="">All movements</option>
-                {typedMovementGroups.map((movement) => (
+                {typedMovementGroups.map((movement: any) => (
                   <option key={movement.id} value={movement.id}>
                     {movement.name}
                   </option>
@@ -77,7 +77,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Muscle</span>
               <select name="muscleId" defaultValue={params.muscleId ?? ""} className={inputClass}>
                 <option value="">All muscles</option>
-                {typedMuscles.map((muscle) => (
+                {typedMuscles.map((muscle: any) => (
                   <option key={muscle.id} value={muscle.id}>
                     {muscle.name}
                   </option>
@@ -130,9 +130,9 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
           </Card>
         ) : null}
 
-        {exercises.map((exercise) => {
-          const primary = exercise.primaryMuscles.map((link) => link.muscle.name).join(", ") || "—";
-          const secondary = exercise.secondaryMuscles.map((link) => link.muscle.name).join(", ") || "—";
+        {exercises.map((exercise: any) => {
+          const primary = exercise.primaryMuscles.map((link: any) => link.muscle.name).join(", ") || "—";
+          const secondary = exercise.secondaryMuscles.map((link: any) => link.muscle.name).join(", ") || "—";
           const canArchive = !exercise.isSeed;
 
           return (

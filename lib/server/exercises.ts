@@ -106,7 +106,7 @@ export async function getExerciseForEdit(exerciseId: string) {
 function parseTags(value: string | undefined) {
   return (value ?? "")
     .split(",")
-    .map((tag) => tag.trim())
+    .map((tag: any) => tag.trim())
     .filter(Boolean)
     .slice(0, 12);
 }
@@ -147,14 +147,14 @@ async function replaceMuscleLinks(
 
   if (primaryMuscleIds.length > 0) {
     await tx.exercisePrimaryMuscle.createMany({
-      data: primaryMuscleIds.map((muscleId) => ({ exerciseId, muscleId })),
+      data: primaryMuscleIds.map((muscleId: any) => ({ exerciseId, muscleId })),
       skipDuplicates: true,
     });
   }
 
   if (secondaryMuscleIds.length > 0) {
     await tx.exerciseSecondaryMuscle.createMany({
-      data: secondaryMuscleIds.map((muscleId) => ({ exerciseId, muscleId })),
+      data: secondaryMuscleIds.map((muscleId: any) => ({ exerciseId, muscleId })),
       skipDuplicates: true,
     });
   }

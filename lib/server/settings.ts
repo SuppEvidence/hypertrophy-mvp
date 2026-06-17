@@ -80,7 +80,7 @@ export async function getSettingsPageData() {
       advancedMuscleMode: settings.advancedMuscleMode,
       metricVisibility: normalizeMetricVisibility(settings.metricVisibility),
     },
-    setTypes: setTypes.map((setType) => ({
+    setTypes: setTypes.map((setType: any) => ({
       id: setType.id,
       name: setType.name,
       slug: setType.slug,

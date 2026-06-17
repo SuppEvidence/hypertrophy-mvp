@@ -14,8 +14,8 @@ const selectClass =
   "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400";
 
 export function ExerciseForm({ exercise, muscles, movementGroups, action }: Props) {
-  const primaryIds = new Set(exercise?.primaryMuscles.map((link) => link.muscleId) ?? []);
-  const secondaryIds = new Set(exercise?.secondaryMuscles.map((link) => link.muscleId) ?? []);
+  const primaryIds = new Set(exercise?.primaryMuscles.map((link: any) => link.muscleId) ?? []);
+  const secondaryIds = new Set(exercise?.secondaryMuscles.map((link: any) => link.muscleId) ?? []);
   const isSeed = exercise?.isSeed ?? false;
 
   return (
@@ -36,7 +36,7 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
           <label className="block space-y-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Movement group</span>
             <select name="movementGroupId" defaultValue={exercise?.movementGroupId ?? movementGroups[0]?.id} className={selectClass} required>
-              {movementGroups.map((movement) => (
+              {movementGroups.map((movement: any) => (
                 <option key={movement.id} value={movement.id}>
                   {movement.name}
                 </option>
@@ -82,7 +82,7 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
           <p className="mt-1 text-sm text-slate-400">Direct set exposure. At least one primary muscle is required.</p>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
-          {muscles.map((muscle) => (
+          {muscles.map((muscle: any) => (
             <label key={muscle.id} className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">
               <input
                 type="checkbox"
@@ -103,7 +103,7 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
           <p className="mt-1 text-sm text-slate-400">Indirect effective-volume exposure. Primary selections override secondary duplicates.</p>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
-          {muscles.map((muscle) => (
+          {muscles.map((muscle: any) => (
             <label key={muscle.id} className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">
               <input
                 type="checkbox"

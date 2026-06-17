@@ -95,10 +95,10 @@ export async function createProgramFromPreset(formData: FormData) {
         advancedMuscleMode: false,
         isActive: !existingActive,
         priorityMuscles: {
-          create: muscles.map((muscle) => ({ muscleId: muscle.id })),
+          create: muscles.map((muscle: any) => ({ muscleId: muscle.id })),
         },
         volumeTargets: {
-          create: muscles.map((muscle) => ({ muscleId: muscle.id, weeklyTargetSets: 10 })),
+          create: muscles.map((muscle: any) => ({ muscleId: muscle.id, weeklyTargetSets: 10 })),
         },
       },
     });
@@ -138,7 +138,7 @@ function parseMuscleConfig(formData: FormData) {
       const target = Number(value);
       return { muscleId, target: Number.isFinite(target) && target > 0 ? target : 0 };
     })
-    .filter((row) => row.target > 0 || priorityMuscleIds.has(row.muscleId));
+    .filter((row: any) => row.target > 0 || priorityMuscleIds.has(row.muscleId));
 
   return { priorityMuscleIds: Array.from(priorityMuscleIds), targetRows };
 }
@@ -167,8 +167,8 @@ export async function createProgram(formData: FormData) {
         activePhase: input.activePhase as ProgramPhase,
         advancedMuscleMode: input.advancedMuscleMode,
         isActive: !existingActive,
-        priorityMuscles: { create: priorityMuscleIds.map((muscleId) => ({ muscleId })) },
-        volumeTargets: { create: targetRows.map((row) => ({ muscleId: row.muscleId, weeklyTargetSets: row.target })) },
+        priorityMuscles: { create: priorityMuscleIds.map((muscleId: any) => ({ muscleId })) },
+        volumeTargets: { create: targetRows.map((row: any) => ({ muscleId: row.muscleId, weeklyTargetSets: row.target })) },
       },
     });
   });
@@ -204,7 +204,7 @@ export async function updateProgram(programId: string, formData: FormData) {
     await tx.programPriorityMuscle.deleteMany({ where: { programId } });
     if (priorityMuscleIds.length > 0) {
       await tx.programPriorityMuscle.createMany({
-        data: priorityMuscleIds.map((muscleId) => ({ programId, muscleId })),
+        data: priorityMuscleIds.map((muscleId: any) => ({ programId, muscleId })),
         skipDuplicates: true,
       });
     }
@@ -212,7 +212,7 @@ export async function updateProgram(programId: string, formData: FormData) {
     await tx.muscleVolumeTarget.deleteMany({ where: { programId } });
     if (targetRows.length > 0) {
       await tx.muscleVolumeTarget.createMany({
-        data: targetRows.map((row) => ({ programId, muscleId: row.muscleId, weeklyTargetSets: row.target })),
+        data: targetRows.map((row: any) => ({ programId, muscleId: row.muscleId, weeklyTargetSets: row.target })),
         skipDuplicates: true,
       });
     }

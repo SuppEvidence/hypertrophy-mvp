@@ -49,7 +49,7 @@ function toAutosaveSet(set: {
 }
 
 function toAutosaveSetTypes(setTypes: Array<{ id: string; name: string }>) {
-  return setTypes.map((setType) => ({ id: setType.id, name: setType.name }));
+  return setTypes.map((setType: any) => ({ id: setType.id, name: setType.name }));
 }
 
 export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWorkoutLoggerData>> }) {
@@ -91,7 +91,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
           <p className="mt-1 text-sm text-slate-400">Start from the suggested template or manually select another template.</p>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {programs.map((program) => (
+          {programs.map((program: any) => (
             <Link
               key={program.id}
               href={`/log?programId=${program.id}`}
@@ -104,7 +104,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
           ))}
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {templates.map((template) => (
+          {templates.map((template: any) => (
             <Link
               key={template.id}
               href={`/log?programId=${selectedProgram.id}&templateId=${template.id}`}
@@ -140,7 +140,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
         <Card className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resume active workout</p>
           <div className="space-y-2">
-            {draftSessions.map((session) => (
+            {draftSessions.map((session: any) => (
               <Link key={session.id} href={`/log?sessionId=${session.id}`} className="block rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300 hover:border-slate-600">
                 <span className="font-semibold text-slate-100">{session.name}</span>
                 <span className="block text-xs text-slate-500">{session.program.name} · {session.template?.name ?? "Manual"}</span>
@@ -176,7 +176,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
                     <div className="mb-3">
                       <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link) => link.muscle.name).join(", ") || "—"}
+                        {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: any) => link.muscle.name).join(", ") || "—"}
                       </p>
                       {item.isSubstitution ? (
                         <p className="mt-1 text-xs text-amber-200">Substituted from {item.substitutedFromExercise?.name ?? "planned exercise"}</p>
@@ -187,7 +187,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
                       <label className="block space-y-2">
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise / substitute</span>
                         <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
-                          {exercises.map((exercise) => (
+                          {exercises.map((exercise: any) => (
                             <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
                           ))}
                         </select>
@@ -213,7 +213,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
                     </div>
 
                     <div className="space-y-2">
-                      {item.sets.map((set) => (
+                      {item.sets.map((set: any) => (
                         <AutosaveSetRow key={set.id} set={toAutosaveSet(set)} setTypes={autosaveSetTypes} />
                       ))}
                     </div>
@@ -239,7 +239,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
                 <form action={addSessionExercise} className="space-y-3">
                   <input type="hidden" name="sessionId" value={activeSession.id} />
                   <select name="exerciseId" defaultValue={exercises[0]?.id} className={selectClass} required>
-                    {exercises.map((exercise) => (
+                    {exercises.map((exercise: any) => (
                       <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
                     ))}
                   </select>
@@ -318,7 +318,7 @@ function VolumeRows({ rows }: { rows: Array<{ muscleId: string; muscleName: stri
         <span>Direct</span>
         <span>Effective</span>
       </div>
-      {rows.map((row) => (
+      {rows.map((row: any) => (
         <div key={row.muscleId} className="grid grid-cols-[1fr_auto_auto] gap-2 rounded-xl border border-slate-800 bg-slate-950 p-2 text-sm">
           <span className="text-slate-200">{row.muscleName}</span>
           <span className="text-slate-400">{fmt(row.direct)}</span>

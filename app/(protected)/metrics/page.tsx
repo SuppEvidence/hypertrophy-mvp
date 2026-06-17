@@ -40,7 +40,7 @@ export default async function MetricsPage({ searchParams }: { searchParams?: Pro
           {logs.length === 0 ? (
             <p className="text-sm text-slate-500">No metric logs yet.</p>
           ) : (
-            logs.map((log) => (
+            logs.map((log: any) => (
               <div key={log.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>

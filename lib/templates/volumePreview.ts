@@ -15,7 +15,7 @@ export function buildTemplateVolumePreview(args: {
   const secondaryContribution = Number(args.program.secondaryContribution);
   const rows = new Map<string, { muscleId: string; muscleName: string; sortOrder: number; direct: number; effective: number; target: number | null }>();
   const targets = new Map(
-    (args.program.volumeTargets ?? []).map((target) => [target.muscleId, Number(target.weeklyTargetSets)]),
+    (args.program.volumeTargets ?? []).map((target: any) => [target.muscleId, Number(target.weeklyTargetSets)]),
   );
   const windowDays = volumeWindowDays(args.program.volumeWindowType, args.program.customWindowDays ?? null);
 
@@ -61,12 +61,12 @@ export function buildTemplateTargetNotices(args: {
   };
   preview: Array<{ muscleId: string; muscleName: string; effective: number; target: number | null }>;
 }) {
-  const previewByMuscle = new Map(args.preview.map((row) => [row.muscleId, row]));
-  const priorityMuscleIds = new Set((args.program.priorityMuscles ?? []).map((link) => link.muscleId));
+  const previewByMuscle = new Map(args.preview.map((row: any) => [row.muscleId, row]));
+  const priorityMuscleIds = new Set((args.program.priorityMuscles ?? []).map((link: any) => link.muscleId));
   const windowDays = volumeWindowDays(args.program.volumeWindowType, args.program.customWindowDays ?? null);
 
   return (args.program.volumeTargets ?? [])
-    .map((target) => {
+    .map((target: any) => {
       const selectedWindowTarget = (Number(target.weeklyTargetSets) * windowDays) / 7;
       const effective = previewByMuscle.get(target.muscleId)?.effective ?? 0;
       const ratio = selectedWindowTarget > 0 ? effective / selectedWindowTarget : 1;
@@ -82,6 +82,6 @@ export function buildTemplateTargetNotices(args: {
         isPriority: priorityMuscleIds.has(target.muscleId),
       };
     })
-    .filter((notice) => notice.target > 0 && notice.status !== "on")
+    .filter((notice: any) => notice.target > 0 && notice.status !== "on")
     .sort((a, b) => Number(b.isPriority) - Number(a.isPriority) || a.sortOrder - b.sortOrder);
 }

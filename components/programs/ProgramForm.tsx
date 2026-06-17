@@ -28,8 +28,8 @@ function toInputNumber(value: unknown, fallback = "") {
 
 export function ProgramForm({ muscles, program, action, defaultSecondaryContribution = 0.5 }: Props) {
   const fallback = { ...defaultProgramValues("CUSTOM"), secondaryContribution: defaultSecondaryContribution };
-  const priorityIds = new Set(program?.priorityMuscles.map((link) => link.muscleId) ?? []);
-  const targetMap = new Map(program?.volumeTargets.map((target) => [target.muscleId, toInputNumber(target.weeklyTargetSets)]) ?? []);
+  const priorityIds = new Set(program?.priorityMuscles.map((link: any) => link.muscleId) ?? []);
+  const targetMap = new Map(program?.volumeTargets.map((target: any) => [target.muscleId, toInputNumber(target.weeklyTargetSets)]) ?? []);
 
   return (
     <form action={action} className="space-y-4">
@@ -40,7 +40,7 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
           <label className="block space-y-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Program type</span>
             <select name="programType" defaultValue={program?.programType ?? "CUSTOM"} className={selectClass}>
-              {programTypeOptions.map((option) => (
+              {programTypeOptions.map((option: any) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
@@ -59,7 +59,7 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
           <label className="block space-y-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Rotation style</span>
             <select name="rotationStyle" defaultValue={program?.rotationStyle ?? fallback.rotationStyle} className={selectClass}>
-              {rotationStyleOptions.map((option) => (
+              {rotationStyleOptions.map((option: any) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
@@ -68,7 +68,7 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
           <label className="block space-y-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Volume window</span>
             <select name="volumeWindowType" defaultValue={program?.volumeWindowType ?? fallback.volumeWindowType} className={selectClass}>
-              {volumeWindowOptions.map((option) => (
+              {volumeWindowOptions.map((option: any) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
@@ -98,7 +98,7 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
           <label className="block space-y-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Phase</span>
             <select name="activePhase" defaultValue={program?.activePhase ?? "PUSH"} className={selectClass}>
-              {phaseOptions.map((option) => (
+              {phaseOptions.map((option: any) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
@@ -120,7 +120,7 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
           <p className="mt-1 text-sm text-slate-400">Targets are stored and used by dashboard calculations.</p>
         </div>
         <div className="space-y-2">
-          {muscles.map((muscle) => (
+          {muscles.map((muscle: any) => (
             <div key={muscle.id} className="grid grid-cols-[1fr_96px] items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
               <label className="flex items-center gap-3 text-sm text-slate-200">
                 <input type="checkbox" name="priorityMuscleIds" value={muscle.id} defaultChecked={priorityIds.has(muscle.id)} className="h-5 w-5" />

@@ -48,7 +48,7 @@ export default async function PerformancePage({ searchParams }: PageProps) {
               className="min-h-12 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none focus:border-slate-400"
             >
               {data.exerciseOptions.length === 0 ? <option value="">No completed exercise data yet</option> : null}
-              {data.exerciseOptions.map((exercise) => (
+              {data.exerciseOptions.map((exercise: any) => (
                 <option key={exercise.id} value={exercise.id}>
                   {exercise.name} · {exercise.movementGroupName}
                 </option>
@@ -135,7 +135,7 @@ export default async function PerformancePage({ searchParams }: PageProps) {
                     <div className="h-2 rounded-full bg-slate-800">
                       <div
                         className="h-2 rounded-full bg-slate-300"
-                        style={{ width: `${Math.min(100, Math.max(4, ((point.value ?? 0) / Math.max(...data.e1rmTrend.map((p) => p.value ?? 0), 1)) * 100))}%` }}
+                        style={{ width: `${Math.min(100, Math.max(4, ((point.value ?? 0) / Math.max(...data.e1rmTrend.map((p: any) => p.value ?? 0), 1)) * 100))}%` }}
                       />
                     </div>
                     <span className="text-right">{formatNumber(point.value, " kg")}</span>
@@ -148,7 +148,7 @@ export default async function PerformancePage({ searchParams }: PageProps) {
           <Card>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent exposures</p>
             <div className="mt-3 space-y-3">
-              {data.exposures.length > 0 ? data.exposures.slice(0, 10).map((exposure) => (
+              {data.exposures.length > 0 ? data.exposures.slice(0, 10).map((exposure: any) => (
                 <div key={exposure.id} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -162,7 +162,7 @@ export default async function PerformancePage({ searchParams }: PageProps) {
                     <p><span className="text-slate-500">Volume load</span><br />{formatNumber(exposure.volumeLoad, " kg", 0)}</p>
                   </div>
                   <div className="mt-3 space-y-1 text-xs text-slate-400">
-                    {exposure.sets.filter((set) => set.isCompleted).map((set) => (
+                    {exposure.sets.filter((set: any) => set.isCompleted).map((set: any) => (
                       <p key={set.id}>
                         Set {set.setNumber}: {formatNumber(set.weight, " kg")} × {set.reps ?? "—"}, RIR {set.rir ?? "—"}, {set.setTypeName}{set.isIntensifier ? " · intensifier" : ""}
                       </p>
@@ -179,7 +179,7 @@ export default async function PerformancePage({ searchParams }: PageProps) {
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Comparable exercise context</p>
             {data.comparable.length > 0 ? (
               <div className="mt-3 space-y-2">
-                {data.comparable.map((item) => (
+                {data.comparable.map((item: any) => (
                   <div key={item.exerciseName} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300">
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-semibold text-slate-100">{item.exerciseName}</p>
