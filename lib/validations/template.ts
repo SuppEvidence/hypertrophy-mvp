@@ -4,6 +4,11 @@ export const templateRenameSchema = z.object({
   name: z.string().trim().min(1, "Template name is required.").max(80),
 });
 
+export const templateOccurrenceSchema = z.object({
+  expectedOccurrences: z.coerce.number().min(0).max(30),
+  selectedTemplateId: z.string().uuid().optional().nullable(),
+});
+
 export const templateExerciseSchema = z.object({
   exerciseId: z.string().uuid(),
   plannedSets: z.coerce.number().int().min(1).max(20),

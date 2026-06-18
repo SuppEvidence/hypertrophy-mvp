@@ -6,7 +6,7 @@ import { createClient } from "@/lib/auth/server";
 import { ensureProfile } from "@/lib/auth/profile";
 import { prisma } from "@/lib/db/prisma";
 import { defaultTemplateName } from "@/lib/templates/defaults";
-import { templateExerciseSchema, templateRenameSchema } from "@/lib/validations/template";
+import { templateExerciseSchema, templateOccurrenceSchema, templateRenameSchema } from "@/lib/validations/template";
 
 async function requireUserId() {
   const supabase = await createClient();
@@ -32,7 +32,7 @@ export async function ensureProgramTemplates(programId: string, userId: string) 
     where: { programId, userId },
     orderBy: { sequenceIndex: "asc" },
   });
-  const byIndex = new Map(allTemplates.map((template: any) => [template.sequenceIndex, template]));
+  const byIndex = new Map(allTemplates.map((template) => [template.sequenceIndex, template]));
 
   await prisma.$transaction(async (tx) => {
     for (let index = 0; index < program.templateCount; index += 1) {
@@ -48,6 +48,7 @@ export async function ensureProgramTemplates(programId: string, userId: string) 
             programId,
             name: defaultTemplateName(program.programType, index),
             sequenceIndex: index,
+            expectedOccurrences: 1,
           },
         });
       }
@@ -65,6 +66,17 @@ export async function ensureProgramTemplates(programId: string, userId: string) 
   });
 }
 
+const templateExerciseInclude = {
+  defaultSetType: true,
+  exercise: {
+    include: {
+      movementGroup: true,
+      primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+      secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+    },
+  },
+} as const;
+
 export async function getTemplateBuilderData(params?: { programId?: string; templateId?: string }) {
   const userId = await requireUserId();
 
@@ -81,8 +93,7 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
     programs.find((program) => program.id === params?.programId) ?? programs.find((program) => program.isActive) ?? programs[0] ?? null;
 
   const templates = selectedProgram ? await ensureProgramTemplates(selectedProgram.id, userId) : [];
-  const selectedTemplate =
-    templates.find((template) => template.id === params?.templateId) ?? templates[0] ?? null;
+  const selectedTemplate = templates.find((template) => template.id === params?.templateId) ?? templates[0] ?? null;
 
   const [exercises, setTypes] = await Promise.all([
     prisma.exercise.findMany({
@@ -105,20 +116,36 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
     ? await prisma.templateExercise.findMany({
         where: { templateId: selectedTemplate.id },
         orderBy: { sortOrder: "asc" },
+        include: templateExerciseInclude,
+      })
+    : [];
+
+  const allTemplateExercises = selectedProgram
+    ? await prisma.templateExercise.findMany({
+        where: {
+          template: {
+            programId: selectedProgram.id,
+            userId,
+            isArchived: false,
+            isActive: true,
+          },
+        },
+        orderBy: [{ template: { sequenceIndex: "asc" } }, { sortOrder: "asc" }],
         include: {
-          defaultSetType: true,
-          exercise: {
-            include: {
-              movementGroup: true,
-              primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
-              secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+          ...templateExerciseInclude,
+          template: {
+            select: {
+              id: true,
+              name: true,
+              sequenceIndex: true,
+              expectedOccurrences: true,
             },
           },
         },
       })
     : [];
 
-  return { programs, selectedProgram, templates, selectedTemplate, templateExercises, exercises, setTypes };
+  return { programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, exercises, setTypes };
 }
 
 async function getTemplateOwnedByUser(templateId: string, userId: string) {
@@ -137,6 +164,26 @@ export async function renameTemplate(templateId: string, formData: FormData) {
   await prisma.workoutTemplate.update({ where: { id: template.id }, data: { name: input.name } });
   revalidatePath("/templates");
   redirect(`/templates?programId=${template.programId}&templateId=${template.id}`);
+}
+
+export async function updateTemplateExpectedOccurrences(templateId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const template = await getTemplateOwnedByUser(templateId, userId);
+  if (!template) redirect("/templates");
+
+  const rawSelectedTemplateId = formData.get("selectedTemplateId");
+  const input = templateOccurrenceSchema.parse({
+    expectedOccurrences: formData.get("expectedOccurrences"),
+    selectedTemplateId: rawSelectedTemplateId ? String(rawSelectedTemplateId) : null,
+  });
+
+  await prisma.workoutTemplate.update({
+    where: { id: template.id },
+    data: { expectedOccurrences: input.expectedOccurrences },
+  });
+
+  revalidatePath("/templates");
+  redirect(`/templates?programId=${template.programId}&templateId=${input.selectedTemplateId ?? template.id}`);
 }
 
 function parseTemplateExerciseForm(formData: FormData) {
