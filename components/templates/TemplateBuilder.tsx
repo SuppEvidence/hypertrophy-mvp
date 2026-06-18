@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -9,6 +9,7 @@ import {
   removeTemplateExercise,
   renameTemplate,
   updateTemplateExercise,
+  updateTemplateExerciseSetPlan,
   updateTemplateExpectedOccurrences,
 } from "@/lib/server/templates";
 import { buildTemplateTargetNotices, buildTemplateVolumePreview, type TemplateVolumePreviewRow } from "@/lib/templates/volumePreview";
@@ -29,6 +30,7 @@ type TemplateOption = Props["templates"][number] & {
 };
 
 type TemplateExerciseItem = Props["templateExercises"][number];
+type TemplateExerciseSetPlan = TemplateExerciseItem["setPlans"][number];
 type AllTemplateExerciseItem = Props["allTemplateExercises"][number] & {
   template: {
     id: string;
@@ -39,7 +41,6 @@ type AllTemplateExerciseItem = Props["allTemplateExercises"][number] & {
 };
 type ExerciseOption = Props["exercises"][number];
 type SetTypeOption = Props["setTypes"][number];
-
 type TargetNotice = ReturnType<typeof buildTemplateTargetNotices>[number];
 
 const selectClass =
@@ -73,6 +74,18 @@ function VolumePreviewBlock({ rows, emptyText }: { rows: TemplateVolumePreviewRo
         );
       })}
     </div>
+  );
+}
+
+function SetTypeSelect({ setTypes, defaultValue }: { setTypes: SetTypeOption[]; defaultValue?: string | null }) {
+  return (
+    <select name="setTypeId" defaultValue={defaultValue ?? setTypes[0]?.id} className={selectClass} required>
+      {setTypes.map((setType: SetTypeOption) => (
+        <option key={setType.id} value={setType.id}>
+          {setType.name} ×{Number(setType.multiplier)}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -203,7 +216,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
           <Card className="space-y-4">
             <div>
               <h2 className="text-base font-semibold text-slate-100">Add exercise</h2>
-              <p className="mt-1 text-sm text-slate-400">Add planned exercise exposure. Logging comes in a later slice.</p>
+              <p className="mt-1 text-sm text-slate-400">Add planned exercise exposure. Initial set type is used for all planned sets, then individual set types can be edited below.</p>
             </div>
             <form action={addTemplateExercise.bind(null, selectedTemplate.id)} className="space-y-3">
               <label className="block space-y-2">
@@ -222,7 +235,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                 <Field label="Max reps" name="maxReps" type="number" min={1} max={100} />
                 <Field label="RIR" name="rirTarget" type="number" min={0} max={10} step="0.5" defaultValue={2} />
                 <label className="block space-y-2 col-span-2 md:col-span-1">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Set type</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Initial set type</span>
                   <select name="defaultSetTypeId" className={selectClass} defaultValue={normalSetType?.id} required>
                     {typedSetTypes.map((setType: SetTypeOption) => (
                       <option key={setType.id} value={setType.id}>
@@ -240,72 +253,112 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
           <Card className="space-y-4">
             <div>
               <h2 className="text-base font-semibold text-slate-100">Planned exercises</h2>
-              <p className="mt-1 text-sm text-slate-400">Each row is editable and persisted separately.</p>
+              <p className="mt-1 text-sm text-slate-400">Exercises are collapsed by default. Expand each exercise to edit row-level planning and set-specific set types.</p>
             </div>
             {typedTemplateExercises.length === 0 ? (
               <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No exercises in this template yet.</p>
             ) : (
               <div className="space-y-3">
-                {typedTemplateExercises.map((item: TemplateExerciseItem, index: number) => (
-                  <div key={item.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: TemplateExerciseItem["exercise"]["primaryMuscles"][number]) => link.muscle.name).join(", ") || "—"}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Secondary: {item.exercise.secondaryMuscles.map((link: TemplateExerciseItem["exercise"]["secondaryMuscles"][number]) => link.muscle.name).join(", ") || "—"}
-                        </p>
-                      </div>
-                      <div className="flex gap-1">
-                        <form action={moveTemplateExercise}>
-                          <input type="hidden" name="templateExerciseId" value={item.id} />
-                          <input type="hidden" name="direction" value="up" />
-                          <Button variant="ghost" className="min-h-9 px-2" disabled={index === 0} aria-label="Move up"><ArrowUp size={16} /></Button>
+                {typedTemplateExercises.map((item: TemplateExerciseItem, index: number) => {
+                  const setPlans = item.setPlans as TemplateExerciseSetPlan[];
+                  return (
+                    <details key={item.id} className="group rounded-2xl border border-slate-800 bg-slate-950 p-3" open={index === 0}>
+                      <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {item.plannedSets} sets · {item.minReps ?? "?"}–{item.maxReps ?? "?"} reps · RIR {item.rirTarget === null ? "—" : Number(item.rirTarget)}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Set types: {setPlans.map((plan: TemplateExerciseSetPlan) => plan.setType.name).join(" / ") || item.defaultSetType.name}
+                          </p>
+                        </div>
+                        <ChevronDown size={18} className="mt-1 shrink-0 text-slate-500 transition group-open:rotate-180" />
+                      </summary>
+
+                      <div className="mt-4 space-y-4 border-t border-slate-800 pt-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs text-slate-500">
+                              {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: TemplateExerciseItem["exercise"]["primaryMuscles"][number]) => link.muscle.name).join(", ") || "—"}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              Secondary: {item.exercise.secondaryMuscles.map((link: TemplateExerciseItem["exercise"]["secondaryMuscles"][number]) => link.muscle.name).join(", ") || "—"}
+                            </p>
+                          </div>
+                          <div className="flex gap-1">
+                            <form action={moveTemplateExercise}>
+                              <input type="hidden" name="templateExerciseId" value={item.id} />
+                              <input type="hidden" name="direction" value="up" />
+                              <Button variant="ghost" className="min-h-9 px-2" disabled={index === 0} aria-label="Move up"><ArrowUp size={16} /></Button>
+                            </form>
+                            <form action={moveTemplateExercise}>
+                              <input type="hidden" name="templateExerciseId" value={item.id} />
+                              <input type="hidden" name="direction" value="down" />
+                              <Button variant="ghost" className="min-h-9 px-2" disabled={index === typedTemplateExercises.length - 1} aria-label="Move down"><ArrowDown size={16} /></Button>
+                            </form>
+                          </div>
+                        </div>
+
+                        <form action={updateTemplateExercise.bind(null, item.id)} className="space-y-3">
+                          <label className="block space-y-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise</span>
+                            <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
+                              {typedExercises.map((exercise: ExerciseOption) => (
+                                <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                            <Field label="Sets" name="plannedSets" type="number" min={1} max={20} defaultValue={item.plannedSets} required />
+                            <Field label="Min reps" name="minReps" type="number" min={1} max={100} defaultValue={item.minReps ?? ""} />
+                            <Field label="Max reps" name="maxReps" type="number" min={1} max={100} defaultValue={item.maxReps ?? ""} />
+                            <Field label="RIR" name="rirTarget" type="number" min={0} max={10} step="0.5" defaultValue={item.rirTarget === null ? "" : Number(item.rirTarget)} />
+                            <label className="block space-y-2 col-span-2 md:col-span-1">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">New-set default</span>
+                              <select name="defaultSetTypeId" defaultValue={item.defaultSetTypeId} className={selectClass} required>
+                                {typedSetTypes.map((setType: SetTypeOption) => (
+                                  <option key={setType.id} value={setType.id}>{setType.name} ×{Number(setType.multiplier)}</option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          <Field label="Notes" name="notes" defaultValue={item.notes ?? ""} />
+                          <Button className="w-full">Save exercise plan</Button>
                         </form>
-                        <form action={moveTemplateExercise}>
+
+                        <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/50 p-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-100">Per-set plan</p>
+                            <p className="mt-1 text-xs text-slate-500">Set type can differ per planned set. This drives planned effective volume and prefilled workout logging.</p>
+                          </div>
+                          {setPlans.length === 0 ? (
+                            <p className="text-sm text-slate-500">Save this exercise plan to initialize set rows.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {setPlans.map((plan: TemplateExerciseSetPlan) => (
+                                <form key={plan.id} action={updateTemplateExerciseSetPlan.bind(null, plan.id)} className="grid grid-cols-[4rem_1fr_auto] items-end gap-2">
+                                  <p className="pb-3 text-sm font-semibold text-slate-300">Set {plan.setNumber}</p>
+                                  <label className="block space-y-2">
+                                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Set type</span>
+                                    <SetTypeSelect setTypes={typedSetTypes} defaultValue={plan.setTypeId} />
+                                  </label>
+                                  <Button className="min-h-11 px-3">Save</Button>
+                                </form>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <form action={removeTemplateExercise}>
                           <input type="hidden" name="templateExerciseId" value={item.id} />
-                          <input type="hidden" name="direction" value="down" />
-                          <Button variant="ghost" className="min-h-9 px-2" disabled={index === typedTemplateExercises.length - 1} aria-label="Move down"><ArrowDown size={16} /></Button>
+                          <Button variant="danger" className="w-full gap-2"><Trash2 size={16} /> Remove exercise</Button>
                         </form>
                       </div>
-                    </div>
-
-                    <form action={updateTemplateExercise.bind(null, item.id)} className="space-y-3">
-                      <label className="block space-y-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise</span>
-                        <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
-                          {typedExercises.map((exercise: ExerciseOption) => (
-                            <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                        <Field label="Sets" name="plannedSets" type="number" min={1} max={20} defaultValue={item.plannedSets} required />
-                        <Field label="Min reps" name="minReps" type="number" min={1} max={100} defaultValue={item.minReps ?? ""} />
-                        <Field label="Max reps" name="maxReps" type="number" min={1} max={100} defaultValue={item.maxReps ?? ""} />
-                        <Field label="RIR" name="rirTarget" type="number" min={0} max={10} step="0.5" defaultValue={item.rirTarget === null ? "" : Number(item.rirTarget)} />
-                        <label className="block space-y-2 col-span-2 md:col-span-1">
-                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Set type</span>
-                          <select name="defaultSetTypeId" defaultValue={item.defaultSetTypeId} className={selectClass} required>
-                            {typedSetTypes.map((setType: SetTypeOption) => (
-                              <option key={setType.id} value={setType.id}>{setType.name} ×{Number(setType.multiplier)}</option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-                      <Field label="Notes" name="notes" defaultValue={item.notes ?? ""} />
-                      <Button className="w-full">Save row</Button>
-                    </form>
-
-                    <form action={removeTemplateExercise} className="mt-2">
-                      <input type="hidden" name="templateExerciseId" value={item.id} />
-                      <Button variant="danger" className="w-full gap-2"><Trash2 size={16} /> Remove exercise</Button>
-                    </form>
-                  </div>
-                ))}
+                    </details>
+                  );
+                })}
               </div>
             )}
           </Card>
@@ -314,7 +367,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
             <div>
               <h2 className="text-base font-semibold text-slate-100">Program planned volume preview</h2>
               <p className="mt-1 text-sm text-slate-400">
-                Aggregates all templates in this program and multiplies each template by its expected occurrences in the selected {windowDays}-day window.
+                Aggregates all templates in this program and multiplies each template by its expected occurrences in the selected {windowDays}-day window. Per-set set types are used for effective-volume calculation.
               </p>
             </div>
             {targetNotices.length > 0 ? (

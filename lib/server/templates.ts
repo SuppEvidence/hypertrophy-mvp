@@ -1,12 +1,18 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/auth/server";
 import { ensureProfile } from "@/lib/auth/profile";
 import { prisma } from "@/lib/db/prisma";
 import { defaultTemplateName } from "@/lib/templates/defaults";
-import { templateExerciseSchema, templateOccurrenceSchema, templateRenameSchema } from "@/lib/validations/template";
+import {
+  templateExerciseSchema,
+  templateExerciseSetPlanSchema,
+  templateOccurrenceSchema,
+  templateRenameSchema,
+} from "@/lib/validations/template";
 
 async function requireUserId() {
   const supabase = await createClient();
@@ -68,6 +74,7 @@ export async function ensureProgramTemplates(programId: string, userId: string) 
 
 const templateExerciseInclude = {
   defaultSetType: true,
+  setPlans: { orderBy: { setNumber: "asc" }, include: { setType: true } },
   exercise: {
     include: {
       movementGroup: true,
@@ -155,6 +162,35 @@ async function getTemplateOwnedByUser(templateId: string, userId: string) {
   });
 }
 
+async function syncTemplateExerciseSetPlans(
+  tx: Prisma.TransactionClient,
+  templateExerciseId: string,
+  plannedSets: number,
+  defaultSetTypeId: string,
+) {
+  const existingPlans = await tx.templateExerciseSetPlan.findMany({
+    where: { templateExerciseId },
+    orderBy: { setNumber: "asc" },
+  });
+  const existingByNumber = new Map(existingPlans.map((plan) => [plan.setNumber, plan]));
+
+  for (let setNumber = 1; setNumber <= plannedSets; setNumber += 1) {
+    if (!existingByNumber.has(setNumber)) {
+      await tx.templateExerciseSetPlan.create({
+        data: {
+          templateExerciseId,
+          setNumber,
+          setTypeId: defaultSetTypeId,
+        },
+      });
+    }
+  }
+
+  await tx.templateExerciseSetPlan.deleteMany({
+    where: { templateExerciseId, setNumber: { gt: plannedSets } },
+  });
+}
+
 export async function renameTemplate(templateId: string, formData: FormData) {
   const userId = await requireUserId();
   const template = await getTemplateOwnedByUser(templateId, userId);
@@ -217,18 +253,21 @@ export async function addTemplateExercise(templateId: string, formData: FormData
     orderBy: { sortOrder: "desc" },
   });
 
-  await prisma.templateExercise.create({
-    data: {
-      templateId: template.id,
-      exerciseId: input.exerciseId,
-      sortOrder: (last?.sortOrder ?? -1) + 1,
-      plannedSets: input.plannedSets,
-      minReps: input.minReps,
-      maxReps: input.maxReps,
-      rirTarget: input.rirTarget,
-      defaultSetTypeId: input.defaultSetTypeId,
-      notes: input.notes || null,
-    },
+  await prisma.$transaction(async (tx) => {
+    const created = await tx.templateExercise.create({
+      data: {
+        templateId: template.id,
+        exerciseId: input.exerciseId,
+        sortOrder: (last?.sortOrder ?? -1) + 1,
+        plannedSets: input.plannedSets,
+        minReps: input.minReps,
+        maxReps: input.maxReps,
+        rirTarget: input.rirTarget,
+        defaultSetTypeId: input.defaultSetTypeId,
+        notes: input.notes || null,
+      },
+    });
+    await syncTemplateExerciseSetPlans(tx, created.id, input.plannedSets, input.defaultSetTypeId);
   });
 
   revalidatePath("/templates");
@@ -249,21 +288,45 @@ export async function updateTemplateExercise(templateExerciseId: string, formDat
   });
   if (!exercise) redirect(`/templates?programId=${existing.template.programId}&templateId=${existing.templateId}`);
 
-  await prisma.templateExercise.update({
-    where: { id: existing.id },
-    data: {
-      exerciseId: input.exerciseId,
-      plannedSets: input.plannedSets,
-      minReps: input.minReps,
-      maxReps: input.maxReps,
-      rirTarget: input.rirTarget,
-      defaultSetTypeId: input.defaultSetTypeId,
-      notes: input.notes || null,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.templateExercise.update({
+      where: { id: existing.id },
+      data: {
+        exerciseId: input.exerciseId,
+        plannedSets: input.plannedSets,
+        minReps: input.minReps,
+        maxReps: input.maxReps,
+        rirTarget: input.rirTarget,
+        defaultSetTypeId: input.defaultSetTypeId,
+        notes: input.notes || null,
+      },
+    });
+    await syncTemplateExerciseSetPlans(tx, existing.id, input.plannedSets, input.defaultSetTypeId);
   });
 
   revalidatePath("/templates");
   redirect(`/templates?programId=${existing.template.programId}&templateId=${existing.templateId}`);
+}
+
+export async function updateTemplateExerciseSetPlan(setPlanId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const existing = await prisma.templateExerciseSetPlan.findFirst({
+    where: { id: setPlanId, templateExercise: { template: { userId, isArchived: false, program: { userId, isArchived: false } } } },
+    include: { templateExercise: { include: { template: true } } },
+  });
+  if (!existing) redirect("/templates");
+
+  const input = templateExerciseSetPlanSchema.parse({ setTypeId: formData.get("setTypeId") });
+  const setType = await prisma.setType.findUnique({ where: { id: input.setTypeId } });
+  if (!setType) redirect(`/templates?programId=${existing.templateExercise.template.programId}&templateId=${existing.templateExercise.templateId}`);
+
+  await prisma.templateExerciseSetPlan.update({
+    where: { id: existing.id },
+    data: { setTypeId: input.setTypeId },
+  });
+
+  revalidatePath("/templates");
+  redirect(`/templates?programId=${existing.templateExercise.template.programId}&templateId=${existing.templateExercise.templateId}`);
 }
 
 export async function removeTemplateExercise(formData: FormData) {

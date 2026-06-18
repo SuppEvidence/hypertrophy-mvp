@@ -16,6 +16,7 @@ type VolumePreviewTemplateExercise = {
   plannedSets: number;
   occurrenceMultiplier?: unknown;
   defaultSetType: { multiplier: unknown };
+  setPlans?: Array<{ setNumber: number; setType: { multiplier: unknown } }>;
   exercise: {
     primaryMuscles: Array<{ muscleId: string; muscle: { name: string; sortOrder: number } }>;
     secondaryMuscles: Array<{ muscleId: string; muscle: { name: string; sortOrder: number } }>;
@@ -31,11 +32,24 @@ export type TemplateVolumePreviewRow = {
   target: number | null;
 };
 
+function setPlanMultipliers(item: VolumePreviewTemplateExercise) {
+  const sortedPlans = [...(item.setPlans ?? [])].sort((a, b) => a.setNumber - b.setNumber).slice(0, item.plannedSets);
+  if (sortedPlans.length > 0) {
+    const multipliers = sortedPlans.map((plan) => Number(plan.setType.multiplier)).filter((value) => Number.isFinite(value));
+    if (multipliers.length > 0) return multipliers;
+  }
+
+  const fallbackMultiplier = Number(item.defaultSetType.multiplier);
+  const multiplier = Number.isFinite(fallbackMultiplier) ? fallbackMultiplier : 1;
+  return Array.from({ length: item.plannedSets }, () => multiplier);
+}
+
 export function buildTemplateVolumePreview(args: {
   program: VolumePreviewProgram;
   templateExercises: VolumePreviewTemplateExercise[];
 }) {
   const secondaryContribution = Number(args.program.secondaryContribution);
+  const safeSecondaryContribution = Number.isFinite(secondaryContribution) ? secondaryContribution : 0;
   const rows = new Map<string, TemplateVolumePreviewRow>();
   const targets = new Map<string, number>(
     (args.program.volumeTargets ?? []).map((target) => [target.muscleId, Number(target.weeklyTargetSets)]),
@@ -43,9 +57,10 @@ export function buildTemplateVolumePreview(args: {
   const windowDays = volumeWindowDays(args.program.volumeWindowType, args.program.customWindowDays ?? null);
 
   for (const item of args.templateExercises) {
-    const multiplier = Number(item.defaultSetType.multiplier);
     const occurrenceMultiplier = Number(item.occurrenceMultiplier ?? 1);
-    const occurrenceAdjustedSets = item.plannedSets * occurrenceMultiplier;
+    const safeOccurrenceMultiplier = Number.isFinite(occurrenceMultiplier) ? occurrenceMultiplier : 1;
+    const directSets = item.plannedSets * safeOccurrenceMultiplier;
+    const effectiveSetTotal = setPlanMultipliers(item).reduce((sum, multiplier) => sum + multiplier, 0) * safeOccurrenceMultiplier;
 
     for (const link of item.exercise.primaryMuscles) {
       const row = rows.get(link.muscleId) ?? {
@@ -56,8 +71,8 @@ export function buildTemplateVolumePreview(args: {
         effective: 0,
         target: targets.has(link.muscleId) ? ((targets.get(link.muscleId) ?? 0) * windowDays) / 7 : null,
       };
-      row.direct += occurrenceAdjustedSets;
-      row.effective += occurrenceAdjustedSets * multiplier;
+      row.direct += directSets;
+      row.effective += effectiveSetTotal;
       rows.set(link.muscleId, row);
     }
 
@@ -70,7 +85,7 @@ export function buildTemplateVolumePreview(args: {
         effective: 0,
         target: targets.has(link.muscleId) ? ((targets.get(link.muscleId) ?? 0) * windowDays) / 7 : null,
       };
-      row.effective += occurrenceAdjustedSets * multiplier * secondaryContribution;
+      row.effective += effectiveSetTotal * safeSecondaryContribution;
       rows.set(link.muscleId, row);
     }
   }

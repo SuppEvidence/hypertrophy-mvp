@@ -18,3 +18,7 @@ export const templateExerciseSchema = z.object({
   defaultSetTypeId: z.string().uuid(),
   notes: z.string().trim().max(240).optional(),
 });
+
+export const templateExerciseSetPlanSchema = z.object({
+  setTypeId: z.string().uuid(),
+});

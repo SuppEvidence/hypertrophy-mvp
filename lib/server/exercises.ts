@@ -106,7 +106,7 @@ export async function getExerciseForEdit(exerciseId: string) {
 function parseTags(value: string | undefined) {
   return (value ?? "")
     .split(",")
-    .map((tag: any) => tag.trim())
+    .map((tag) => tag.trim())
     .filter(Boolean)
     .slice(0, 12);
 }
@@ -147,14 +147,14 @@ async function replaceMuscleLinks(
 
   if (primaryMuscleIds.length > 0) {
     await tx.exercisePrimaryMuscle.createMany({
-      data: primaryMuscleIds.map((muscleId: any) => ({ exerciseId, muscleId })),
+      data: primaryMuscleIds.map((muscleId) => ({ exerciseId, muscleId })),
       skipDuplicates: true,
     });
   }
 
   if (secondaryMuscleIds.length > 0) {
     await tx.exerciseSecondaryMuscle.createMany({
-      data: secondaryMuscleIds.map((muscleId: any) => ({ exerciseId, muscleId })),
+      data: secondaryMuscleIds.map((muscleId) => ({ exerciseId, muscleId })),
       skipDuplicates: true,
     });
   }
@@ -164,7 +164,7 @@ export async function createExercise(formData: FormData) {
   const userId = await requireUserId();
   const { input, tags, primaryMuscleIds, secondaryMuscleIds } = parseExerciseForm(formData);
 
-  const exercise = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const created = await tx.exercise.create({
       data: {
         userId,
@@ -186,7 +186,7 @@ export async function createExercise(formData: FormData) {
   });
 
   revalidatePath("/exercises");
-  redirect(`/exercises/${exercise.id}`);
+  redirect("/exercises");
 }
 
 export async function saveExercise(exerciseId: string, formData: FormData) {

@@ -109,7 +109,11 @@ async function getTemplateWithExercises(templateId: string, userId: string) {
       program: true,
       exercises: {
         orderBy: { sortOrder: "asc" },
-        include: { exercise: true, defaultSetType: true },
+        include: {
+          exercise: true,
+          defaultSetType: true,
+          setPlans: { orderBy: { setNumber: "asc" }, include: { setType: true } },
+        },
       },
     },
   });
@@ -168,12 +172,16 @@ export async function startWorkout(formData: FormData) {
         },
       });
 
-      for (let setIndex = 1; setIndex <= item.plannedSets; setIndex += 1) {
+      const plannedSetRows = item.setPlans.length > 0
+        ? item.setPlans.slice(0, item.plannedSets)
+        : Array.from({ length: item.plannedSets }, (_, setIndex) => ({ setNumber: setIndex + 1, setTypeId: item.defaultSetTypeId }));
+
+      for (const plan of plannedSetRows) {
         await tx.workoutSet.create({
           data: {
             sessionExerciseId: sessionExercise.id,
-            setNumber: setIndex,
-            setTypeId: item.defaultSetTypeId,
+            setNumber: plan.setNumber,
+            setTypeId: plan.setTypeId,
             rir: item.rirTarget,
             isCompleted: false,
           },

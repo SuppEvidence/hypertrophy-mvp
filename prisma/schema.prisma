@@ -119,6 +119,7 @@ model SetType {
 
   templateExercises TemplateExercise[]
   workoutSets WorkoutSet[]
+  templateExerciseSetPlans TemplateExerciseSetPlan[]
 
   @@map("set_types")
 }
@@ -274,12 +275,29 @@ model TemplateExercise {
   template       WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   exercise       Exercise        @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
   defaultSetType SetType         @relation(fields: [defaultSetTypeId], references: [id], onDelete: Restrict)
+  setPlans       TemplateExerciseSetPlan[]
   sessionExercises WorkoutSessionExercise[]
 
   @@index([templateId, sortOrder])
   @@index([exerciseId])
   @@index([defaultSetTypeId])
   @@map("template_exercises")
+}
+
+model TemplateExerciseSetPlan {
+  id                 String   @id @default(uuid()) @db.Uuid
+  templateExerciseId String   @db.Uuid @map("template_exercise_id")
+  setNumber          Int      @map("set_number")
+  setTypeId          String   @db.Uuid @map("set_type_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  templateExercise TemplateExercise @relation(fields: [templateExerciseId], references: [id], onDelete: Cascade)
+  setType          SetType          @relation(fields: [setTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([templateExerciseId, setNumber])
+  @@index([setTypeId])
+  @@map("template_exercise_set_plans")
 }
 
 model WorkoutSession {
