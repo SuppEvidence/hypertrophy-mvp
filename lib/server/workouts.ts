@@ -28,6 +28,19 @@ function cleanText(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
 }
 
+
+function editableSessionStatusWhere() {
+  const statuses: ("DRAFT" | "COMPLETED")[] = ["DRAFT", "COMPLETED"];
+  return { in: statuses };
+}
+
+function revalidateWorkoutViews() {
+  revalidatePath("/log");
+  revalidatePath("/log/history");
+  revalidatePath("/dashboard");
+  revalidatePath("/performance");
+}
+
 function parseNullableNumberInput(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
@@ -144,6 +157,36 @@ async function getSessionForUser(sessionId: string, userId: string) {
   });
 }
 
+
+export async function getWorkoutHistory(take = 30) {
+  const userId = await requireUserId();
+  return prisma.workoutSession.findMany({
+    where: { userId },
+    orderBy: [{ performedAt: "desc" }, { createdAt: "desc" }],
+    take,
+    include: {
+      program: true,
+      template: true,
+      exercises: {
+        include: {
+          exercise: true,
+          sets: true,
+        },
+      },
+    },
+  });
+}
+
+export async function deleteWorkoutSession(sessionId: string, _formData?: FormData) {
+  const userId = await requireUserId();
+  const session = await prisma.workoutSession.findFirst({ where: { id: sessionId, userId } });
+  if (!session) redirect("/log/history");
+
+  await prisma.workoutSession.delete({ where: { id: session.id } });
+  revalidateWorkoutViews();
+  redirect("/log/history");
+}
+
 export async function startWorkout(formData: FormData) {
   const userId = await requireUserId();
   const input = startWorkoutSchema.parse({ programId: formData.get("programId"), templateId: formData.get("templateId") });
@@ -192,7 +235,7 @@ export async function startWorkout(formData: FormData) {
     return created;
   });
 
-  revalidatePath("/log");
+  revalidateWorkoutViews();
   redirect(`/log?sessionId=${session.id}`);
 }
 
@@ -202,7 +245,7 @@ export async function autosaveWorkoutSet(
 ) {
   const userId = await requireUserId();
   const existing = await prisma.workoutSet.findFirst({
-    where: { id: setId, sessionExercise: { session: { userId, status: "DRAFT" } } },
+    where: { id: setId, sessionExercise: { session: { userId, status: editableSessionStatusWhere() } } },
     include: { sessionExercise: true },
   });
   if (!existing) return { ok: false, error: "Set not found or session is not editable." };
@@ -227,14 +270,14 @@ export async function autosaveWorkoutSet(
     },
   });
 
-  revalidatePath("/log");
+  revalidateWorkoutViews();
   return { ok: true };
 }
 
 export async function updateWorkoutSet(setId: string, formData: FormData) {
   const userId = await requireUserId();
   const existing = await prisma.workoutSet.findFirst({
-    where: { id: setId, sessionExercise: { session: { userId, status: "DRAFT" } } },
+    where: { id: setId, sessionExercise: { session: { userId, status: editableSessionStatusWhere() } } },
     include: { sessionExercise: { include: { session: true } } },
   });
   if (!existing) redirect("/log");
@@ -258,7 +301,7 @@ export async function updateWorkoutSet(setId: string, formData: FormData) {
     },
   });
 
-  revalidatePath("/log");
+  revalidateWorkoutViews();
   redirect(`/log?sessionId=${existing.sessionExercise.sessionId}`);
 }
 
@@ -266,7 +309,7 @@ export async function addWorkoutSet(formData: FormData) {
   const userId = await requireUserId();
   const sessionExerciseId = String(formData.get("sessionExerciseId") ?? "");
   const existing = await prisma.workoutSessionExercise.findFirst({
-    where: { id: sessionExerciseId, session: { userId, status: "DRAFT" } },
+    where: { id: sessionExerciseId, session: { userId, status: editableSessionStatusWhere() } },
     include: { session: true, sets: { orderBy: { setNumber: "desc" }, take: 1 }, templateExercise: true },
   });
   if (!existing) redirect("/log");
@@ -284,7 +327,7 @@ export async function addWorkoutSet(formData: FormData) {
     },
   });
 
-  revalidatePath("/log");
+  revalidateWorkoutViews();
   redirect(`/log?sessionId=${existing.sessionId}`);
 }
 
@@ -292,20 +335,20 @@ export async function removeWorkoutSet(formData: FormData) {
   const userId = await requireUserId();
   const setId = String(formData.get("setId") ?? "");
   const existing = await prisma.workoutSet.findFirst({
-    where: { id: setId, sessionExercise: { session: { userId, status: "DRAFT" } } },
+    where: { id: setId, sessionExercise: { session: { userId, status: editableSessionStatusWhere() } } },
     include: { sessionExercise: true },
   });
   if (!existing) redirect("/log");
 
   await prisma.workoutSet.delete({ where: { id: existing.id } });
-  revalidatePath("/log");
+  revalidateWorkoutViews();
   redirect(`/log?sessionId=${existing.sessionExercise.sessionId}`);
 }
 
 export async function updateSessionExercise(sessionExerciseId: string, formData: FormData) {
   const userId = await requireUserId();
   const existing = await prisma.workoutSessionExercise.findFirst({
-    where: { id: sessionExerciseId, session: { userId, status: "DRAFT" } },
+    where: { id: sessionExerciseId, session: { userId, status: editableSessionStatusWhere() } },
     include: { session: true, exercise: true },
   });
   if (!existing) redirect("/log");
@@ -334,7 +377,7 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
     },
   });
 
-  revalidatePath("/log");
+  revalidateWorkoutViews();
   redirect(`/log?sessionId=${existing.sessionId}`);
 }
 
@@ -343,7 +386,7 @@ export async function addSessionExercise(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   const exerciseId = String(formData.get("exerciseId") ?? "");
   const session = await prisma.workoutSession.findFirst({
-    where: { id: sessionId, userId, status: "DRAFT" },
+    where: { id: sessionId, userId, status: editableSessionStatusWhere() },
     include: { exercises: { orderBy: { sortOrder: "desc" }, take: 1 } },
   });
   if (!session) redirect("/log");
@@ -375,7 +418,7 @@ export async function addSessionExercise(formData: FormData) {
     });
   });
 
-  revalidatePath("/log");
+  revalidateWorkoutViews();
   redirect(`/log?sessionId=${session.id}`);
 }
 
@@ -390,6 +433,6 @@ export async function finishWorkout(sessionId: string, formData: FormData) {
     data: { status: "COMPLETED", completedAt: new Date(), notes: input.notes || null },
   });
 
-  revalidatePath("/log");
+  revalidateWorkoutViews();
   redirect(`/log?sessionId=${session.id}`);
 }

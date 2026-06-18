@@ -1,21 +1,24 @@
 import Link from "next/link";
-import { Activity, Database, Settings, TrendingUp } from "lucide-react";
+import { Activity, Database, History, Settings, TrendingUp } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 const moreItems = [
   { href: "/exercises", label: "Exercise Database", description: "Searchable exercise catalog and custom exercise editor.", icon: Database },
+  { href: "/log/history", label: "Training Log History", description: "View, edit, or delete persisted workout sessions.", icon: History },
   { href: "/metrics", label: "Metrics", description: "Optional recovery and body metric logging.", icon: Activity },
   { href: "/performance", label: "Exercise Performance", description: "Exercise-level exposure, e1RM, volume-load, and PR context.", icon: TrendingUp },
   { href: "/settings", label: "Settings", description: "User preferences and MVP configuration placeholder.", icon: Settings },
 ];
+
+type MoreItem = (typeof moreItems)[number];
 
 export default function MorePage() {
   return (
     <div className="space-y-5">
       <PageHeader title="More" description="Secondary app areas for the authenticated app shell." />
       <div className="space-y-3">
-        {moreItems.map((item: any) => {
+        {moreItems.map((item: MoreItem) => {
           const Icon = item.icon;
           return (
             <Link key={item.href} href={item.href}>

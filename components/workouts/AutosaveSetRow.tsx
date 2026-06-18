@@ -77,7 +77,7 @@ export function AutosaveSetRow({ set, setTypes }: AutosaveSetRowProps) {
         <input value={reps} onChange={(event) => setReps(event.target.value)} type="number" inputMode="numeric" min="0" className={inputClass} aria-label="Reps" />
         <input value={rir} onChange={(event) => setRir(event.target.value)} type="number" inputMode="decimal" step="0.5" min="0" max="10" className={inputClass} aria-label="RIR" />
         <select value={setTypeId} onChange={(event) => setSetTypeId(event.target.value)} className={inputClass} aria-label="Set type">
-          {setTypes.map((setType: any) => (
+          {setTypes.map((setType: SetTypeOption) => (
             <option key={setType.id} value={setType.id}>{setType.name}</option>
           ))}
         </select>

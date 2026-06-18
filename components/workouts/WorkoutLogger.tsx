@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, History, Plus, Trash2 } from "lucide-react";
 import { AutosaveSetRow } from "@/components/workouts/AutosaveSetRow";
+import { DeleteWorkoutButton } from "@/components/workouts/DeleteWorkoutButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -23,6 +24,7 @@ type LoggerProgram = {
   name: string;
   programType: string;
   rotationStyle: string;
+  secondaryContribution?: unknown;
 };
 
 type LoggerTemplate = {
@@ -80,6 +82,15 @@ type LoggerActiveSession = {
   status: "DRAFT" | "COMPLETED" | string;
   program: LoggerProgram & { secondaryContribution: unknown };
   exercises: LoggerSessionExercise[];
+};
+
+type MuscleNameLink = { muscle: { name: string } };
+
+type VolumeRow = {
+  muscleId: string;
+  muscleName: string;
+  direct: number;
+  effective: number;
 };
 
 function fmt(value: number) {
@@ -142,6 +153,8 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
   const summary = activeSession
     ? buildWorkoutSummary({ secondaryContribution: Number(activeSession.program.secondaryContribution), sessionExercises: activeSession.exercises })
     : null;
+  const isCompletedSession = activeSession?.status === "COMPLETED";
+  const isDraftSession = activeSession?.status === "DRAFT";
 
   return (
     <div className="space-y-5">
@@ -154,8 +167,11 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
               {selectedProgram.name} · {selectedProgram.programType.replaceAll("_", " ")} · {selectedProgram.rotationStyle.replaceAll("_", " ").toLowerCase()}
             </p>
           </div>
-          {activeSession?.status === "COMPLETED" ? <CheckCircle2 className="text-emerald-300" size={22} /> : null}
+          {isCompletedSession ? <CheckCircle2 className="text-emerald-300" size={22} /> : null}
         </div>
+        <Link href="/log/history" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200">
+          <History size={16} /> Training log history
+        </Link>
       </Card>
 
       <Card className="space-y-3">
@@ -194,7 +210,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
             An unfinished workout exists. Resume it below, or explicitly start a new workout from the selected template.
           </div>
         ) : null}
-        {activeSession?.status === "DRAFT" ? (
+        {isDraftSession ? (
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">
             A draft workout is open. Finish it or use a draft link before starting another session.
           </div>
@@ -227,7 +243,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
         <Card className="space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active session</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{isCompletedSession ? "Saved session" : "Active session"}</p>
               <h2 className="mt-1 text-lg font-semibold text-slate-100">{activeSession.name}</h2>
               <p className="mt-1 text-sm text-slate-400">
                 {activeSession.program.name} · {activeSession.status.toLowerCase()}
@@ -235,102 +251,126 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
             </div>
           </div>
 
-          {activeSession.status === "COMPLETED" && summary ? (
-            <CompletedSummary summary={summary} />
+          {isCompletedSession && summary ? <CompletedSummary summary={summary} /> : null}
+
+          {isCompletedSession ? (
+            <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">
+              This completed workout is editable. Set changes autosave and will update dashboard and performance calculations.
+            </div>
+          ) : null}
+
+          <EditableSessionBody activeSession={activeSession} exercises={exercises} autosaveSetTypes={autosaveSetTypes} summary={summary} />
+
+          {isDraftSession ? (
+            <form action={finishWorkout.bind(null, activeSession.id)} className="space-y-3 rounded-2xl border border-slate-700 bg-slate-900 p-3">
+              <Field label="Session notes" name="notes" placeholder="Optional" />
+              <Button className="w-full">Finish workout</Button>
+            </form>
           ) : (
-            <>
-              <div className="space-y-4">
-                {activeSession.exercises.length === 0 ? (
-                  <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No exercises in this session yet.</p>
-                ) : null}
-
-                {activeSession.exercises.map((item: LoggerSessionExercise, index: number) => (
-                  <div key={item.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
-                    <div className="mb-3">
-                      <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: { muscle: { name: string } }) => link.muscle.name).join(", ") || "—"}
-                      </p>
-                      {item.isSubstitution ? (
-                        <p className="mt-1 text-xs text-amber-200">Substituted from {item.substitutedFromExercise?.name ?? "planned exercise"}</p>
-                      ) : null}
-                    </div>
-
-                    <form action={updateSessionExercise.bind(null, item.id)} className="mb-3 space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
-                      <label className="block space-y-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise / substitute</span>
-                        <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
-                          {exercises.map((exercise: LoggerExerciseOption) => (
-                            <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
-                        <span>
-                          <span className="block text-sm font-semibold text-slate-200">Pain/discomfort flag</span>
-                          <span className="block text-xs text-slate-500">Session-level note for this exercise.</span>
-                        </span>
-                        <input name="painFlag" type="checkbox" defaultChecked={item.painFlag} className="h-5 w-5" />
-                      </label>
-                      <Field label="Pain note" name="painNote" defaultValue={item.painNote ?? ""} placeholder="Optional" />
-                      <Field label="Exercise note" name="notes" defaultValue={item.notes ?? ""} placeholder="Optional" />
-                      <Button variant="secondary" className="w-full">Save exercise row</Button>
-                    </form>
-
-                    <div className="mb-2 grid grid-cols-[0.6fr_1fr_1fr_1fr_1.4fr] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      <span>Set</span>
-                      <span>Weight</span>
-                      <span>Reps</span>
-                      <span>RIR</span>
-                      <span>Set type</span>
-                    </div>
-
-                    <div className="space-y-2">
-                      {item.sets.map((set: LoggerSet) => (
-                        <AutosaveSetRow key={set.id} set={toAutosaveSet(set)} setTypes={autosaveSetTypes} />
-                      ))}
-                    </div>
-
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <form action={addWorkoutSet}>
-                        <input type="hidden" name="sessionExerciseId" value={item.id} />
-                        <Button variant="ghost" className="w-full gap-2"><Plus size={16} /> Add set</Button>
-                      </form>
-                      {item.sets.length > 0 ? (
-                        <form action={removeWorkoutSet}>
-                          <input type="hidden" name="setId" value={item.sets[item.sets.length - 1].id} />
-                          <Button variant="danger" className="w-full gap-2"><Trash2 size={16} /> Last set</Button>
-                        </form>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <Card className="space-y-3 bg-slate-950">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Add unplanned exercise</p>
-                <form action={addSessionExercise} className="space-y-3">
-                  <input type="hidden" name="sessionId" value={activeSession.id} />
-                  <select name="exerciseId" defaultValue={exercises[0]?.id} className={selectClass} required>
-                    {exercises.map((exercise: LoggerExerciseOption) => (
-                      <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
-                    ))}
-                  </select>
-                  <Button variant="secondary" className="w-full">Add exercise</Button>
-                </form>
-              </Card>
-
-              {summary ? <DraftSummary summary={summary} /> : null}
-
-              <form action={finishWorkout.bind(null, activeSession.id)} className="space-y-3 rounded-2xl border border-slate-700 bg-slate-900 p-3">
-                <Field label="Session notes" name="notes" placeholder="Optional" />
-                <Button className="w-full">Finish workout</Button>
-              </form>
-            </>
+            <DeleteWorkoutButton sessionId={activeSession.id} />
           )}
         </Card>
       ) : null}
     </div>
+  );
+}
+
+function EditableSessionBody({
+  activeSession,
+  exercises,
+  autosaveSetTypes,
+  summary,
+}: {
+  activeSession: LoggerActiveSession;
+  exercises: LoggerExerciseOption[];
+  autosaveSetTypes: LoggerSetTypeOption[];
+  summary: ReturnType<typeof buildWorkoutSummary> | null;
+}) {
+  return (
+    <>
+      <div className="space-y-4">
+        {activeSession.exercises.length === 0 ? (
+          <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No exercises in this session yet.</p>
+        ) : null}
+
+        {activeSession.exercises.map((item: LoggerSessionExercise, index: number) => (
+          <div key={item.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
+            <div className="mb-3">
+              <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: MuscleNameLink) => link.muscle.name).join(", ") || "—"}
+              </p>
+              {item.isSubstitution ? (
+                <p className="mt-1 text-xs text-amber-200">Substituted from {item.substitutedFromExercise?.name ?? "planned exercise"}</p>
+              ) : null}
+            </div>
+
+            <form action={updateSessionExercise.bind(null, item.id)} className="mb-3 space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+              <label className="block space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise / substitute</span>
+                <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
+                  {exercises.map((exercise: LoggerExerciseOption) => (
+                    <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
+                <span>
+                  <span className="block text-sm font-semibold text-slate-200">Pain/discomfort flag</span>
+                  <span className="block text-xs text-slate-500">Session-level note for this exercise.</span>
+                </span>
+                <input name="painFlag" type="checkbox" defaultChecked={item.painFlag} className="h-5 w-5" />
+              </label>
+              <Field label="Pain note" name="painNote" defaultValue={item.painNote ?? ""} placeholder="Optional" />
+              <Field label="Exercise note" name="notes" defaultValue={item.notes ?? ""} placeholder="Optional" />
+              <Button variant="secondary" className="w-full">Save exercise row</Button>
+            </form>
+
+            <div className="mb-2 grid grid-cols-[0.6fr_1fr_1fr_1fr_1.4fr] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <span>Set</span>
+              <span>Weight</span>
+              <span>Reps</span>
+              <span>RIR</span>
+              <span>Set type</span>
+            </div>
+
+            <div className="space-y-2">
+              {item.sets.map((set: LoggerSet) => (
+                <AutosaveSetRow key={set.id} set={toAutosaveSet(set)} setTypes={autosaveSetTypes} />
+              ))}
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <form action={addWorkoutSet}>
+                <input type="hidden" name="sessionExerciseId" value={item.id} />
+                <Button variant="ghost" className="w-full gap-2"><Plus size={16} /> Add set</Button>
+              </form>
+              {item.sets.length > 0 ? (
+                <form action={removeWorkoutSet}>
+                  <input type="hidden" name="setId" value={item.sets[item.sets.length - 1].id} />
+                  <Button variant="danger" className="w-full gap-2"><Trash2 size={16} /> Last set</Button>
+                </form>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Card className="space-y-3 bg-slate-950">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Add unplanned exercise</p>
+        <form action={addSessionExercise} className="space-y-3">
+          <input type="hidden" name="sessionId" value={activeSession.id} />
+          <select name="exerciseId" defaultValue={exercises[0]?.id} className={selectClass} required>
+            {exercises.map((exercise: LoggerExerciseOption) => (
+              <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
+            ))}
+          </select>
+          <Button variant="secondary" className="w-full">Add exercise</Button>
+        </form>
+      </Card>
+
+      {activeSession.status === "DRAFT" && summary ? <DraftSummary summary={summary} /> : null}
+    </>
   );
 }
 
@@ -382,7 +422,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function VolumeRows({ rows }: { rows: Array<{ muscleId: string; muscleName: string; direct: number; effective: number }> }) {
+function VolumeRows({ rows }: { rows: VolumeRow[] }) {
   if (rows.length === 0) return <p className="text-sm text-slate-500">No completed-set volume yet.</p>;
   return (
     <div className="space-y-2">
@@ -391,7 +431,7 @@ function VolumeRows({ rows }: { rows: Array<{ muscleId: string; muscleName: stri
         <span>Direct</span>
         <span>Effective</span>
       </div>
-      {rows.map((row: { muscleId: string; muscleName: string; direct: number; effective: number }) => (
+      {rows.map((row: VolumeRow) => (
         <div key={row.muscleId} className="grid grid-cols-[1fr_auto_auto] gap-2 rounded-xl border border-slate-800 bg-slate-950 p-2 text-sm">
           <span className="text-slate-200">{row.muscleName}</span>
           <span className="text-slate-400">{fmt(row.direct)}</span>
