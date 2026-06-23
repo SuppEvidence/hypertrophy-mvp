@@ -47,6 +47,96 @@ function parseNullableNumberInput(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function estimateE1rm(weight: number, reps: number) {
+  return weight * (1 + reps / 30);
+}
+
+function roundToNearestHalf(value: number) {
+  return Math.round(value * 2) / 2;
+}
+
+type WeightSuggestion = {
+  suggestedWeight: number | null;
+  targetReps: number | null;
+  sourceE1rm: number | null;
+  sourceSet: string | null;
+};
+
+async function buildWeightSuggestionsForSession(
+  activeSession: Awaited<ReturnType<typeof getSessionForUser>>,
+  userId: string,
+): Promise<Record<string, WeightSuggestion>> {
+  if (!activeSession) return {};
+
+  const exerciseIds = Array.from(new Set(activeSession.exercises.map((item) => item.exerciseId)));
+  if (exerciseIds.length === 0) return {};
+
+  const completedSets = await prisma.workoutSet.findMany({
+    where: {
+      isCompleted: true,
+      weight: { not: null },
+      reps: { not: null },
+      sessionExercise: {
+        exerciseId: { in: exerciseIds },
+        session: { userId, status: "COMPLETED", id: { not: activeSession.id } },
+      },
+    },
+    include: {
+      sessionExercise: {
+        select: {
+          exerciseId: true,
+          session: { select: { performedAt: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const bestByExercise = new Map<string, { e1rm: number; weight: number; reps: number }>();
+
+  for (const set of completedSets) {
+    const weight = Number(set.weight);
+    const reps = set.reps;
+    if (!Number.isFinite(weight) || !reps || reps <= 0) continue;
+
+    const e1rm = estimateE1rm(weight, reps);
+    const exerciseId = set.sessionExercise.exerciseId;
+    const current = bestByExercise.get(exerciseId);
+    if (!current || e1rm > current.e1rm) {
+      bestByExercise.set(exerciseId, { e1rm, weight, reps });
+    }
+  }
+
+  const suggestions: Record<string, WeightSuggestion> = {};
+
+  for (const item of activeSession.exercises) {
+    const minReps = item.templateExercise?.minReps ?? null;
+    const maxReps = item.templateExercise?.maxReps ?? null;
+    const targetReps = minReps && maxReps ? Math.round((minReps + maxReps) / 2) : maxReps ?? minReps ?? null;
+    const best = bestByExercise.get(item.exerciseId);
+
+    if (!best || !targetReps) {
+      suggestions[item.id] = {
+        suggestedWeight: null,
+        targetReps,
+        sourceE1rm: best?.e1rm ?? null,
+        sourceSet: best ? `${best.weight} × ${best.reps}` : null,
+      };
+      continue;
+    }
+
+    const estimatedWeight = best.e1rm / (1 + targetReps / 30);
+    suggestions[item.id] = {
+      suggestedWeight: roundToNearestHalf(estimatedWeight),
+      targetReps,
+      sourceE1rm: Number(best.e1rm.toFixed(1)),
+      sourceSet: `${best.weight} × ${best.reps}`,
+    };
+  }
+
+  return suggestions;
+}
+
 export async function getWorkoutLoggerData(params?: { programId?: string; templateId?: string; sessionId?: string }) {
   const userId = await requireUserId();
 
@@ -85,8 +175,21 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
   const requestedSession = params?.sessionId ? await getSessionForUser(params.sessionId, userId) : null;
   const activeSession = requestedSession?.status === "DRAFT" || requestedSession?.status === "COMPLETED" ? requestedSession : null;
   const hasUnfinishedSession = draftSessions.length > 0;
+  const weightSuggestions = await buildWeightSuggestionsForSession(activeSession, userId);
 
-  return { programs, selectedProgram, templates, suggestedTemplate, selectedTemplate, exercises, setTypes, draftSessions, activeSession, hasUnfinishedSession };
+  return {
+    programs,
+    selectedProgram,
+    templates,
+    suggestedTemplate,
+    selectedTemplate,
+    exercises,
+    setTypes,
+    draftSessions,
+    activeSession,
+    hasUnfinishedSession,
+    weightSuggestions,
+  };
 }
 
 async function getSuggestedTemplate(
@@ -310,18 +413,24 @@ export async function addWorkoutSet(formData: FormData) {
   const sessionExerciseId = String(formData.get("sessionExerciseId") ?? "");
   const existing = await prisma.workoutSessionExercise.findFirst({
     where: { id: sessionExerciseId, session: { userId, status: editableSessionStatusWhere() } },
-    include: { session: true, sets: { orderBy: { setNumber: "desc" }, take: 1 }, templateExercise: true },
+    include: {
+      session: true,
+      sets: { orderBy: { setNumber: "desc" }, take: 1 },
+      templateExercise: { include: { setPlans: { orderBy: { setNumber: "asc" } } } },
+    },
   });
   if (!existing) redirect("/log");
 
   const fallbackSetType = await prisma.setType.findFirst({ orderBy: { sortOrder: "asc" } });
-  const setTypeId = existing.templateExercise?.defaultSetTypeId ?? fallbackSetType?.id;
+  const nextSetNumber = (existing.sets[0]?.setNumber ?? 0) + 1;
+  const plannedSetTypeId = existing.templateExercise?.setPlans.find((plan) => plan.setNumber === nextSetNumber)?.setTypeId;
+  const setTypeId = plannedSetTypeId ?? existing.templateExercise?.defaultSetTypeId ?? fallbackSetType?.id;
   if (!setTypeId) redirect(`/log?sessionId=${existing.sessionId}`);
 
   await prisma.workoutSet.create({
     data: {
       sessionExerciseId: existing.id,
-      setNumber: (existing.sets[0]?.setNumber ?? 0) + 1,
+      setNumber: nextSetNumber,
       setTypeId,
       isCompleted: false,
     },

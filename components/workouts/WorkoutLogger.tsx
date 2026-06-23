@@ -69,6 +69,7 @@ type LoggerSessionExercise = LoggedExerciseForSummary & {
   painNote: string | null;
   notes: string | null;
   substitutedFromExercise: { name: string } | null;
+  templateExercise: { minReps: number; maxReps: number } | null;
   exercise: LoggedExerciseForSummary["exercise"] & {
     name: string;
     movementGroup: { name: string };
@@ -82,6 +83,13 @@ type LoggerActiveSession = {
   status: "DRAFT" | "COMPLETED" | string;
   program: LoggerProgram & { secondaryContribution: unknown };
   exercises: LoggerSessionExercise[];
+};
+
+type LoggerWeightSuggestion = {
+  suggestedWeight: number | null;
+  targetReps: number | null;
+  sourceE1rm: number | null;
+  sourceSet: string | null;
 };
 
 type MuscleNameLink = { muscle: { name: string } };
@@ -101,6 +109,22 @@ function decimalToNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatRepRange(item: LoggerSessionExercise) {
+  if (!item.templateExercise) return "No target range";
+  return `${item.templateExercise.minReps}–${item.templateExercise.maxReps} reps`;
+}
+
+function formatSuggestedWeight(suggestion: LoggerWeightSuggestion | undefined) {
+  if (!suggestion) return "No suggestion yet";
+  if (suggestion.suggestedWeight === null) {
+    return suggestion.targetReps ? `No completed history for ${suggestion.targetReps} rep estimate yet` : "No target rep range available";
+  }
+
+  const source = suggestion.sourceSet ? ` · from ${suggestion.sourceSet}` : "";
+  const target = suggestion.targetReps ? ` for ~${suggestion.targetReps} reps` : "";
+  return `${fmt(suggestion.suggestedWeight)} kg${target}${source}`;
 }
 
 function toAutosaveSet(set: {
@@ -137,6 +161,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
   const setTypes = data.setTypes as LoggerSetTypeOption[];
   const draftSessions = data.draftSessions as LoggerDraftSession[];
   const activeSession = data.activeSession as LoggerActiveSession | null;
+  const weightSuggestions = data.weightSuggestions as Record<string, LoggerWeightSuggestion>;
   const autosaveSetTypes = toAutosaveSetTypes(setTypes);
 
   if (programs.length === 0 || !selectedProgram) {
@@ -259,7 +284,13 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
             </div>
           ) : null}
 
-          <EditableSessionBody activeSession={activeSession} exercises={exercises} autosaveSetTypes={autosaveSetTypes} summary={summary} />
+          <EditableSessionBody
+            activeSession={activeSession}
+            exercises={exercises}
+            autosaveSetTypes={autosaveSetTypes}
+            weightSuggestions={weightSuggestions}
+            summary={summary}
+          />
 
           {isDraftSession ? (
             <form action={finishWorkout.bind(null, activeSession.id)} className="space-y-3 rounded-2xl border border-slate-700 bg-slate-900 p-3">
@@ -279,11 +310,13 @@ function EditableSessionBody({
   activeSession,
   exercises,
   autosaveSetTypes,
+  weightSuggestions,
   summary,
 }: {
   activeSession: LoggerActiveSession;
   exercises: LoggerExerciseOption[];
   autosaveSetTypes: LoggerSetTypeOption[];
+  weightSuggestions: Record<string, LoggerWeightSuggestion>;
   summary: ReturnType<typeof buildWorkoutSummary> | null;
 }) {
   return (
@@ -300,6 +333,16 @@ function EditableSessionBody({
               <p className="mt-1 text-xs text-slate-500">
                 {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: MuscleNameLink) => link.muscle.name).join(", ") || "—"}
               </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Target rep range</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-200">{formatRepRange(item)}</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Suggested weight</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-200">{formatSuggestedWeight(weightSuggestions[item.id])}</p>
+                </div>
+              </div>
               {item.isSubstitution ? (
                 <p className="mt-1 text-xs text-amber-200">Substituted from {item.substitutedFromExercise?.name ?? "planned exercise"}</p>
               ) : null}
