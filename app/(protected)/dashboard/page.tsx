@@ -15,6 +15,11 @@ function formatNumber(value: number | null | undefined, suffix = "", decimals = 
   return `${Number(value).toFixed(decimals).replace(/\.0$/, "")}${suffix}`;
 }
 
+function progressWidth(value: number | null | undefined) {
+  const safeValue = Math.min(Math.max(Number(value ?? 0), 0), 100);
+  return `${safeValue}%`;
+}
+
 function statusClass(status: string) {
   if (status === "Below target") return "border-amber-700/60 bg-amber-950/20 text-amber-100";
   if (status === "Above target") return "border-sky-700/60 bg-sky-950/20 text-sky-100";
@@ -81,6 +86,49 @@ export default async function DashboardPage() {
           </Link>
         </Card>
       )}
+
+      {dashboard.activeProgram && dashboard.mesocycle ? (
+        <Card>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mesocycle</p>
+              <h2 className="mt-2 text-xl font-semibold text-slate-100">{dashboard.mesocycle.name}</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                {dashboard.mesocycle.status} · {dashboard.mesocycle.phaseLabel}
+              </p>
+            </div>
+            <Link href={`/programs/${dashboard.activeProgram.id}`} className="rounded-xl border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800">
+              Review
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
+            <p><span className="text-slate-500">Dates:</span> {formatDate(dashboard.mesocycle.startDate)} to {formatDate(dashboard.mesocycle.endDate)}</p>
+            <p><span className="text-slate-500">Length:</span> {dashboard.mesocycle.lengthWeeks} weeks</p>
+            <p><span className="text-slate-500">Current week:</span> {dashboard.mesocycle.currentWeek || "Not started"}</p>
+            <p><span className="text-slate-500">Days remaining:</span> {dashboard.mesocycle.daysRemaining}</p>
+          </div>
+          <div className="mt-4">
+            <div className="h-2 rounded-full bg-slate-800">
+              <div className="h-2 rounded-full bg-slate-200" style={{ width: progressWidth(dashboard.mesocycle.progressPct) }} />
+            </div>
+            <p className="mt-2 text-xs text-slate-500">{dashboard.mesocycle.progressPct}% complete</p>
+          </div>
+          {dashboard.mesocycle.notes ? <p className="mt-3 text-sm text-slate-400">{dashboard.mesocycle.notes}</p> : null}
+        </Card>
+      ) : dashboard.activeProgram ? (
+        <Card>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mesocycle</p>
+              <h2 className="mt-2 text-lg font-semibold text-slate-100">No mesocycle set</h2>
+              <p className="mt-1 text-sm text-slate-400">Add a start date and length from the program page to enable block-level review.</p>
+            </div>
+            <Link href={`/programs/${dashboard.activeProgram.id}`} className="rounded-xl border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800">
+              Add
+            </Link>
+          </div>
+        </Card>
+      ) : null}
 
       {dashboard.activeProgram ? (
         <Card>

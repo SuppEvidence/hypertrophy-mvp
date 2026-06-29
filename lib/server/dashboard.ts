@@ -19,6 +19,65 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function dateOnly(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function daysBetween(start: Date, end: Date) {
+  return Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+async function getDashboardMesocycle(programId: string, userId: string) {
+  const now = new Date();
+  const mesocycles = await prisma.programMesocycle.findMany({
+    where: { programId, userId, isArchived: false },
+    orderBy: { startDate: "desc" },
+    take: 12,
+  });
+
+  if (mesocycles.length === 0) return null;
+
+  const withDates = mesocycles.map((mesocycle) => {
+    const endExclusive = addDays(mesocycle.startDate, mesocycle.lengthWeeks * 7);
+    return {
+      ...mesocycle,
+      endExclusive,
+      endDate: addDays(endExclusive, -1),
+    };
+  });
+
+  const current = withDates.find((mesocycle) => mesocycle.startDate <= now && mesocycle.endExclusive > now);
+  const upcoming = [...withDates].reverse().find((mesocycle) => mesocycle.startDate > now);
+  const selected = current ?? upcoming ?? withDates[0];
+  if (!selected) return null;
+
+  const totalDays = selected.lengthWeeks * 7;
+  const elapsedDays = Math.min(Math.max(daysBetween(selected.startDate, now), 0), totalDays);
+  const currentWeek = selected.startDate <= now ? Math.min(Math.floor(elapsedDays / 7) + 1, selected.lengthWeeks) : 0;
+  const daysRemaining = selected.endExclusive > now ? Math.max(daysBetween(now, selected.endExclusive), 0) : 0;
+  const status = current ? "Current" : selected.startDate > now ? "Upcoming" : "Completed";
+
+  return {
+    id: selected.id,
+    name: selected.name,
+    phaseLabel: phaseLabels[selected.phase],
+    status,
+    startDate: dateOnly(selected.startDate),
+    endDate: dateOnly(selected.endDate),
+    lengthWeeks: selected.lengthWeeks,
+    currentWeek,
+    daysRemaining,
+    progressPct: Math.round((elapsedDays / totalDays) * 100),
+    notes: selected.notes ?? "",
+  };
+}
+
 async function getSuggestedTemplate(programId: string, userId: string, templates: Array<{ id: string; name: string; sequenceIndex: number; weekday: number | null }>) {
   if (templates.length === 0) return null;
   const program = await prisma.program.findFirst({ where: { id: programId, userId } });
@@ -68,6 +127,7 @@ export async function getDashboardData(userId: string) {
       bodyMetrics,
       flags: [],
       completedSessionsCount: 0,
+      mesocycle: null,
     };
   }
 
@@ -76,7 +136,7 @@ export async function getDashboardData(userId: string) {
   const templates = await ensureProgramTemplates(activeProgram.id, userId);
   const suggestedTemplate = await getSuggestedTemplate(activeProgram.id, userId, templates);
 
-  const [sessions, metrics] = await Promise.all([
+  const [sessions, metrics, mesocycle] = await Promise.all([
     prisma.workoutSession.findMany({
       where: {
         userId,
@@ -102,6 +162,7 @@ export async function getDashboardData(userId: string) {
       },
     }),
     prisma.metricLog.findMany({ where: { userId }, orderBy: { loggedAt: "desc" }, take: 4 }),
+    getDashboardMesocycle(activeProgram.id, userId),
   ]);
 
   const volumeRows = buildMuscleVolumeRows(activeProgram, sessions);
@@ -138,5 +199,6 @@ export async function getDashboardData(userId: string) {
     bodyMetrics,
     flags,
     completedSessionsCount: sessions.length,
+    mesocycle,
   };
 }
