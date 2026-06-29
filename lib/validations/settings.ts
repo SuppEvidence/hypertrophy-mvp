@@ -33,4 +33,11 @@ export const setTypeMultiplierSchema = z.object({
   multiplier: optionalMultiplier.refine((value) => value !== null, { message: "Multiplier is required." }),
 });
 
+export const customSetTypeSchema = z.object({
+  name: z.string().trim().min(2).max(60),
+  multiplier: optionalMultiplier.refine((value) => value !== null, { message: "Multiplier is required." }),
+  isIntensifier: z.boolean(),
+  description: z.string().trim().max(240).optional(),
+});
+
 export type SettingsInput = z.infer<typeof settingsSchema>;

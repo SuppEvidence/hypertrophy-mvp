@@ -116,7 +116,10 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
         secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
       },
     }),
-    prisma.setType.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.setType.findMany({
+      where: { isActive: true, OR: [{ userId: null }, { userId }] },
+      orderBy: [{ userId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+    }),
   ]);
 
   const templateExercises = selectedTemplate
@@ -245,7 +248,9 @@ export async function addTemplateExercise(templateId: string, formData: FormData
   });
   if (!exercise) redirect(`/templates?programId=${template.programId}&templateId=${template.id}`);
 
-  const setType = await prisma.setType.findUnique({ where: { id: input.defaultSetTypeId } });
+  const setType = await prisma.setType.findFirst({
+    where: { id: input.defaultSetTypeId, isActive: true, OR: [{ userId: null }, { userId }] },
+  });
   if (!setType) redirect(`/templates?programId=${template.programId}&templateId=${template.id}`);
 
   const last = await prisma.templateExercise.findFirst({
@@ -317,7 +322,9 @@ export async function updateTemplateExerciseSetPlan(setPlanId: string, formData:
   if (!existing) redirect("/templates");
 
   const input = templateExerciseSetPlanSchema.parse({ setTypeId: formData.get("setTypeId") });
-  const setType = await prisma.setType.findUnique({ where: { id: input.setTypeId } });
+  const setType = await prisma.setType.findFirst({
+    where: { id: input.setTypeId, isActive: true, OR: [{ userId: null }, { userId }] },
+  });
   if (!setType) redirect(`/templates?programId=${existing.templateExercise.template.programId}&templateId=${existing.templateExercise.templateId}`);
 
   await prisma.templateExerciseSetPlan.update({

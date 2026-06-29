@@ -163,7 +163,10 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
         secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
       },
     }),
-    prisma.setType.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.setType.findMany({
+      where: { isActive: true, OR: [{ userId: null }, { userId }] },
+      orderBy: [{ userId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+    }),
     prisma.workoutSession.findMany({
       where: { userId, status: "DRAFT" },
       orderBy: { updatedAt: "desc" },
@@ -421,7 +424,10 @@ export async function addWorkoutSet(formData: FormData) {
   });
   if (!existing) redirect("/log");
 
-  const fallbackSetType = await prisma.setType.findFirst({ orderBy: { sortOrder: "asc" } });
+  const fallbackSetType = await prisma.setType.findFirst({
+    where: { isActive: true, OR: [{ userId: null }, { userId }] },
+    orderBy: [{ userId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+  });
   const nextSetNumber = (existing.sets[0]?.setNumber ?? 0) + 1;
   const plannedSetTypeId = existing.templateExercise?.setPlans.find((plan) => plan.setNumber === nextSetNumber)?.setTypeId;
   const setTypeId = plannedSetTypeId ?? existing.templateExercise?.defaultSetTypeId ?? fallbackSetType?.id;
@@ -505,7 +511,12 @@ export async function addSessionExercise(formData: FormData) {
   });
   if (!exercise) redirect(`/log?sessionId=${session.id}`);
 
-  const normalSetType = await prisma.setType.findFirst({ where: { slug: "normal" } }) ?? await prisma.setType.findFirst({ orderBy: { sortOrder: "asc" } });
+  const normalSetType =
+    (await prisma.setType.findFirst({ where: { slug: "normal", userId: null, isActive: true } })) ??
+    (await prisma.setType.findFirst({
+      where: { isActive: true, OR: [{ userId: null }, { userId }] },
+      orderBy: [{ userId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+    }));
   if (!normalSetType) redirect(`/log?sessionId=${session.id}`);
 
   await prisma.$transaction(async (tx) => {

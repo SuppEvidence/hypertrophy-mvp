@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/auth/server";
 import { ensureProfile } from "@/lib/auth/profile";
 import { prisma } from "@/lib/db/prisma";
-import { settingsSchema, setTypeMultiplierSchema } from "@/lib/validations/settings";
+import { customSetTypeSchema, settingsSchema, setTypeMultiplierSchema } from "@/lib/validations/settings";
 
 const defaultMetricVisibility = {
   bodyweight: true,
@@ -55,6 +55,15 @@ function toNumber(value: unknown, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
 export async function getSettingsPageData() {
   const userId = await requireUserId();
 
@@ -70,7 +79,10 @@ export async function getSettingsPageData() {
         metricVisibility: defaultMetricVisibility,
       },
     }),
-    prisma.setType.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.setType.findMany({
+      where: { OR: [{ userId: null }, { userId }] },
+      orderBy: [{ userId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+    }),
   ]);
 
   return {
@@ -87,6 +99,9 @@ export async function getSettingsPageData() {
       multiplier: toNumber(setType.multiplier, 1),
       isIntensifier: setType.isIntensifier,
       isEditable: setType.isEditable,
+      isActive: setType.isActive,
+      isCustom: Boolean(setType.userId),
+      description: setType.description ?? "",
     })),
   };
 }
@@ -138,13 +153,13 @@ export async function updateUserSettings(formData: FormData) {
 }
 
 export async function updateSetTypeMultiplier(formData: FormData) {
-  await requireUserId();
+  const userId = await requireUserId();
   const parsed = setTypeMultiplierSchema.parse({
     setTypeId: formData.get("setTypeId"),
     multiplier: formData.get("multiplier"),
   });
 
-  const setType = await prisma.setType.findUnique({ where: { id: parsed.setTypeId } });
+  const setType = await prisma.setType.findFirst({ where: { id: parsed.setTypeId, OR: [{ userId: null }, { userId }] } });
   if (!setType || !setType.isEditable) redirect("/settings?error=set-type-locked");
 
   await prisma.setType.update({
@@ -156,5 +171,58 @@ export async function updateSetTypeMultiplier(formData: FormData) {
   revalidatePath("/templates");
   revalidatePath("/log");
   revalidatePath("/dashboard");
+  redirect("/settings?saved=1");
+}
+
+export async function createCustomSetType(formData: FormData) {
+  const userId = await requireUserId();
+  const parsed = customSetTypeSchema.parse({
+    name: formData.get("name"),
+    multiplier: formData.get("multiplier"),
+    isIntensifier: formData.get("isIntensifier") === "on",
+    description: String(formData.get("description") ?? ""),
+  });
+  const slug = slugify(parsed.name);
+  if (!slug) redirect("/settings?error=set-type-invalid");
+
+  const existing = await prisma.setType.findFirst({ where: { userId, slug } });
+  if (existing) redirect("/settings?error=set-type-duplicate");
+
+  const lastSetType = await prisma.setType.findFirst({
+    where: { OR: [{ userId: null }, { userId }] },
+    orderBy: { sortOrder: "desc" },
+  });
+
+  await prisma.setType.create({
+    data: {
+      userId,
+      name: parsed.name,
+      slug,
+      multiplier: Number(parsed.multiplier),
+      isIntensifier: parsed.isIntensifier,
+      isEditable: true,
+      isActive: true,
+      description: parsed.description || null,
+      sortOrder: (lastSetType?.sortOrder ?? 0) + 1,
+    },
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/templates");
+  revalidatePath("/log");
+  redirect("/settings?saved=1");
+}
+
+export async function toggleCustomSetType(formData: FormData) {
+  const userId = await requireUserId();
+  const setTypeId = String(formData.get("setTypeId") ?? "");
+  const setType = await prisma.setType.findFirst({ where: { id: setTypeId, userId, isEditable: true } });
+  if (!setType) redirect("/settings?error=set-type-locked");
+
+  await prisma.setType.update({ where: { id: setType.id }, data: { isActive: !setType.isActive } });
+
+  revalidatePath("/settings");
+  revalidatePath("/templates");
+  revalidatePath("/log");
   redirect("/settings?saved=1");
 }

@@ -38,24 +38,34 @@ async function main() {
   }
 
   for (const [index, setType] of defaultSetTypes.entries()) {
-    await prisma.setType.upsert({
-      where: { slug: slugify(setType.name) },
-      update: {
-        name: setType.name,
-        multiplier: setType.multiplier,
-        isIntensifier: setType.isIntensifier,
-        isEditable: setType.isEditable,
-        sortOrder: index + 1,
-      },
-      create: {
-        name: setType.name,
-        slug: slugify(setType.name),
-        multiplier: setType.multiplier,
-        isIntensifier: setType.isIntensifier,
-        isEditable: setType.isEditable,
-        sortOrder: index + 1,
-      },
-    });
+    const slug = slugify(setType.name);
+    const existing = await prisma.setType.findFirst({ where: { slug, userId: null } });
+    if (existing) {
+      await prisma.setType.update({
+        where: { id: existing.id },
+        data: {
+          name: setType.name,
+          multiplier: setType.multiplier,
+          isIntensifier: setType.isIntensifier,
+          isEditable: setType.isEditable,
+          isActive: true,
+          sortOrder: index + 1,
+        },
+      });
+    } else {
+      await prisma.setType.create({
+        data: {
+          userId: null,
+          name: setType.name,
+          slug,
+          multiplier: setType.multiplier,
+          isIntensifier: setType.isIntensifier,
+          isEditable: setType.isEditable,
+          isActive: true,
+          sortOrder: index + 1,
+        },
+      });
+    }
   }
 
   const muscles = await prisma.muscle.findMany();
