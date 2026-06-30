@@ -1,5 +1,6 @@
-import { archiveMesocycle, createMesocycle, updateMesocycle } from "@/lib/server/mesocycles";
+import { archiveMesocycle, createMesocycle, updateMesocycle, updateMesocycleRepPolicies, updateMesocycleVolumeTargets } from "@/lib/server/mesocycles";
 import { phaseOptions } from "@/lib/programs/options";
+import { repBuckets } from "@/lib/planning/mesocycleGenerator";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -12,6 +13,14 @@ type Mesocycle = {
   endDate: string;
   lengthWeeks: number;
   notes: string;
+  volumeTargets: Array<{
+    muscleId: string;
+    targetSets: number;
+    minimumSets: number | null;
+    maximumSets: number | null;
+    priorityLevel: number;
+  }>;
+  repPolicies: Array<{ repBucket: string; minReps: number; maxReps: number }>;
 };
 
 type Review = {
@@ -24,6 +33,7 @@ type Review = {
     muscleId: string;
     muscleName: string;
     actual: number;
+    planned: number;
     target: number;
     status: string;
     isPriority: boolean;
@@ -36,6 +46,8 @@ type Props = {
   data: {
     programId: string;
     activePhase: string;
+    muscles: Array<{ id: string; name: string }>;
+    programTargets: Array<{ muscleId: string; weeklyTargetSets: number }>;
     mesocycles: Mesocycle[];
     reviews: Review[];
   };
@@ -93,6 +105,65 @@ function MesocycleForm({ programId, mesocycle, activePhase }: { programId: strin
   );
 }
 
+function MesocycleTargetsForm({ mesocycle, muscles, programTargets }: { mesocycle: Mesocycle; muscles: Array<{ id: string; name: string }>; programTargets: Array<{ muscleId: string; weeklyTargetSets: number }> }) {
+  const targetMap = new Map(mesocycle.volumeTargets.map((target) => [target.muscleId, target]));
+  const fallbackMap = new Map(programTargets.map((target) => [target.muscleId, target.weeklyTargetSets]));
+
+  return (
+    <form action={updateMesocycleVolumeTargets.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+      <div>
+        <h4 className="font-semibold text-slate-100">Mesocycle volume targets</h4>
+        <p className="mt-1 text-xs text-slate-500">Weekly targets. Blank rows fall back to program-level targets.</p>
+      </div>
+      <div className="space-y-2">
+        {muscles.map((muscle) => {
+          const target = targetMap.get(muscle.id);
+          return (
+            <div key={muscle.id} className="grid grid-cols-[1fr_70px_70px_70px_70px] items-end gap-2 rounded-xl border border-slate-800 p-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-200">{muscle.name}</p>
+                <p className="text-xs text-slate-500">Program {fallbackMap.get(muscle.id) ?? 0}/wk</p>
+              </div>
+              <Field label="Target" name={`target:${muscle.id}`} type="number" min="0" max="40" step="0.5" defaultValue={target?.targetSets ?? ""} />
+              <Field label="Min" name={`min:${muscle.id}`} type="number" min="0" max="40" step="0.5" defaultValue={target?.minimumSets ?? ""} />
+              <Field label="Max" name={`max:${muscle.id}`} type="number" min="0" max="50" step="0.5" defaultValue={target?.maximumSets ?? ""} />
+              <Field label="Prio" name={`priority:${muscle.id}`} type="number" min="0" max="3" step="1" defaultValue={target?.priorityLevel ?? 0} />
+            </div>
+          );
+        })}
+      </div>
+      <Button type="submit" variant="secondary" className="w-full">Save volume targets</Button>
+    </form>
+  );
+}
+
+function MesocycleRepPolicyForm({ mesocycle }: { mesocycle: Mesocycle }) {
+  const policyMap = new Map(mesocycle.repPolicies.map((policy) => [policy.repBucket, policy]));
+
+  return (
+    <form action={updateMesocycleRepPolicies.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+      <div>
+        <h4 className="font-semibold text-slate-100">Rep bucket policy</h4>
+        <p className="mt-1 text-xs text-slate-500">Blank rows fall back to template exercise rep ranges.</p>
+      </div>
+      {repBuckets.map((bucket) => {
+        const policy = policyMap.get(bucket.value);
+        return (
+          <div key={bucket.value} className="grid grid-cols-[1fr_80px_80px] items-end gap-2 rounded-xl border border-slate-800 p-2">
+            <div>
+              <p className="text-sm font-semibold text-slate-200">{bucket.label}</p>
+              <p className="text-xs text-slate-500">Default {bucket.defaultMin}-{bucket.defaultMax}</p>
+            </div>
+            <Field label="Min" name={`min:${bucket.value}`} type="number" min="1" max="100" defaultValue={policy?.minReps ?? ""} />
+            <Field label="Max" name={`max:${bucket.value}`} type="number" min="1" max="100" defaultValue={policy?.maxReps ?? ""} />
+          </div>
+        );
+      })}
+      <Button type="submit" variant="secondary" className="w-full">Save rep policy</Button>
+    </form>
+  );
+}
+
 function ReviewCard({ review }: { review: Review }) {
   const flaggedVolume = review.volume.filter((row) => row.status !== "on").slice(0, 6);
 
@@ -118,7 +189,7 @@ function ReviewCard({ review }: { review: Review }) {
                 {row.muscleName} {row.isPriority ? "(priority)" : ""}
               </span>
               <span className={row.status === "below" ? "text-amber-300" : "text-sky-300"}>
-                {row.actual} / {row.target} effective sets
+                actual {row.actual} / planned {row.planned} / target {row.target}
               </span>
             </div>
           ))}
@@ -150,6 +221,10 @@ export function MesocyclePanel({ data }: Props) {
               </summary>
               <div className="mt-3">
                 <MesocycleForm programId={data.programId} mesocycle={mesocycle} activePhase={data.activePhase} />
+                <div className="mt-3 space-y-3">
+                  <MesocycleTargetsForm mesocycle={mesocycle} muscles={data.muscles} programTargets={data.programTargets} />
+                  <MesocycleRepPolicyForm mesocycle={mesocycle} />
+                </div>
               </div>
             </details>
           ))}

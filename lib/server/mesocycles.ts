@@ -7,6 +7,8 @@ import { createClient } from "@/lib/auth/server";
 import { ensureProfile } from "@/lib/auth/profile";
 import { prisma } from "@/lib/db/prisma";
 import { estimateE1RM } from "@/lib/calculations/performance";
+import { volumeWindowDays } from "@/lib/programs/options";
+import { buildProgramPrescription } from "@/lib/server/prescriptions";
 import { mesocycleSchema } from "@/lib/validations/mesocycle";
 
 async function requireUserId() {
@@ -47,6 +49,12 @@ function parseMesocycleForm(formData: FormData) {
     lengthWeeks: formData.get("lengthWeeks"),
     notes: String(formData.get("notes") ?? ""),
   });
+}
+
+function decimalOrNull(value: FormDataEntryValue | null) {
+  if (value === null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export async function createMesocycle(programId: string, formData: FormData) {
@@ -104,6 +112,79 @@ export async function archiveMesocycle(formData: FormData) {
   redirect(`/programs/${mesocycle.programId}`);
 }
 
+export async function updateMesocycleVolumeTargets(mesocycleId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const mesocycle = await prisma.programMesocycle.findFirst({ where: { id: mesocycleId, userId, isArchived: false } });
+  if (!mesocycle) redirect("/programs");
+
+  const muscles = await prisma.muscle.findMany({ orderBy: { sortOrder: "asc" } });
+  const rows = muscles
+    .map((muscle) => {
+      const targetSets = decimalOrNull(formData.get(`target:${muscle.id}`));
+      const minimumSets = decimalOrNull(formData.get(`min:${muscle.id}`));
+      const maximumSets = decimalOrNull(formData.get(`max:${muscle.id}`));
+      const priorityLevel = Number(formData.get(`priority:${muscle.id}`) ?? 0);
+      return {
+        muscleId: muscle.id,
+        targetSets,
+        minimumSets,
+        maximumSets,
+        priorityLevel: Number.isFinite(priorityLevel) ? Math.max(0, Math.min(3, priorityLevel)) : 0,
+      };
+    })
+    .filter((row) => row.targetSets !== null || row.minimumSets !== null || row.maximumSets !== null || row.priorityLevel > 0);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.mesocycleMuscleVolumeTarget.deleteMany({ where: { mesocycleId } });
+    if (rows.length > 0) {
+      await tx.mesocycleMuscleVolumeTarget.createMany({
+        data: rows.map((row) => ({
+          mesocycleId,
+          muscleId: row.muscleId,
+          targetSets: row.targetSets ?? 0,
+          minimumSets: row.minimumSets,
+          maximumSets: row.maximumSets,
+          priorityLevel: row.priorityLevel,
+        })),
+      });
+    }
+  });
+
+  revalidatePath(`/programs/${mesocycle.programId}`);
+  revalidatePath("/templates");
+  revalidatePath("/log");
+  revalidatePath("/dashboard");
+  redirect(`/programs/${mesocycle.programId}?saved=1`);
+}
+
+export async function updateMesocycleRepPolicies(mesocycleId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const mesocycle = await prisma.programMesocycle.findFirst({ where: { id: mesocycleId, userId, isArchived: false } });
+  if (!mesocycle) redirect("/programs");
+  const buckets = ["HEAVY_COMPOUND", "SECONDARY_COMPOUND", "ISOLATION", "LENGTHENED_ISOLATION"];
+  const rows = buckets
+    .map((bucket) => {
+      const minReps = Number(formData.get(`min:${bucket}`));
+      const maxReps = Number(formData.get(`max:${bucket}`));
+      return { bucket, minReps, maxReps };
+    })
+    .filter((row) => Number.isFinite(row.minReps) && Number.isFinite(row.maxReps) && row.minReps > 0 && row.maxReps >= row.minReps);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.mesocycleRepPolicy.deleteMany({ where: { mesocycleId } });
+    if (rows.length > 0) {
+      await tx.mesocycleRepPolicy.createMany({
+        data: rows.map((row) => ({ mesocycleId, repBucket: row.bucket, minReps: row.minReps, maxReps: row.maxReps })),
+      });
+    }
+  });
+
+  revalidatePath(`/programs/${mesocycle.programId}`);
+  revalidatePath("/templates");
+  revalidatePath("/log");
+  redirect(`/programs/${mesocycle.programId}?saved=1`);
+}
+
 export async function getMesocyclePanelData(programId: string) {
   const userId = await requireUserId();
   const program = await prisma.program.findFirst({
@@ -118,6 +199,10 @@ export async function getMesocyclePanelData(programId: string) {
   const mesocycles = await prisma.programMesocycle.findMany({
     where: { programId, userId, isArchived: false },
     orderBy: { startDate: "desc" },
+    include: {
+      volumeTargets: { include: { muscle: true } },
+      repPolicies: true,
+    },
   });
 
   const reviews = await Promise.all(
@@ -127,6 +212,11 @@ export async function getMesocyclePanelData(programId: string) {
   return {
     programId,
     activePhase: program.activePhase,
+    muscles: await prisma.muscle.findMany({ orderBy: { sortOrder: "asc" } }),
+    programTargets: program.volumeTargets.map((target: any) => ({
+      muscleId: target.muscleId,
+      weeklyTargetSets: toNumber(target.weeklyTargetSets),
+    })),
     mesocycles: mesocycles.map((mesocycle) => ({
       id: mesocycle.id,
       name: mesocycle.name,
@@ -135,6 +225,18 @@ export async function getMesocyclePanelData(programId: string) {
       endDate: toDateInputValue(addDays(mesocycle.startDate, mesocycle.lengthWeeks * 7 - 1)),
       lengthWeeks: mesocycle.lengthWeeks,
       notes: mesocycle.notes ?? "",
+      volumeTargets: mesocycle.volumeTargets.map((target: any) => ({
+        muscleId: target.muscleId,
+        targetSets: toNumber(target.targetSets),
+        minimumSets: target.minimumSets === null ? null : toNumber(target.minimumSets),
+        maximumSets: target.maximumSets === null ? null : toNumber(target.maximumSets),
+        priorityLevel: target.priorityLevel,
+      })),
+      repPolicies: mesocycle.repPolicies.map((policy: any) => ({
+        repBucket: policy.repBucket,
+        minReps: policy.minReps,
+        maxReps: policy.maxReps,
+      })),
     })),
     reviews,
   };
@@ -145,11 +247,15 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
   const endExclusive = addDays(startDate, mesocycle.lengthWeeks * 7);
   const days = mesocycle.lengthWeeks * 7;
   const priorityIds = new Set(program.priorityMuscles.map((link: any) => link.muscleId));
+  const prescription = await buildProgramPrescription(program.id, userId, { mesocycleId: mesocycle.id });
+  const windowDays = volumeWindowDays(program.volumeWindowType, program.customWindowDays ?? null);
+  const planMultiplier = days / windowDays;
   type TargetVolumeRow = {
     muscleId: string;
     muscleName: string;
     sortOrder: number;
     target: number;
+    priorityLevel: number;
   };
   const targetByMuscle = new Map<string, TargetVolumeRow>(
     program.volumeTargets.map((target: any) => [
@@ -158,10 +264,27 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
         muscleId: target.muscleId,
         muscleName: target.muscle.name,
         sortOrder: target.muscle.sortOrder,
-        target: (toNumber(target.weeklyTargetSets) * days) / 7,
+        target: toNumber(target.weeklyTargetSets) * mesocycle.lengthWeeks,
+        priorityLevel: priorityIds.has(target.muscleId) ? 1 : 0,
       },
     ]),
   );
+  for (const target of mesocycle.volumeTargets ?? []) {
+    const previous = targetByMuscle.get(target.muscleId);
+    const overrideTarget = toNumber(target.targetSets);
+    targetByMuscle.set(target.muscleId, {
+      muscleId: target.muscleId,
+      muscleName: target.muscle.name,
+      sortOrder: target.muscle.sortOrder,
+      target: overrideTarget > 0 ? overrideTarget * mesocycle.lengthWeeks : previous?.target ?? 0,
+      priorityLevel: target.priorityLevel,
+    });
+  }
+
+  const plannedByMuscle = new Map<string, number>();
+  for (const row of prescription?.generated.volumeRows ?? []) {
+    plannedByMuscle.set(row.muscleId, row.planned * planMultiplier);
+  }
 
   const sessionExercises = await prisma.workoutSessionExercise.findMany({
     where: {
@@ -186,7 +309,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
     orderBy: { session: { performedAt: "asc" } },
   });
 
-  const volumeRows = new Map<string, { muscleId: string; muscleName: string; sortOrder: number; actual: number; target: number; status: string; isPriority: boolean }>();
+  const volumeRows = new Map<string, { muscleId: string; muscleName: string; sortOrder: number; actual: number; planned: number; target: number; status: string; isPriority: boolean }>();
   const performanceByExercise = new Map<string, Array<{ date: Date; e1rm: number }>>();
   const secondaryContribution = toNumber(program.secondaryContribution, 0.5);
 
@@ -213,6 +336,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
         muscleName: link.muscle.name,
         sortOrder: link.muscle.sortOrder,
         actual: 0,
+        planned: plannedByMuscle.get(link.muscleId) ?? 0,
         target: target?.target ?? 0,
         status: "on",
         isPriority: priorityIds.has(link.muscleId),
@@ -228,6 +352,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
         muscleName: link.muscle.name,
         sortOrder: link.muscle.sortOrder,
         actual: 0,
+        planned: plannedByMuscle.get(link.muscleId) ?? 0,
         target: target?.target ?? 0,
         status: "on",
         isPriority: priorityIds.has(link.muscleId),
@@ -242,6 +367,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
       volumeRows.set(target.muscleId, {
         ...target,
         actual: 0,
+        planned: plannedByMuscle.get(target.muscleId) ?? 0,
         status: "below",
         isPriority: priorityIds.has(target.muscleId),
       });
@@ -252,7 +378,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
     .map((row) => {
       const ratio = row.target > 0 ? row.actual / row.target : 1;
       const status = ratio < 0.85 ? "below" : ratio > 1.25 ? "above" : "on";
-      return { ...row, actual: Math.round(row.actual * 10) / 10, target: Math.round(row.target * 10) / 10, ratio, status };
+      return { ...row, actual: Math.round(row.actual * 10) / 10, planned: Math.round(row.planned * 10) / 10, target: Math.round(row.target * 10) / 10, ratio, status };
     })
     .filter((row) => row.target > 0 || row.actual > 0)
     .sort((a, b) => Number(b.isPriority) - Number(a.isPriority) || a.sortOrder - b.sortOrder);

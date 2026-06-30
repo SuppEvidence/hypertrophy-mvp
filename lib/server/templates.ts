@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/auth/server";
 import { ensureProfile } from "@/lib/auth/profile";
 import { prisma } from "@/lib/db/prisma";
+import { buildProgramPrescription } from "@/lib/server/prescriptions";
 import { defaultTemplateName } from "@/lib/templates/defaults";
 import {
   templateExerciseSchema,
@@ -155,7 +156,12 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
       })
     : [];
 
-  return { programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, exercises, setTypes };
+  const prescription = selectedProgram ? await buildProgramPrescription(selectedProgram.id, userId) : null;
+  const generatedTemplateItems = selectedTemplate
+    ? prescription?.generated.items.filter((item) => item.templateId === selectedTemplate.id).sort((a, b) => a.sortOrder - b.sortOrder) ?? []
+    : [];
+
+  return { programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, exercises, setTypes, prescription, generatedTemplateItems };
 }
 
 async function getTemplateOwnedByUser(templateId: string, userId: string) {
@@ -229,10 +235,16 @@ function parseTemplateExerciseForm(formData: FormData) {
   return templateExerciseSchema.parse({
     exerciseId: formData.get("exerciseId"),
     plannedSets: formData.get("plannedSets"),
+    minSets: numberOrNull(formData.get("minSets")),
+    maxSets: numberOrNull(formData.get("maxSets")),
     minReps: numberOrNull(formData.get("minReps")),
     maxReps: numberOrNull(formData.get("maxReps")),
     rirTarget: numberOrNull(formData.get("rirTarget")),
     defaultSetTypeId: formData.get("defaultSetTypeId"),
+    slotPriority: formData.get("slotPriority") ?? "STANDARD",
+    slotRole: formData.get("slotRole") ?? "ISOLATION",
+    repBucket: formData.get("repBucket") ?? "ISOLATION",
+    autoAdjustable: formData.get("autoAdjustable") === "on",
     notes: String(formData.get("notes") ?? ""),
   });
 }
@@ -265,10 +277,16 @@ export async function addTemplateExercise(templateId: string, formData: FormData
         exerciseId: input.exerciseId,
         sortOrder: (last?.sortOrder ?? -1) + 1,
         plannedSets: input.plannedSets,
+        minSets: input.minSets,
+        maxSets: input.maxSets,
         minReps: input.minReps,
         maxReps: input.maxReps,
         rirTarget: input.rirTarget,
         defaultSetTypeId: input.defaultSetTypeId,
+        slotPriority: input.slotPriority,
+        slotRole: input.slotRole,
+        repBucket: input.repBucket,
+        autoAdjustable: input.autoAdjustable,
         notes: input.notes || null,
       },
     });
@@ -299,10 +317,16 @@ export async function updateTemplateExercise(templateExerciseId: string, formDat
       data: {
         exerciseId: input.exerciseId,
         plannedSets: input.plannedSets,
+        minSets: input.minSets,
+        maxSets: input.maxSets,
         minReps: input.minReps,
         maxReps: input.maxReps,
         rirTarget: input.rirTarget,
         defaultSetTypeId: input.defaultSetTypeId,
+        slotPriority: input.slotPriority,
+        slotRole: input.slotRole,
+        repBucket: input.repBucket,
+        autoAdjustable: input.autoAdjustable,
         notes: input.notes || null,
       },
     });

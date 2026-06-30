@@ -69,7 +69,12 @@ type LoggerSessionExercise = LoggedExerciseForSummary & {
   painNote: string | null;
   notes: string | null;
   substitutedFromExercise: { name: string } | null;
-  templateExercise: { minReps: number; maxReps: number } | null;
+  templateExercise: { minReps: number | null; maxReps: number | null } | null;
+  basePlannedSets: number | null;
+  prescribedPlannedSets: number | null;
+  prescribedMinReps: number | null;
+  prescribedMaxReps: number | null;
+  prescriptionNote: string | null;
   exercise: LoggedExerciseForSummary["exercise"] & {
     name: string;
     movementGroup: { name: string };
@@ -92,6 +97,19 @@ type LoggerWeightSuggestion = {
   sourceSet: string | null;
 };
 
+type SelectedTemplatePrescription = {
+  mesocycleName: string | null;
+  items: Array<{
+    id: string;
+    exerciseName: string;
+    basePlannedSets: number;
+    adjustedPlannedSets: number;
+    prescribedMinReps: number | null;
+    prescribedMaxReps: number | null;
+    adjustmentReason: string | null;
+  }>;
+};
+
 type MuscleNameLink = { muscle: { name: string } };
 
 type VolumeRow = {
@@ -112,8 +130,10 @@ function decimalToNumber(value: unknown): number | null {
 }
 
 function formatRepRange(item: LoggerSessionExercise) {
-  if (!item.templateExercise) return "No target range";
-  return `${item.templateExercise.minReps}–${item.templateExercise.maxReps} reps`;
+  const minReps = item.prescribedMinReps ?? item.templateExercise?.minReps ?? null;
+  const maxReps = item.prescribedMaxReps ?? item.templateExercise?.maxReps ?? null;
+  if (!minReps || !maxReps) return "No target range";
+  return `${minReps}–${maxReps} reps`;
 }
 
 function formatSuggestedWeight(suggestion: LoggerWeightSuggestion | undefined) {
@@ -162,6 +182,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
   const draftSessions = data.draftSessions as LoggerDraftSession[];
   const activeSession = data.activeSession as LoggerActiveSession | null;
   const weightSuggestions = data.weightSuggestions as Record<string, LoggerWeightSuggestion>;
+  const selectedTemplatePrescription = data.selectedTemplatePrescription as SelectedTemplatePrescription | null;
   const autosaveSetTypes = toAutosaveSetTypes(setTypes);
 
   if (programs.length === 0 || !selectedProgram) {
@@ -240,11 +261,14 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
             A draft workout is open. Finish it or use a draft link before starting another session.
           </div>
         ) : selectedTemplate ? (
-          <form action={startWorkout}>
-            <input type="hidden" name="programId" value={selectedProgram.id} />
-            <input type="hidden" name="templateId" value={selectedTemplate.id} />
-            <Button className="w-full">{data.hasUnfinishedSession ? "Start new workout anyway" : "Start selected template"}</Button>
-          </form>
+          <div className="space-y-3">
+            {selectedTemplatePrescription ? <PrescriptionPreview prescription={selectedTemplatePrescription} /> : null}
+            <form action={startWorkout}>
+              <input type="hidden" name="programId" value={selectedProgram.id} />
+              <input type="hidden" name="templateId" value={selectedTemplate.id} />
+              <Button className="w-full">{data.hasUnfinishedSession ? "Start new workout anyway" : "Start selected template"}</Button>
+            </form>
+          </div>
         ) : (
           <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No template available yet. Build templates before logging.</p>
         )}
@@ -306,6 +330,31 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
   );
 }
 
+function PrescriptionPreview({ prescription }: { prescription: SelectedTemplatePrescription }) {
+  const changed = prescription.items.filter((item) => item.adjustedPlannedSets !== item.basePlannedSets || item.adjustmentReason);
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Planned prescription</p>
+      <p className="mt-1 text-sm text-slate-300">
+        {prescription.mesocycleName ? `Mesocycle overlay: ${prescription.mesocycleName}` : "No active mesocycle overlay"}
+      </p>
+      <div className="mt-3 space-y-2">
+        {(changed.length > 0 ? changed : prescription.items.slice(0, 4)).map((item) => (
+          <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-slate-800 p-2 text-sm">
+            <span className="text-slate-200">{item.exerciseName}</span>
+            <span className={item.adjustedPlannedSets !== item.basePlannedSets ? "text-amber-300" : "text-slate-400"}>
+              {item.basePlannedSets} → {item.adjustedPlannedSets} sets
+              {item.prescribedMinReps && item.prescribedMaxReps ? ` · ${item.prescribedMinReps}-${item.prescribedMaxReps}` : ""}
+            </span>
+            {item.adjustmentReason ? <span className="col-span-2 text-xs text-slate-500">{item.adjustmentReason}</span> : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function EditableSessionBody({
   activeSession,
   exercises,
@@ -337,6 +386,10 @@ function EditableSessionBody({
                 <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Target rep range</p>
                   <p className="mt-1 text-sm font-semibold text-slate-200">{formatRepRange(item)}</p>
+                  {item.prescribedPlannedSets !== null && item.basePlannedSets !== null ? (
+                    <p className="mt-1 text-xs text-slate-500">Base {item.basePlannedSets} sets · Prescribed {item.prescribedPlannedSets} sets</p>
+                  ) : null}
+                  {item.prescriptionNote ? <p className="mt-1 text-xs text-amber-300">{item.prescriptionNote}</p> : null}
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Suggested weight</p>

@@ -91,6 +91,7 @@ model Muscle {
   secondaryExerciseLinks ExerciseSecondaryMuscle[]
   programPriorityLinks   ProgramPriorityMuscle[]
   volumeTargets          MuscleVolumeTarget[]
+  mesocycleVolumeTargets MesocycleMuscleVolumeTarget[]
 
   @@map("muscles")
 }
@@ -228,10 +229,47 @@ model ProgramMesocycle {
 
   user    Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
   program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  volumeTargets MesocycleMuscleVolumeTarget[]
+  repPolicies   MesocycleRepPolicy[]
+  workoutSessions WorkoutSession[]
 
   @@index([userId, startDate])
   @@index([programId, startDate])
   @@map("program_mesocycles")
+}
+
+model MesocycleMuscleVolumeTarget {
+  id            String   @id @default(uuid()) @db.Uuid
+  mesocycleId   String   @db.Uuid @map("mesocycle_id")
+  muscleId      String   @db.Uuid @map("muscle_id")
+  targetSets    Decimal  @default(0) @map("target_sets") @db.Decimal(5, 2)
+  minimumSets   Decimal? @map("minimum_sets") @db.Decimal(5, 2)
+  maximumSets   Decimal? @map("maximum_sets") @db.Decimal(5, 2)
+  priorityLevel Int      @default(0) @map("priority_level")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  mesocycle ProgramMesocycle @relation(fields: [mesocycleId], references: [id], onDelete: Cascade)
+  muscle    Muscle           @relation(fields: [muscleId], references: [id], onDelete: Restrict)
+
+  @@unique([mesocycleId, muscleId])
+  @@index([muscleId])
+  @@map("mesocycle_muscle_volume_targets")
+}
+
+model MesocycleRepPolicy {
+  id          String   @id @default(uuid()) @db.Uuid
+  mesocycleId String   @db.Uuid @map("mesocycle_id")
+  repBucket   String   @map("rep_bucket")
+  minReps     Int      @map("min_reps")
+  maxReps     Int      @map("max_reps")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  mesocycle ProgramMesocycle @relation(fields: [mesocycleId], references: [id], onDelete: Cascade)
+
+  @@unique([mesocycleId, repBucket])
+  @@map("mesocycle_rep_policies")
 }
 
 model ProgramPriorityMuscle {
@@ -294,10 +332,16 @@ model TemplateExercise {
   exerciseId       String   @db.Uuid @map("exercise_id")
   sortOrder        Int      @default(0) @map("sort_order")
   plannedSets      Int      @default(2) @map("planned_sets")
+  minSets          Int?     @map("min_sets")
+  maxSets          Int?     @map("max_sets")
   minReps          Int?     @map("min_reps")
   maxReps          Int?     @map("max_reps")
   rirTarget        Decimal? @map("rir_target") @db.Decimal(4, 1)
   defaultSetTypeId String   @db.Uuid @map("default_set_type_id")
+  slotPriority     String   @default("STANDARD") @map("slot_priority")
+  slotRole         String   @default("ISOLATION") @map("slot_role")
+  repBucket        String   @default("ISOLATION") @map("rep_bucket")
+  autoAdjustable   Boolean  @default(false) @map("auto_adjustable")
   notes            String?
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -335,10 +379,12 @@ model WorkoutSession {
   userId      String               @db.Uuid @map("user_id")
   programId   String               @db.Uuid @map("program_id")
   templateId  String?              @db.Uuid @map("template_id")
+  mesocycleId String?              @db.Uuid @map("mesocycle_id")
   name        String
   performedAt DateTime             @default(now()) @map("performed_at")
   status      WorkoutSessionStatus @default(DRAFT)
   notes       String?
+  prescriptionSummary Json?         @map("prescription_summary")
   completedAt DateTime?            @map("completed_at")
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
@@ -346,11 +392,13 @@ model WorkoutSession {
   user      Profile          @relation(fields: [userId], references: [id], onDelete: Cascade)
   program   Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
   template  WorkoutTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  mesocycle ProgramMesocycle? @relation(fields: [mesocycleId], references: [id], onDelete: SetNull)
   exercises WorkoutSessionExercise[]
 
   @@index([userId, status, performedAt])
   @@index([programId, performedAt])
   @@index([templateId])
+  @@index([mesocycleId])
   @@map("workout_sessions")
 }
 
@@ -364,6 +412,12 @@ model WorkoutSessionExercise {
   substitutedFromExerciseId  String?  @db.Uuid @map("substituted_from_exercise_id")
   painFlag                  Boolean  @default(false) @map("pain_flag")
   painNote                  String?  @map("pain_note")
+  basePlannedSets           Int?     @map("base_planned_sets")
+  prescribedPlannedSets     Int?     @map("prescribed_planned_sets")
+  prescribedMinReps         Int?     @map("prescribed_min_reps")
+  prescribedMaxReps         Int?     @map("prescribed_max_reps")
+  prescribedRepBucket       String?  @map("prescribed_rep_bucket")
+  prescriptionNote          String?  @map("prescription_note")
   notes                     String?
   createdAt                 DateTime @default(now()) @map("created_at")
   updatedAt                 DateTime @updatedAt @map("updated_at")

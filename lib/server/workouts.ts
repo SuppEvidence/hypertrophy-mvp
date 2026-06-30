@@ -6,6 +6,7 @@ import { createClient } from "@/lib/auth/server";
 import { ensureProfile } from "@/lib/auth/profile";
 import { prisma } from "@/lib/db/prisma";
 import { ensureProgramTemplates } from "@/lib/server/templates";
+import { getTemplatePrescription } from "@/lib/server/prescriptions";
 import { finishWorkoutSchema, sessionExerciseSchema, startWorkoutSchema, workoutSetSchema } from "@/lib/validations/workout";
 
 async function requireUserId() {
@@ -110,8 +111,8 @@ async function buildWeightSuggestionsForSession(
   const suggestions: Record<string, WeightSuggestion> = {};
 
   for (const item of activeSession.exercises) {
-    const minReps = item.templateExercise?.minReps ?? null;
-    const maxReps = item.templateExercise?.maxReps ?? null;
+    const minReps = item.prescribedMinReps ?? item.templateExercise?.minReps ?? null;
+    const maxReps = item.prescribedMaxReps ?? item.templateExercise?.maxReps ?? null;
     const targetReps = minReps && maxReps ? Math.round((minReps + maxReps) / 2) : maxReps ?? minReps ?? null;
     const best = bestByExercise.get(item.exerciseId);
 
@@ -179,6 +180,8 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
   const activeSession = requestedSession?.status === "DRAFT" || requestedSession?.status === "COMPLETED" ? requestedSession : null;
   const hasUnfinishedSession = draftSessions.length > 0;
   const weightSuggestions = await buildWeightSuggestionsForSession(activeSession, userId);
+  const selectedTemplatePrescription =
+    selectedProgram && selectedTemplate && !activeSession ? await getTemplatePrescription(selectedProgram.id, selectedTemplate.id, userId) : null;
 
   return {
     programs,
@@ -192,6 +195,20 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
     activeSession,
     hasUnfinishedSession,
     weightSuggestions,
+    selectedTemplatePrescription: selectedTemplatePrescription
+      ? {
+          mesocycleName: selectedTemplatePrescription.activeMesocycle?.name ?? null,
+          items: selectedTemplatePrescription.templateItems.map((item) => ({
+            id: item.id,
+            exerciseName: item.exerciseName,
+            basePlannedSets: item.basePlannedSets,
+            adjustedPlannedSets: item.adjustedPlannedSets,
+            prescribedMinReps: item.prescribedMinReps,
+            prescribedMaxReps: item.prescribedMaxReps,
+            adjustmentReason: item.adjustmentReason,
+          })),
+        }
+      : null,
   };
 }
 
@@ -296,21 +313,28 @@ export async function deleteWorkoutSession(sessionId: string, _formData?: FormDa
 export async function startWorkout(formData: FormData) {
   const userId = await requireUserId();
   const input = startWorkoutSchema.parse({ programId: formData.get("programId"), templateId: formData.get("templateId") });
-  const template = await getTemplateWithExercises(input.templateId, userId);
-  if (!template || template.programId !== input.programId) redirect("/log");
+  const prescription = await getTemplatePrescription(input.programId, input.templateId, userId);
+  const template = prescription?.program.templates.find((item: any) => item.id === input.templateId) ?? null;
+  if (!prescription || !template || prescription.program.id !== input.programId) redirect("/log");
 
   const session = await prisma.$transaction(async (tx) => {
     const created = await tx.workoutSession.create({
       data: {
         userId,
-        programId: template.programId,
+        programId: prescription.program.id,
         templateId: template.id,
         name: template.name,
         status: "DRAFT",
+        mesocycleId: prescription.activeMesocycle?.id ?? null,
+        prescriptionSummary: {
+          mesocycleId: prescription.activeMesocycle?.id ?? null,
+          mesocycleName: prescription.activeMesocycle?.name ?? null,
+          generatedAt: new Date().toISOString(),
+        },
       },
     });
 
-    for (const [index, item] of template.exercises.entries()) {
+    for (const [index, item] of prescription.templateItems.entries()) {
       const sessionExercise = await tx.workoutSessionExercise.create({
         data: {
           sessionId: created.id,
@@ -318,12 +342,20 @@ export async function startWorkout(formData: FormData) {
           templateExerciseId: item.id,
           sortOrder: index,
           isSubstitution: false,
+          basePlannedSets: item.basePlannedSets,
+          prescribedPlannedSets: item.adjustedPlannedSets,
+          prescribedMinReps: item.prescribedMinReps,
+          prescribedMaxReps: item.prescribedMaxReps,
+          prescribedRepBucket: item.repBucket,
+          prescriptionNote: item.adjustmentReason,
         },
       });
 
-      const plannedSetRows = item.setPlans.length > 0
-        ? item.setPlans.slice(0, item.plannedSets)
-        : Array.from({ length: item.plannedSets }, (_, setIndex) => ({ setNumber: setIndex + 1, setTypeId: item.defaultSetTypeId }));
+      const plannedSetRows = Array.from({ length: item.adjustedPlannedSets }, (_, setIndex) => {
+        const setNumber = setIndex + 1;
+        const planned = item.setPlans.find((plan) => plan.setNumber === setNumber);
+        return { setNumber, setTypeId: planned?.setTypeId ?? item.defaultSetTypeId };
+      });
 
       for (const plan of plannedSetRows) {
         await tx.workoutSet.create({
@@ -331,7 +363,7 @@ export async function startWorkout(formData: FormData) {
             sessionExerciseId: sessionExercise.id,
             setNumber: plan.setNumber,
             setTypeId: plan.setTypeId,
-            rir: item.rirTarget,
+            rir: item.rirTarget === null || item.rirTarget === undefined ? null : Number(item.rirTarget),
             isCompleted: false,
           },
         });

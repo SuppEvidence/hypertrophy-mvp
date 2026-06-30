@@ -13,6 +13,7 @@ import {
   updateTemplateExpectedOccurrences,
 } from "@/lib/server/templates";
 import { buildTemplateTargetNotices, buildTemplateVolumePreview, type TemplateVolumePreviewRow } from "@/lib/templates/volumePreview";
+import { repBuckets, slotPriorities, slotRoles } from "@/lib/planning/mesocycleGenerator";
 import { programTypeLabels, rotationStyleLabels, volumeWindowDays, volumeWindowLabels } from "@/lib/programs/options";
 import type { ProgramType, RotationStyle, VolumeWindowType } from "@/lib/types/domain";
 
@@ -41,6 +42,7 @@ type AllTemplateExerciseItem = Props["allTemplateExercises"][number] & {
 };
 type ExerciseOption = Props["exercises"][number];
 type SetTypeOption = Props["setTypes"][number];
+type GeneratedTemplateItem = Props["generatedTemplateItems"][number];
 type TargetNotice = ReturnType<typeof buildTemplateTargetNotices>[number];
 
 const selectClass =
@@ -89,7 +91,20 @@ function SetTypeSelect({ setTypes, defaultValue }: { setTypes: SetTypeOption[]; 
   );
 }
 
-export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, exercises, setTypes }: Props) {
+function OptionSelect({ name, defaultValue, options }: { name: string; defaultValue?: string | null; options: ReadonlyArray<{ value: string; label: string }> }) {
+  return (
+    <label className="block space-y-2">
+      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{name.replace(/([A-Z])/g, " $1")}</span>
+      <select name={name} defaultValue={defaultValue ?? options[0]?.value} className={selectClass}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, exercises, setTypes, generatedTemplateItems }: Props) {
   if (!selectedProgram) {
     return (
       <Card>
@@ -109,6 +124,8 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
   const typedAllTemplateExercises = allTemplateExercises as AllTemplateExerciseItem[];
   const typedExercises = exercises as ExerciseOption[];
   const typedSetTypes = setTypes as SetTypeOption[];
+  const typedGeneratedTemplateItems = generatedTemplateItems as GeneratedTemplateItem[];
+  const generatedByTemplateExercise = new Map(typedGeneratedTemplateItems.map((item: GeneratedTemplateItem) => [item.id, item]));
 
   const selectedTemplatePreview = buildTemplateVolumePreview({
     program: typedSelectedProgram,
@@ -230,9 +247,14 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                 </select>
               </label>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                <Field label="Sets" name="plannedSets" type="number" min={1} max={20} defaultValue={2} required />
+                <Field label="Base sets" name="plannedSets" type="number" min={1} max={20} defaultValue={2} required />
+                <Field label="Min sets" name="minSets" type="number" min={0} max={20} />
+                <Field label="Max sets" name="maxSets" type="number" min={0} max={30} />
                 <Field label="Min reps" name="minReps" type="number" min={1} max={100} />
                 <Field label="Max reps" name="maxReps" type="number" min={1} max={100} />
+                <OptionSelect name="slotPriority" defaultValue="STANDARD" options={slotPriorities} />
+                <OptionSelect name="slotRole" defaultValue="ISOLATION" options={slotRoles} />
+                <OptionSelect name="repBucket" defaultValue="ISOLATION" options={repBuckets} />
                 <Field label="RIR" name="rirTarget" type="number" min={0} max={10} step="0.5" defaultValue={2} />
                 <label className="block space-y-2 col-span-2 md:col-span-1">
                   <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Initial set type</span>
@@ -245,6 +267,10 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                   </select>
                 </label>
               </div>
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">
+                <span>Allow mesocycle auto-adjustment</span>
+                <input name="autoAdjustable" type="checkbox" className="h-5 w-5" />
+              </label>
               <Field label="Notes" name="notes" placeholder="Optional" />
               <Button className="w-full">Add to template</Button>
             </form>
@@ -261,14 +287,18 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
               <div className="space-y-3">
                 {typedTemplateExercises.map((item: TemplateExerciseItem, index: number) => {
                   const setPlans = item.setPlans as TemplateExerciseSetPlan[];
+                  const generated = generatedByTemplateExercise.get(item.id);
                   return (
                     <details key={item.id} className="group rounded-2xl border border-slate-800 bg-slate-950 p-3" open={index === 0}>
                       <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {item.plannedSets} sets · {item.minReps ?? "?"}–{item.maxReps ?? "?"} reps · RIR {item.rirTarget === null ? "—" : Number(item.rirTarget)}
+                            Base {item.plannedSets} sets
+                            {generated ? ` · Meso ${generated.adjustedPlannedSets} sets` : ""}
+                            {" · "}{generated?.prescribedMinReps ?? item.minReps ?? "?"}–{generated?.prescribedMaxReps ?? item.maxReps ?? "?"} reps · RIR {item.rirTarget === null ? "—" : Number(item.rirTarget)}
                           </p>
+                          {generated?.adjustmentReason ? <p className="mt-1 text-xs text-amber-300">{generated.adjustmentReason}</p> : null}
                           <p className="mt-1 text-xs text-slate-500">
                             Set types: {setPlans.map((plan: TemplateExerciseSetPlan) => plan.setType.name).join(" / ") || item.defaultSetType.name}
                           </p>
@@ -311,9 +341,14 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                           </label>
 
                           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                            <Field label="Sets" name="plannedSets" type="number" min={1} max={20} defaultValue={item.plannedSets} required />
+                            <Field label="Base sets" name="plannedSets" type="number" min={1} max={20} defaultValue={item.plannedSets} required />
+                            <Field label="Min sets" name="minSets" type="number" min={0} max={20} defaultValue={item.minSets ?? ""} />
+                            <Field label="Max sets" name="maxSets" type="number" min={0} max={30} defaultValue={item.maxSets ?? ""} />
                             <Field label="Min reps" name="minReps" type="number" min={1} max={100} defaultValue={item.minReps ?? ""} />
                             <Field label="Max reps" name="maxReps" type="number" min={1} max={100} defaultValue={item.maxReps ?? ""} />
+                            <OptionSelect name="slotPriority" defaultValue={item.slotPriority} options={slotPriorities} />
+                            <OptionSelect name="slotRole" defaultValue={item.slotRole} options={slotRoles} />
+                            <OptionSelect name="repBucket" defaultValue={item.repBucket} options={repBuckets} />
                             <Field label="RIR" name="rirTarget" type="number" min={0} max={10} step="0.5" defaultValue={item.rirTarget === null ? "" : Number(item.rirTarget)} />
                             <label className="block space-y-2 col-span-2 md:col-span-1">
                               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">New-set default</span>
@@ -324,6 +359,10 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                               </select>
                             </label>
                           </div>
+                          <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">
+                            <span>Allow mesocycle auto-adjustment</span>
+                            <input name="autoAdjustable" type="checkbox" defaultChecked={item.autoAdjustable} className="h-5 w-5" />
+                          </label>
                           <Field label="Notes" name="notes" defaultValue={item.notes ?? ""} />
                           <Button className="w-full">Save exercise plan</Button>
                         </form>
