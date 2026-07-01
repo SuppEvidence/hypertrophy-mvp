@@ -469,11 +469,13 @@ model MetricLog {
   sorenessJointIrritation Int?     @map("soreness_joint_irritation")
   steps                   Int?
   notes                   String?
+  isDraft                 Boolean  @default(false) @map("is_draft")
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
   user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, loggedAt])
+  @@index([userId, isDraft, loggedAt])
   @@map("metric_logs")
 }

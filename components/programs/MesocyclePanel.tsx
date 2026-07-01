@@ -119,7 +119,7 @@ function MesocycleTargetsForm({ mesocycle, muscles, programTargets }: { mesocycl
         {muscles.map((muscle) => {
           const target = targetMap.get(muscle.id);
           return (
-            <div key={muscle.id} className="grid grid-cols-[1fr_70px_70px_70px_70px] items-end gap-2 rounded-xl border border-slate-800 p-2">
+            <div key={muscle.id} className="grid grid-cols-[1fr_70px_70px_70px_auto] items-end gap-2 rounded-xl border border-slate-800 p-2">
               <div>
                 <p className="text-sm font-semibold text-slate-200">{muscle.name}</p>
                 <p className="text-xs text-slate-500">Program {fallbackMap.get(muscle.id) ?? 0}/wk</p>
@@ -127,7 +127,12 @@ function MesocycleTargetsForm({ mesocycle, muscles, programTargets }: { mesocycl
               <Field label="Target" name={`target:${muscle.id}`} type="number" min="0" max="40" step="0.5" defaultValue={target?.targetSets ?? ""} />
               <Field label="Min" name={`min:${muscle.id}`} type="number" min="0" max="40" step="0.5" defaultValue={target?.minimumSets ?? ""} />
               <Field label="Max" name={`max:${muscle.id}`} type="number" min="0" max="50" step="0.5" defaultValue={target?.maximumSets ?? ""} />
-              <Field label="Prio" name={`priority:${muscle.id}`} type="number" min="0" max="3" step="1" defaultValue={target?.priorityLevel ?? 0} />
+              <label className="flex min-h-12 flex-col justify-end gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Priority
+                <span className="flex min-h-12 items-center justify-center rounded-xl border border-slate-800 bg-slate-950 px-3">
+                  <input name={`priority:${muscle.id}`} type="checkbox" defaultChecked={(target?.priorityLevel ?? 0) > 0} className="h-5 w-5" />
+                </span>
+              </label>
             </div>
           );
         })}

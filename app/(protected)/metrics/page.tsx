@@ -13,9 +13,10 @@ function valueOrDash(value: number | string | null | undefined, suffix = "") {
   return `${value}${suffix}`;
 }
 
-export default async function MetricsPage({ searchParams }: { searchParams?: Promise<{ saved?: string }> }) {
+export default async function MetricsPage({ searchParams }: { searchParams?: Promise<{ saved?: string; draft?: string }> }) {
   const params = await searchParams;
-  const [logs, metricVisibility] = await Promise.all([getMetricsPageData(), getUserSettingsForMetrics()]);
+  const [metricsData, metricVisibility] = await Promise.all([getMetricsPageData(), getUserSettingsForMetrics()]);
+  const { logs, draft } = metricsData;
 
   return (
     <div className="space-y-5">
@@ -25,7 +26,15 @@ export default async function MetricsPage({ searchParams }: { searchParams?: Pro
         <div className="rounded-2xl border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-100">Metrics saved.</div>
       ) : null}
 
-      <MetricsForm visibility={metricVisibility} />
+      {params?.draft ? (
+        <div className="rounded-2xl border border-sky-900 bg-sky-950/40 p-3 text-sm text-sky-100">Metrics draft saved.</div>
+      ) : null}
+
+      {draft ? (
+        <div className="rounded-2xl border border-amber-900 bg-amber-950/30 p-3 text-sm text-amber-100">You have an active metrics draft. The form below is prefilled from it.</div>
+      ) : null}
+
+      <MetricsForm visibility={metricVisibility} draft={draft} />
 
       <Card>
         <div className="flex items-center justify-between gap-3">

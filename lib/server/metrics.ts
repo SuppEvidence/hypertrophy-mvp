@@ -32,6 +32,8 @@ function numberOrNull(value: unknown) {
 
 export async function createMetricLog(formData: FormData) {
   const userId = await requireUserId();
+  const intent = String(formData.get("intent") ?? "complete");
+  const draftId = String(formData.get("draftId") ?? "");
   const input = metricLogSchema.parse({
     loggedAt: formData.get("loggedAt"),
     bodyweight: formData.get("bodyweight"),
@@ -46,8 +48,7 @@ export async function createMetricLog(formData: FormData) {
     notes: formData.get("notes")?.toString() ?? "",
   });
 
-  await prisma.metricLog.create({
-    data: {
+  const data = {
       userId,
       loggedAt: dateInputToDate(input.loggedAt),
       bodyweight: input.bodyweight,
@@ -60,18 +61,31 @@ export async function createMetricLog(formData: FormData) {
       sorenessJointIrritation: input.sorenessJointIrritation,
       steps: input.steps,
       notes: input.notes || null,
-    },
-  });
+      isDraft: intent === "draft",
+  };
+
+  const existingDraft = draftId
+    ? await prisma.metricLog.findFirst({ where: { id: draftId, userId, isDraft: true } })
+    : await prisma.metricLog.findFirst({ where: { userId, isDraft: true }, orderBy: { updatedAt: "desc" } });
+
+  if (existingDraft) {
+    await prisma.metricLog.update({ where: { id: existingDraft.id }, data });
+  } else {
+    await prisma.metricLog.create({ data });
+  }
 
   revalidatePath("/metrics");
   revalidatePath("/dashboard");
-  redirect("/metrics?saved=1");
+  redirect(intent === "draft" ? "/metrics?draft=1" : "/metrics?saved=1");
 }
 
 export async function getMetricsPageData() {
   const userId = await requireUserId();
-  const logs = await prisma.metricLog.findMany({ where: { userId }, orderBy: { loggedAt: "desc" }, take: 10 });
-  return logs.map((log: any) => ({
+  const [logs, draft] = await Promise.all([
+    prisma.metricLog.findMany({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" }, take: 10 }),
+    prisma.metricLog.findFirst({ where: { userId, isDraft: true }, orderBy: { updatedAt: "desc" } }),
+  ]);
+  const mapLog = (log: any) => ({
     id: log.id,
     loggedAt: log.loggedAt.toISOString(),
     bodyweight: numberOrNull(log.bodyweight),
@@ -92,11 +106,12 @@ export async function getMetricsPageData() {
       manualFatigue: log.manualFatigue,
       sorenessJointIrritation: log.sorenessJointIrritation,
     }),
-  }));
+  });
+  return { logs: logs.map(mapLog), draft: draft ? mapLog(draft) : null };
 }
 
 export async function getLatestMetricContext(userId: string) {
-  const latest = await prisma.metricLog.findFirst({ where: { userId }, orderBy: { loggedAt: "desc" } });
+  const latest = await prisma.metricLog.findFirst({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" } });
   if (!latest) return null;
 
   const plain = {

@@ -110,7 +110,7 @@ export async function getDashboardData(userId: string) {
   });
 
   if (!activeProgram) {
-    const latestMetrics = await prisma.metricLog.findMany({ where: { userId }, orderBy: { loggedAt: "desc" }, take: 4 });
+    const latestMetrics = await prisma.metricLog.findMany({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" }, take: 4 });
     const fatigueTrend = buildFatigueTrend(latestMetrics);
     const bodyMetrics = buildBodyMetricContext(latestMetrics);
     return {
@@ -161,7 +161,7 @@ export async function getDashboardData(userId: string) {
         },
       },
     }),
-    prisma.metricLog.findMany({ where: { userId }, orderBy: { loggedAt: "desc" }, take: 4 }),
+    prisma.metricLog.findMany({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" }, take: 4 }),
     getDashboardMesocycle(activeProgram.id, userId),
   ]);
 

@@ -123,13 +123,13 @@ export async function updateMesocycleVolumeTargets(mesocycleId: string, formData
       const targetSets = decimalOrNull(formData.get(`target:${muscle.id}`));
       const minimumSets = decimalOrNull(formData.get(`min:${muscle.id}`));
       const maximumSets = decimalOrNull(formData.get(`max:${muscle.id}`));
-      const priorityLevel = Number(formData.get(`priority:${muscle.id}`) ?? 0);
+      const priorityLevel = formData.get(`priority:${muscle.id}`) === "on" ? 1 : 0;
       return {
         muscleId: muscle.id,
         targetSets,
         minimumSets,
         maximumSets,
-        priorityLevel: Number.isFinite(priorityLevel) ? Math.max(0, Math.min(3, priorityLevel)) : 0,
+        priorityLevel,
       };
     })
     .filter((row) => row.targetSets !== null || row.minimumSets !== null || row.maximumSets !== null || row.priorityLevel > 0);
