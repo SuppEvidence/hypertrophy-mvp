@@ -1,6 +1,6 @@
 "use server";
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/auth/server";
@@ -8,11 +8,13 @@ import { ensureProfile } from "@/lib/auth/profile";
 import { prisma } from "@/lib/db/prisma";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
 import { defaultTemplateName } from "@/lib/templates/defaults";
+import { formatRotationSequenceText, parseRotationSequenceInput } from "@/lib/templates/rotationSequence";
 import {
   templateExerciseSchema,
   templateExerciseSetPlanSchema,
   templateOccurrenceSchema,
   templateRenameSchema,
+  templateRotationSequenceSchema,
 } from "@/lib/validations/template";
 
 async function requireUserId() {
@@ -160,8 +162,21 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
   const generatedTemplateItems = selectedTemplate
     ? prescription?.generated.items.filter((item) => item.templateId === selectedTemplate.id).sort((a, b) => a.sortOrder - b.sortOrder) ?? []
     : [];
+  const rotationSequenceText = selectedProgram ? formatRotationSequenceText(selectedProgram.rotationSequence, templates) : "";
 
-  return { programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, exercises, setTypes, prescription, generatedTemplateItems };
+  return {
+    programs,
+    selectedProgram,
+    templates,
+    selectedTemplate,
+    templateExercises,
+    allTemplateExercises,
+    exercises,
+    setTypes,
+    prescription,
+    generatedTemplateItems,
+    rotationSequenceText,
+  };
 }
 
 async function getTemplateOwnedByUser(templateId: string, userId: string) {
@@ -270,6 +285,37 @@ export async function updateTemplateExpectedOccurrences(templateId: string, form
   revalidatePath("/templates");
   revalidatePath("/dashboard");
   redirect(`/templates?programId=${template.programId}&templateId=${input.selectedTemplateId ?? template.id}`);
+}
+
+export async function updateProgramRotationSequence(programId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const program = await prisma.program.findFirst({ where: { id: programId, userId, isArchived: false } });
+  if (!program) redirect("/templates");
+
+  const input = templateRotationSequenceSchema.parse({
+    rotationSequence: formData.get("rotationSequence"),
+    selectedTemplateId: formData.get("selectedTemplateId") ? String(formData.get("selectedTemplateId")) : null,
+  });
+
+  const templates = await prisma.workoutTemplate.findMany({
+    where: { userId, programId, isArchived: false },
+    orderBy: [{ sequenceIndex: "asc" }, { createdAt: "asc" }],
+  });
+  const parsed = parseRotationSequenceInput(input.rotationSequence, templates);
+
+  if (parsed.invalidTokens.length > 0) {
+    throw new Error(`Unknown template sequence item(s): ${parsed.invalidTokens.join(", ")}`);
+  }
+
+  await prisma.program.update({
+    where: { id: program.id },
+    data: { rotationSequence: parsed.templateIds.length > 0 ? parsed.templateIds : Prisma.JsonNull },
+  });
+
+  revalidatePath("/templates");
+  revalidatePath("/dashboard");
+  revalidatePath("/log");
+  redirect(`/templates?programId=${program.id}&templateId=${input.selectedTemplateId ?? templates[0]?.id ?? ""}`);
 }
 
 function parseTemplateExerciseForm(formData: FormData) {

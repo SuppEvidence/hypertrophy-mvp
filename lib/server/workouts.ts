@@ -7,6 +7,7 @@ import { ensureProfile } from "@/lib/auth/profile";
 import { prisma } from "@/lib/db/prisma";
 import { ensureProgramTemplates } from "@/lib/server/templates";
 import { getTemplatePrescription } from "@/lib/server/prescriptions";
+import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
 import { finishWorkoutSchema, sessionExerciseSchema, startWorkoutSchema, workoutSetSchema } from "@/lib/validations/workout";
 
 async function requireUserId() {
@@ -226,16 +227,22 @@ async function getSuggestedTemplate(
     return templates.find((template) => template.weekday === day) ?? templates[0] ?? null;
   }
 
-  if (program.rotationStyle === "MANUAL") return templates[0] ?? null;
-
-  const lastCompleted = await prisma.workoutSession.findFirst({
+  const orderedTemplates = [...templates].sort((a, b) => a.sequenceIndex - b.sequenceIndex);
+  const recentCompleted = await prisma.workoutSession.findMany({
     where: { userId, programId, status: "COMPLETED", templateId: { not: null } },
     orderBy: { performedAt: "desc" },
-    include: { template: true },
+    take: 20,
+    select: { templateId: true },
   });
-  if (!lastCompleted?.template) return templates[0] ?? null;
-  const nextIndex = (lastCompleted.template.sequenceIndex + 1) % templates.length;
-  return templates.find((template) => template.sequenceIndex === nextIndex) ?? templates[0] ?? null;
+
+  return getNextTemplateFromRotation({
+    templates: orderedTemplates,
+    rotationSequence: program.rotationSequence,
+    completedTemplateHistory: recentCompleted
+      .map((session) => session.templateId)
+      .filter((templateId): templateId is string => Boolean(templateId))
+      .reverse(),
+  });
 }
 
 async function getTemplateWithExercises(templateId: string, userId: string) {

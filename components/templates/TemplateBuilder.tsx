@@ -11,6 +11,7 @@ import {
   updateTemplateExercise,
   updateTemplateExerciseSetPlan,
   updateTemplateExpectedOccurrences,
+  updateProgramRotationSequence,
 } from "@/lib/server/templates";
 import { buildTemplateTargetNotices, buildTemplateVolumePreview, type TemplateVolumePreviewRow } from "@/lib/templates/volumePreview";
 import { repBuckets, slotPriorities, slotRoles } from "@/lib/planning/mesocycleGenerator";
@@ -104,7 +105,7 @@ function OptionSelect({ name, defaultValue, options }: { name: string; defaultVa
   );
 }
 
-export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, exercises, setTypes, generatedTemplateItems }: Props) {
+export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, exercises, setTypes, generatedTemplateItems, rotationSequenceText }: Props) {
   if (!selectedProgram) {
     return (
       <Card>
@@ -125,6 +126,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
   const typedExercises = exercises as ExerciseOption[];
   const typedSetTypes = setTypes as SetTypeOption[];
   const typedGeneratedTemplateItems = generatedTemplateItems as GeneratedTemplateItem[];
+  const typedRotationSequenceText = String(rotationSequenceText ?? "");
   const generatedByTemplateExercise = new Map(typedGeneratedTemplateItems.map((item: GeneratedTemplateItem) => [item.id, item]));
 
   const selectedTemplatePreview = buildTemplateVolumePreview({
@@ -193,21 +195,40 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
 
       <Card className="space-y-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-100">Template sequence and expected occurrences</h2>
+          <h2 className="text-base font-semibold text-slate-100">Template rotation and expected occurrences</h2>
           <p className="mt-1 text-sm text-slate-400">
-            Sequence controls the next-workout suggestion order. Expected occurrences controls planned volume inside the selected {windowDays}-day volume window.
+            Rotation sequence controls the repeated next-workout order. Template order controls labels/fallback order. Expected occurrences controls planned volume inside the selected {windowDays}-day volume window.
           </p>
         </div>
+
+        <form action={updateProgramRotationSequence.bind(null, typedSelectedProgram.id)} className="space-y-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
+          <input type="hidden" name="selectedTemplateId" value={selectedTemplate?.id ?? typedTemplates[0]?.id ?? ""} />
+          <label className="block space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Rotation sequence</span>
+            <textarea
+              name="rotationSequence"
+              rows={2}
+              defaultValue={typedRotationSequenceText}
+              placeholder="A, B, C, A, B, C, D"
+              className={`${selectClass} min-h-20 py-3`}
+            />
+          </label>
+          <p className="text-xs text-slate-500">
+            Use template letters or names. Duplicates are allowed, e.g. A, B, C, A, B, C, D for a 14-day rolling sequence with D occurring once.
+          </p>
+          <Button className="w-full sm:w-auto">Save rotation sequence</Button>
+        </form>
+
         <div className="space-y-2">
           {typedTemplates.map((template: TemplateOption) => (
             <form key={template.id} action={updateTemplateExpectedOccurrences.bind(null, template.id)} className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 sm:grid-cols-[1fr_6rem_7rem_auto] sm:items-end">
               <input type="hidden" name="selectedTemplateId" value={selectedTemplate?.id ?? template.id} />
               <div>
                 <p className="text-sm font-semibold text-slate-100">{template.name}</p>
-                <p className="mt-1 text-xs text-slate-500">Next-workout order and planned exposure in {windowDays}d.</p>
+                <p className="mt-1 text-xs text-slate-500">Order/label and planned exposure in {windowDays}d.</p>
               </div>
               <Field
-                label="Sequence"
+                label="Order"
                 name="sequencePosition"
                 type="number"
                 min={1}

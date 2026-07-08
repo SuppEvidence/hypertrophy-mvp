@@ -195,6 +195,7 @@ model Program {
   volumeWindowType      VolumeWindowType @map("volume_window_type")
   customWindowDays      Int?             @map("custom_window_days")
   secondaryContribution Decimal          @default(0.5) @map("secondary_contribution") @db.Decimal(4, 2)
+  rotationSequence      Json?            @map("rotation_sequence")
   activePhase           ProgramPhase     @default(PUSH) @map("active_phase")
   advancedMuscleMode    Boolean          @default(false) @map("advanced_muscle_mode")
   isActive              Boolean          @default(false) @map("is_active")

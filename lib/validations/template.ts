@@ -10,6 +10,11 @@ export const templateOccurrenceSchema = z.object({
   selectedTemplateId: z.string().uuid().optional().nullable(),
 });
 
+export const templateRotationSequenceSchema = z.object({
+  rotationSequence: z.string().trim().max(500),
+  selectedTemplateId: z.string().uuid().optional().nullable(),
+});
+
 export const templateExerciseSchema = z.object({
   exerciseId: z.string().uuid(),
   plannedSets: z.coerce.number().int().min(1).max(20),
