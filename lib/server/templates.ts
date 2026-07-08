@@ -211,6 +211,33 @@ export async function renameTemplate(templateId: string, formData: FormData) {
   redirect(`/templates?programId=${template.programId}&templateId=${template.id}`);
 }
 
+async function reorderProgramTemplates(params: {
+  tx: Prisma.TransactionClient;
+  userId: string;
+  programId: string;
+  templateId: string;
+  requestedPosition: number;
+}) {
+  const templates = await params.tx.workoutTemplate.findMany({
+    where: { userId: params.userId, programId: params.programId, isArchived: false },
+    orderBy: [{ sequenceIndex: "asc" }, { createdAt: "asc" }],
+  });
+
+  const current = templates.find((template) => template.id === params.templateId);
+  if (!current) return;
+
+  const withoutCurrent = templates.filter((template) => template.id !== params.templateId);
+  const safeIndex = Math.min(Math.max(params.requestedPosition - 1, 0), withoutCurrent.length);
+  const reordered = [...withoutCurrent.slice(0, safeIndex), current, ...withoutCurrent.slice(safeIndex)];
+
+  for (let index = 0; index < reordered.length; index += 1) {
+    const template = reordered[index];
+    if (template && template.sequenceIndex !== index) {
+      await params.tx.workoutTemplate.update({ where: { id: template.id }, data: { sequenceIndex: index } });
+    }
+  }
+}
+
 export async function updateTemplateExpectedOccurrences(templateId: string, formData: FormData) {
   const userId = await requireUserId();
   const template = await getTemplateOwnedByUser(templateId, userId);
@@ -219,15 +246,29 @@ export async function updateTemplateExpectedOccurrences(templateId: string, form
   const rawSelectedTemplateId = formData.get("selectedTemplateId");
   const input = templateOccurrenceSchema.parse({
     expectedOccurrences: formData.get("expectedOccurrences"),
+    sequencePosition: formData.get("sequencePosition"),
     selectedTemplateId: rawSelectedTemplateId ? String(rawSelectedTemplateId) : null,
   });
 
-  await prisma.workoutTemplate.update({
-    where: { id: template.id },
-    data: { expectedOccurrences: input.expectedOccurrences },
+  await prisma.$transaction(async (tx) => {
+    await tx.workoutTemplate.update({
+      where: { id: template.id },
+      data: { expectedOccurrences: input.expectedOccurrences },
+    });
+
+    if (input.sequencePosition !== undefined) {
+      await reorderProgramTemplates({
+        tx,
+        userId,
+        programId: template.programId,
+        templateId: template.id,
+        requestedPosition: input.sequencePosition,
+      });
+    }
   });
 
   revalidatePath("/templates");
+  revalidatePath("/dashboard");
   redirect(`/templates?programId=${template.programId}&templateId=${input.selectedTemplateId ?? template.id}`);
 }
 

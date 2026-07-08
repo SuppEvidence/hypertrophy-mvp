@@ -80,24 +80,25 @@ async function getDashboardMesocycle(programId: string, userId: string) {
 
 async function getSuggestedTemplate(programId: string, userId: string, templates: Array<{ id: string; name: string; sequenceIndex: number; weekday: number | null }>) {
   if (templates.length === 0) return null;
+  const orderedTemplates = [...templates].sort((a, b) => a.sequenceIndex - b.sequenceIndex);
   const program = await prisma.program.findFirst({ where: { id: programId, userId } });
-  if (!program) return templates[0] ?? null;
+  if (!program) return orderedTemplates[0] ?? null;
 
   if (program.rotationStyle === "WEEKDAY_BASED") {
     const day = new Date().getDay();
-    return templates.find((template) => template.weekday === day) ?? templates[0] ?? null;
+    return orderedTemplates.find((template) => template.weekday === day) ?? orderedTemplates[0] ?? null;
   }
-
-  if (program.rotationStyle === "MANUAL") return templates[0] ?? null;
 
   const lastCompleted = await prisma.workoutSession.findFirst({
     where: { userId, programId, status: "COMPLETED", templateId: { not: null } },
     orderBy: { performedAt: "desc" },
-    include: { template: true },
+    select: { templateId: true },
   });
-  if (!lastCompleted?.template) return templates[0] ?? null;
-  const nextIndex = (lastCompleted.template.sequenceIndex + 1) % templates.length;
-  return templates.find((template) => template.sequenceIndex === nextIndex) ?? templates[0] ?? null;
+
+  if (!lastCompleted?.templateId) return orderedTemplates[0] ?? null;
+  const currentIndex = orderedTemplates.findIndex((template) => template.id === lastCompleted.templateId);
+  if (currentIndex < 0) return orderedTemplates[0] ?? null;
+  return orderedTemplates[(currentIndex + 1) % orderedTemplates.length] ?? orderedTemplates[0] ?? null;
 }
 
 export async function getDashboardData(userId: string) {
@@ -110,7 +111,7 @@ export async function getDashboardData(userId: string) {
   });
 
   if (!activeProgram) {
-    const latestMetrics = await prisma.metricLog.findMany({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" }, take: 4 });
+    const latestMetrics = await prisma.metricLog.findMany({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" }, take: 30 });
     const fatigueTrend = buildFatigueTrend(latestMetrics);
     const bodyMetrics = buildBodyMetricContext(latestMetrics);
     return {
@@ -161,7 +162,7 @@ export async function getDashboardData(userId: string) {
         },
       },
     }),
-    prisma.metricLog.findMany({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" }, take: 4 }),
+    prisma.metricLog.findMany({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" }, take: 30 }),
     getDashboardMesocycle(activeProgram.id, userId),
   ]);
 

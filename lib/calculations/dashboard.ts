@@ -101,6 +101,10 @@ export type BodyMetricContext = {
   latestWaist: number | null;
   previousWaist: number | null;
   waistChange: number | null;
+  bodyweightSampleCount: number;
+  waistSampleCount: number;
+  comparisonBodyweightSampleCount: number;
+  comparisonWaistSampleCount: number;
 };
 
 export type FatigueTrend = {
@@ -147,9 +151,9 @@ export function selectedWindowStart(now: Date, days: number) {
 export function buildMuscleVolumeRows(program: DashboardProgramInput, sessions: DashboardSessionInput[]): MuscleVolumeRow[] {
   const secondaryContribution = Number(program.secondaryContribution || 0);
   const windowDays = selectedWindowDays(program);
-  const priorityIds = new Set(program.priorityMuscles.map((link: any) => link.muscleId));
+  const priorityIds = new Set(program.priorityMuscles.map((link) => link.muscleId));
   const targets = new Map(
-    program.volumeTargets.map((target: any) => [
+    program.volumeTargets.map((target) => [
       target.muscleId,
       {
         muscleName: target.muscle.name,
@@ -206,7 +210,7 @@ export function buildMuscleVolumeRows(program: DashboardProgramInput, sessions: 
   }
 
   return Array.from(rows.values())
-    .map((row: any) => {
+    .map((row) => {
       const target = targets.get(row.muscleId)?.target ?? null;
       return {
         ...row,
@@ -258,7 +262,7 @@ export function buildMovementCoverage(sessions: DashboardSessionInput[]): Moveme
   const rows = new Map<string, MovementCoverageRow>();
   for (const session of sessions) {
     for (const sessionExercise of session.exercises) {
-      const completed = sessionExercise.sets.filter((set: any) => set.isCompleted).length;
+      const completed = sessionExercise.sets.filter((set) => set.isCompleted).length;
       if (completed === 0) continue;
       const movement = sessionExercise.exercise.movementGroup;
       const row = rows.get(movement.id) ?? {
@@ -327,7 +331,7 @@ export function buildPerformanceTrend(sessions: DashboardSessionInput[]): Perfor
 
 export function buildFatigueTrend(metrics: MetricTrendInput[]): FatigueTrend {
   if (metrics.length === 0) return { latest: null, previousAverageScore: null, isRising: false };
-  const summaries = metrics.map((metric: any) =>
+  const summaries = metrics.map((metric) =>
     calculateFatigueSummary({
       sleepDuration: toNumber(metric.sleepDuration),
       sleepQuality: metric.sleepQuality,
@@ -338,29 +342,50 @@ export function buildFatigueTrend(metrics: MetricTrendInput[]): FatigueTrend {
     }),
   );
   const latest = summaries[0] ?? null;
-  const previousScores = summaries.slice(1).map((item: any) => item.score).filter((score): score is number => typeof score === "number");
+  const previousScores = summaries.slice(1).map((item) => item.score).filter((score): score is number => typeof score === "number");
   const previousAverageScore = previousScores.length > 0 ? round(previousScores.reduce((sum, score) => sum + score, 0) / previousScores.length, 0) : null;
   const isRising = latest?.score !== null && latest?.score !== undefined && previousAverageScore !== null && latest.score >= previousAverageScore + 10;
   return { latest, previousAverageScore, isRising };
 }
 
+function average(values: number[]) {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function valuesInDateRange(metrics: MetricTrendInput[], field: "bodyweight" | "waist", start: Date, end: Date) {
+  return metrics
+    .filter((metric) => metric.loggedAt >= start && metric.loggedAt < end)
+    .map((metric) => toNumber(metric[field]))
+    .filter((value): value is number => value !== null);
+}
+
 export function buildBodyMetricContext(metrics: MetricTrendInput[]): BodyMetricContext {
-  const latestWithBodyweight = metrics.find((metric) => toNumber(metric.bodyweight) !== null);
-  const previousWithBodyweight = metrics.filter((metric: any) => toNumber(metric.bodyweight) !== null)[1];
-  const latestWithWaist = metrics.find((metric) => toNumber(metric.waist) !== null);
-  const previousWithWaist = metrics.filter((metric: any) => toNumber(metric.waist) !== null)[1];
-  const latestBodyweight = toNumber(latestWithBodyweight?.bodyweight);
-  const previousBodyweight = toNumber(previousWithBodyweight?.bodyweight);
-  const latestWaist = toNumber(latestWithWaist?.waist);
-  const previousWaist = toNumber(previousWithWaist?.waist);
+  const now = new Date();
+  const currentStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const previousStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+  const currentBodyweights = valuesInDateRange(metrics, "bodyweight", currentStart, now);
+  const previousBodyweights = valuesInDateRange(metrics, "bodyweight", previousStart, currentStart);
+  const currentWaists = valuesInDateRange(metrics, "waist", currentStart, now);
+  const previousWaists = valuesInDateRange(metrics, "waist", previousStart, currentStart);
+
+  const latestBodyweight = average(currentBodyweights);
+  const previousBodyweight = average(previousBodyweights);
+  const latestWaist = average(currentWaists);
+  const previousWaist = average(previousWaists);
 
   return {
-    latestBodyweight,
-    previousBodyweight,
+    latestBodyweight: latestBodyweight === null ? null : round(latestBodyweight, 1),
+    previousBodyweight: previousBodyweight === null ? null : round(previousBodyweight, 1),
     bodyweightChange: latestBodyweight !== null && previousBodyweight !== null ? round(latestBodyweight - previousBodyweight, 1) : null,
-    latestWaist,
-    previousWaist,
-    waistChange: latestWaist !== null && previousWaist !== null ? round(latestWaist - previousWaist, 1) : null,
+    latestWaist: latestWaist === null ? null : round(latestWaist, 0),
+    previousWaist: previousWaist === null ? null : round(previousWaist, 0),
+    waistChange: latestWaist !== null && previousWaist !== null ? round(latestWaist - previousWaist, 0) : null,
+    bodyweightSampleCount: currentBodyweights.length,
+    waistSampleCount: currentWaists.length,
+    comparisonBodyweightSampleCount: previousBodyweights.length,
+    comparisonWaistSampleCount: previousWaists.length,
   };
 }
 
@@ -372,9 +397,9 @@ export function buildDecisionFlags(args: {
   missedTemplateNames: string[];
 }): DecisionFlag[] {
   const flags: DecisionFlag[] = [];
-  const priorityRows = args.volumeRows.filter((row: any) => row.isPriority);
-  const underPriority = priorityRows.filter((row: any) => row.status === "Below target");
-  const abovePriority = priorityRows.filter((row: any) => row.status === "Above target" || row.status === "Excessive");
+  const priorityRows = args.volumeRows.filter((row) => row.isPriority);
+  const underPriority = priorityRows.filter((row) => row.status === "Below target");
+  const abovePriority = priorityRows.filter((row) => row.status === "Above target" || row.status === "Excessive");
   const anyHighVolume = args.volumeRows.some((row) => row.status === "Above target" || row.status === "Excessive");
   const anyBelowTarget = args.volumeRows.some((row) => row.status === "Below target");
 
@@ -382,7 +407,7 @@ export function buildDecisionFlags(args: {
     flags.push({
       type: "PRIORITY_UNDER_TARGET",
       title: "Priority muscle under target",
-      detail: `${underPriority.map((row: any) => row.muscleName).join(", ")} below selected-window target.`,
+      detail: `${underPriority.map((row) => row.muscleName).join(", ")} below selected-window target.`,
       severity: "watch",
     });
   }
@@ -391,7 +416,7 @@ export function buildDecisionFlags(args: {
     flags.push({
       type: "PRIORITY_ABOVE_TARGET",
       title: "Priority muscle above target",
-      detail: `${abovePriority.map((row: any) => row.muscleName).join(", ")} above selected-window target.`,
+      detail: `${abovePriority.map((row) => row.muscleName).join(", ")} above selected-window target.`,
       severity: "watch",
     });
   }

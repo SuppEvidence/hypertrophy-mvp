@@ -193,19 +193,28 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
 
       <Card className="space-y-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-100">Expected template occurrences</h2>
+          <h2 className="text-base font-semibold text-slate-100">Template sequence and expected occurrences</h2>
           <p className="mt-1 text-sm text-slate-400">
-            Set how many times each template is expected to appear inside the selected {windowDays}-day volume window. This is required for manual rotation and keeps planned volume accurate for non-standard rotations.
+            Sequence controls the next-workout suggestion order. Expected occurrences controls planned volume inside the selected {windowDays}-day volume window.
           </p>
         </div>
         <div className="space-y-2">
           {typedTemplates.map((template: TemplateOption) => (
-            <form key={template.id} action={updateTemplateExpectedOccurrences.bind(null, template.id)} className="grid grid-cols-[1fr_7rem_auto] items-end gap-2 rounded-xl border border-slate-800 bg-slate-950 p-3">
+            <form key={template.id} action={updateTemplateExpectedOccurrences.bind(null, template.id)} className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 sm:grid-cols-[1fr_6rem_7rem_auto] sm:items-end">
               <input type="hidden" name="selectedTemplateId" value={selectedTemplate?.id ?? template.id} />
               <div>
                 <p className="text-sm font-semibold text-slate-100">{template.name}</p>
-                <p className="mt-1 text-xs text-slate-500">Expected in {windowDays}d window</p>
+                <p className="mt-1 text-xs text-slate-500">Next-workout order and planned exposure in {windowDays}d.</p>
               </div>
+              <Field
+                label="Sequence"
+                name="sequencePosition"
+                type="number"
+                min={1}
+                max={typedTemplates.length}
+                step="1"
+                defaultValue={Number(template.sequenceIndex ?? 0) + 1}
+              />
               <Field
                 label="Times"
                 name="expectedOccurrences"

@@ -250,12 +250,16 @@ export default async function DashboardPage() {
 
           <Card>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bodyweight / waist context</p>
+            <p className="mt-1 text-sm text-slate-400">Uses 7-day averages from saved metric logs. Change compares the current 7 days with the previous 7 days.</p>
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-300">
-              <p><span className="text-slate-500">Bodyweight:</span><br />{formatNumber(dashboard.bodyMetrics.latestBodyweight, " kg")}</p>
-              <p><span className="text-slate-500">BW change:</span><br />{formatNumber(dashboard.bodyMetrics.bodyweightChange, " kg")}</p>
-              <p><span className="text-slate-500">Waist:</span><br />{formatNumber(dashboard.bodyMetrics.latestWaist, " mm", 0)}</p>
-              <p><span className="text-slate-500">Waist change:</span><br />{formatNumber(dashboard.bodyMetrics.waistChange, " mm", 0)}</p>
+              <p><span className="text-slate-500">7d BW avg:</span><br />{formatNumber(dashboard.bodyMetrics.latestBodyweight, " kg")}</p>
+              <p><span className="text-slate-500">BW vs prev 7d:</span><br />{formatNumber(dashboard.bodyMetrics.bodyweightChange, " kg")}</p>
+              <p><span className="text-slate-500">7d waist avg:</span><br />{formatNumber(dashboard.bodyMetrics.latestWaist, " mm", 0)}</p>
+              <p><span className="text-slate-500">Waist vs prev 7d:</span><br />{formatNumber(dashboard.bodyMetrics.waistChange, " mm", 0)}</p>
             </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Samples: BW {dashboard.bodyMetrics.bodyweightSampleCount ?? 0}, waist {dashboard.bodyMetrics.waistSampleCount ?? 0} in current 7d.
+            </p>
           </Card>
         </>
       ) : null}

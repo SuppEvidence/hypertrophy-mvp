@@ -6,6 +6,7 @@ export const templateRenameSchema = z.object({
 
 export const templateOccurrenceSchema = z.object({
   expectedOccurrences: z.coerce.number().min(0).max(30),
+  sequencePosition: z.preprocess((value) => (value === null || value === "" ? undefined : value), z.coerce.number().int().min(1).max(50).optional()),
   selectedTemplateId: z.string().uuid().optional().nullable(),
 });
 
