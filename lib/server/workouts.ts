@@ -202,6 +202,7 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
           items: selectedTemplatePrescription.templateItems.map((item) => ({
             id: item.id,
             exerciseName: item.exerciseName,
+            movementGroupName: item.movementGroupName,
             basePlannedSets: item.basePlannedSets,
             adjustedPlannedSets: item.adjustedPlannedSets,
             prescribedMinReps: item.prescribedMinReps,
@@ -253,7 +254,7 @@ async function getTemplateWithExercises(templateId: string, userId: string) {
       exercises: {
         orderBy: { sortOrder: "asc" },
         include: {
-          exercise: true,
+          exercise: { include: { movementGroup: true } },
           defaultSetType: true,
           setPlans: { orderBy: { setNumber: "asc" }, include: { setType: true } },
         },
@@ -271,7 +272,8 @@ async function getSessionForUser(sessionId: string, userId: string) {
       exercises: {
         orderBy: { sortOrder: "asc" },
         include: {
-          templateExercise: true,
+          templateExercise: { include: { exercise: { include: { movementGroup: true } } } },
+          stimulusSetType: true,
           exercise: {
             include: {
               movementGroup: true,
@@ -355,6 +357,10 @@ export async function startWorkout(formData: FormData) {
           prescribedMaxReps: item.prescribedMaxReps,
           prescribedRepBucket: item.repBucket,
           prescriptionNote: item.adjustmentReason,
+          completedSets: item.adjustedPlannedSets,
+          stimulusSetTypeId: item.defaultSetTypeId,
+          repRangeStatus: "IN_RANGE",
+          effortStatus: "PRODUCTIVE",
         },
       });
 
@@ -509,14 +515,23 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
 
   const input = sessionExerciseSchema.parse({
     exerciseId: formData.get("exerciseId"),
+    completedSets: formData.get("completedSets"),
+    stimulusSetTypeId: formData.get("stimulusSetTypeId") || null,
+    repRangeStatus: formData.get("repRangeStatus") || "IN_RANGE",
+    effortStatus: formData.get("effortStatus") || "PRODUCTIVE",
     painFlag: formData.get("painFlag") === "on",
     painNote: formData.get("painNote") ?? "",
     notes: formData.get("notes") ?? "",
   });
 
-  const exercise = await prisma.exercise.findFirst({
-    where: { id: input.exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
-  });
+  const [exercise, setType] = await Promise.all([
+    prisma.exercise.findFirst({
+      where: { id: input.exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
+    }),
+    input.stimulusSetTypeId
+      ? prisma.setType.findFirst({ where: { id: input.stimulusSetTypeId, isActive: true, OR: [{ userId: null }, { userId }] } })
+      : Promise.resolve(null),
+  ]);
   if (!exercise) redirect(`/log?sessionId=${existing.sessionId}`);
 
   await prisma.workoutSessionExercise.update({
@@ -525,6 +540,10 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
       exerciseId: input.exerciseId,
       isSubstitution: input.exerciseId !== existing.exerciseId || existing.isSubstitution,
       substitutedFromExerciseId: input.exerciseId !== existing.exerciseId ? existing.exerciseId : existing.substitutedFromExerciseId,
+      completedSets: input.completedSets,
+      stimulusSetTypeId: setType?.id ?? null,
+      repRangeStatus: input.repRangeStatus,
+      effortStatus: input.effortStatus,
       painFlag: input.painFlag,
       painNote: input.painNote || null,
       notes: input.notes || null,
@@ -565,6 +584,10 @@ export async function addSessionExercise(formData: FormData) {
         exerciseId,
         sortOrder: (session.exercises[0]?.sortOrder ?? -1) + 1,
         isSubstitution: false,
+        completedSets: 1,
+        stimulusSetTypeId: normalSetType.id,
+        repRangeStatus: "IN_RANGE",
+        effortStatus: "PRODUCTIVE",
       },
     });
     await tx.workoutSet.create({

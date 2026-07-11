@@ -156,6 +156,7 @@ export async function getDashboardData(userId: string) {
         exercises: {
           orderBy: { sortOrder: "asc" },
           include: {
+            stimulusSetType: true,
             exercise: {
               include: {
                 movementGroup: true,

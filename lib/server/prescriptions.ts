@@ -17,6 +17,8 @@ async function getActiveMesocycle(programId: string, userId: string, now = new D
     include: {
       volumeTargets: { include: { muscle: true } },
       repPolicies: true,
+      movementRepPolicies: true,
+      movementVolumeTargets: { include: { movementGroup: true } },
     },
   });
 
@@ -30,6 +32,8 @@ async function getMesocycleForPrescription(programId: string, userId: string, me
     include: {
       volumeTargets: { include: { muscle: true } },
       repPolicies: true,
+      movementRepPolicies: true,
+      movementVolumeTargets: { include: { movementGroup: true } },
     },
   });
 }
@@ -50,6 +54,7 @@ export async function buildProgramPrescription(programId: string, userId: string
               setPlans: { orderBy: { setNumber: "asc" }, include: { setType: true } },
               exercise: {
                 include: {
+                  movementGroup: true,
                   primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
                   secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
                 },
@@ -72,6 +77,11 @@ export async function buildProgramPrescription(programId: string, userId: string
       expectedOccurrences: template.expectedOccurrences,
       exerciseId: item.exerciseId,
       exerciseName: item.exercise.name,
+      movementGroupId: item.exercise.movementGroupId,
+      movementGroupName: item.exercise.movementGroup.name,
+      movementGroupSortOrder: item.exercise.movementGroup.sortOrder,
+      defaultMinReps: item.exercise.defaultMinReps,
+      defaultMaxReps: item.exercise.defaultMaxReps,
       sortOrder: item.sortOrder,
       plannedSets: item.plannedSets,
       minSets: item.minSets,
@@ -128,6 +138,11 @@ export async function buildProgramPrescription(programId: string, userId: string
           })),
           repPolicies: activeMesocycle.repPolicies.map((policy) => ({
             repBucket: policy.repBucket,
+            minReps: policy.minReps,
+            maxReps: policy.maxReps,
+          })),
+          movementRepPolicies: activeMesocycle.movementRepPolicies.map((policy) => ({
+            movementGroupId: policy.movementGroupId,
             minReps: policy.minReps,
             maxReps: policy.maxReps,
           })),

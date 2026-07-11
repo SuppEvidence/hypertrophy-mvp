@@ -2,6 +2,8 @@ import { createMetricLog } from "@/lib/server/metrics";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 
+const selectClass = "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400";
+
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -20,8 +22,15 @@ type MetricVisibility = {
 type MetricDraft = {
   id: string;
   loggedAt: string;
+  logType: string;
   bodyweight: number | null;
   waist: number | null;
+  chest: number | null;
+  shoulders: number | null;
+  arms: number | null;
+  thighs: number | null;
+  glutes: number | null;
+  calves: number | null;
   sleepDuration: number | null;
   sleepQuality: number | null;
   stress: number | null;
@@ -43,10 +52,20 @@ export function MetricsForm({ visibility, draft }: { visibility: MetricVisibilit
       <input type="hidden" name="draftId" value={draft?.id ?? ""} />
       <div>
         <h2 className="font-semibold text-slate-100">{draft ? "Continue metrics draft" : "Log metrics"}</h2>
-        <p className="mt-1 text-sm text-slate-400">All visible fields are optional except date. Missing values are ignored in fatigue scoring.</p>
+        <p className="mt-1 text-sm text-slate-400">Daily use can be only bodyweight and waist. Circumferences are mainly for mesocycle start/end check-ins.</p>
       </div>
 
       <Field label="Date" name="loggedAt" type="date" defaultValue={dateInputFromIso(draft?.loggedAt)} required />
+
+      <label className="block space-y-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Log type</span>
+        <select name="logType" defaultValue={draft?.logType ?? "DAILY"} className={selectClass}>
+          <option value="DAILY">Daily: bodyweight / waist</option>
+          <option value="MESOCYCLE_START">Mesocycle start check-in</option>
+          <option value="MESOCYCLE_END">Mesocycle end check-in</option>
+          <option value="OPTIONAL_CHECKIN">Optional check-in</option>
+        </select>
+      </label>
 
       {(visibility.bodyweight || visibility.waist) ? (
         <div className="grid grid-cols-2 gap-3">
@@ -54,6 +73,19 @@ export function MetricsForm({ visibility, draft }: { visibility: MetricVisibilit
           {visibility.waist ? <Field label="Waist" name="waist" type="number" step="0.1" inputMode="decimal" placeholder="770" defaultValue={draft?.waist ?? ""} /> : null}
         </div>
       ) : null}
+
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+        <h3 className="text-sm font-semibold text-slate-100">Mesocycle circumference check-in</h3>
+        <p className="mt-1 text-xs text-slate-500">Use mainly for mesocycle start/end logs. Leave blank for normal daily logs.</p>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <Field label="Chest" name="chest" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.chest ?? ""} />
+          <Field label="Shoulders" name="shoulders" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.shoulders ?? ""} />
+          <Field label="Arms" name="arms" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.arms ?? ""} />
+          <Field label="Thighs" name="thighs" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.thighs ?? ""} />
+          <Field label="Glutes" name="glutes" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.glutes ?? ""} />
+          <Field label="Calves" name="calves" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.calves ?? ""} />
+        </div>
+      </div>
 
       {(visibility.sleep || visibility.steps) ? (
         <div className="grid grid-cols-2 gap-3">

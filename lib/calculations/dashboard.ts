@@ -33,6 +33,10 @@ export type DashboardSetInput = {
 
 export type DashboardSessionExerciseInput = {
   exerciseId: string;
+  completedSets?: number | null;
+  repRangeStatus?: string | null;
+  effortStatus?: string | null;
+  stimulusSetType?: { multiplier: unknown; isIntensifier: boolean } | null;
   exercise: {
     name: string;
     movementGroup: { id: string; name: string; sortOrder: number };
@@ -140,6 +144,24 @@ function volumeStatus(actual: number, target: number | null): VolumeStatus {
   return "Excessive";
 }
 
+function isProductiveEffort(status: string | null | undefined) {
+  return status === "PRODUCTIVE" || status === "VERY_HARD" || status === "FAILURE";
+}
+
+function usesStimulusRow(sessionExercise: DashboardSessionExerciseInput) {
+  return sessionExercise.completedSets !== null && sessionExercise.completedSets !== undefined && Boolean(sessionExercise.stimulusSetType);
+}
+
+function completedStimulusSets(sessionExercise: DashboardSessionExerciseInput) {
+  return Math.max(0, sessionExercise.completedSets ?? 0);
+}
+
+function productiveStimulusEquivalent(sessionExercise: DashboardSessionExerciseInput) {
+  if (!usesStimulusRow(sessionExercise)) return null;
+  if (!isProductiveEffort(sessionExercise.effortStatus)) return 0;
+  return completedStimulusSets(sessionExercise) * (toNumber(sessionExercise.stimulusSetType?.multiplier) ?? 1);
+}
+
 export function selectedWindowDays(program: { volumeWindowType: VolumeWindowType; customWindowDays?: number | null }) {
   return volumeWindowDays(program.volumeWindowType, program.customWindowDays ?? null);
 }
@@ -177,10 +199,14 @@ export function buildMuscleVolumeRows(program: DashboardProgramInput, sessions: 
 
   for (const session of sessions) {
     for (const sessionExercise of session.exercises) {
-      for (const set of sessionExercise.sets) {
-        if (!set.isCompleted) continue;
-        const multiplier = toNumber(set.setType.multiplier) ?? 1;
+      const stimulusEquivalent = productiveStimulusEquivalent(sessionExercise);
+      const contributions = stimulusEquivalent !== null
+        ? [{ completed: completedStimulusSets(sessionExercise), effective: stimulusEquivalent }]
+        : sessionExercise.sets
+            .filter((set) => set.isCompleted)
+            .map((set) => ({ completed: 1, effective: toNumber(set.setType.multiplier) ?? 1 }));
 
+      for (const contribution of contributions) {
         for (const link of sessionExercise.exercise.primaryMuscles) {
           const row = rows.get(link.muscleId) ?? {
             muscleId: link.muscleId,
@@ -189,8 +215,8 @@ export function buildMuscleVolumeRows(program: DashboardProgramInput, sessions: 
             direct: 0,
             effective: 0,
           };
-          row.direct += 1;
-          row.effective += multiplier;
+          row.direct += contribution.completed;
+          row.effective += contribution.effective;
           rows.set(link.muscleId, row);
         }
 
@@ -202,7 +228,7 @@ export function buildMuscleVolumeRows(program: DashboardProgramInput, sessions: 
             direct: 0,
             effective: 0,
           };
-          row.effective += multiplier * secondaryContribution;
+          row.effective += contribution.effective * secondaryContribution;
           rows.set(link.muscleId, row);
         }
       }
@@ -233,6 +259,19 @@ export function buildIntensifierSummary(sessions: DashboardSessionInput[]): Inte
   for (const session of sessions) {
     for (const sessionExercise of session.exercises) {
       const primaryCount = sessionExercise.exercise.primaryMuscles.length || 1;
+      if (usesStimulusRow(sessionExercise)) {
+        const completed = completedStimulusSets(sessionExercise);
+        const multiplier = toNumber(sessionExercise.stimulusSetType?.multiplier) ?? 1;
+        const productiveEquivalent = isProductiveEffort(sessionExercise.effortStatus) ? completed * multiplier * primaryCount : 0;
+        completedSets += completed;
+        effectiveVolume += productiveEquivalent;
+        if (sessionExercise.stimulusSetType?.isIntensifier) {
+          intensifierSets += completed;
+          intensifierEffectiveVolume += productiveEquivalent;
+        }
+        continue;
+      }
+
       for (const set of sessionExercise.sets) {
         if (!set.isCompleted) continue;
         const multiplier = toNumber(set.setType.multiplier) ?? 1;
@@ -262,7 +301,7 @@ export function buildMovementCoverage(sessions: DashboardSessionInput[]): Moveme
   const rows = new Map<string, MovementCoverageRow>();
   for (const session of sessions) {
     for (const sessionExercise of session.exercises) {
-      const completed = sessionExercise.sets.filter((set) => set.isCompleted).length;
+      const completed = usesStimulusRow(sessionExercise) ? completedStimulusSets(sessionExercise) : sessionExercise.sets.filter((set) => set.isCompleted).length;
       if (completed === 0) continue;
       const movement = sessionExercise.exercise.movementGroup;
       const row = rows.get(movement.id) ?? {

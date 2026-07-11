@@ -20,7 +20,7 @@ export default async function MetricsPage({ searchParams }: { searchParams?: Pro
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Metrics" description="Optional recovery and body metrics. Used as context for fatigue status in later dashboard work." />
+      <PageHeader title="Metrics" description="Daily bodyweight/waist plus mesocycle start/end circumference check-ins." />
 
       {params?.saved ? (
         <div className="rounded-2xl border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-100">Metrics saved.</div>
@@ -54,7 +54,7 @@ export default async function MetricsPage({ searchParams }: { searchParams?: Pro
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-slate-100">{formatDate(log.loggedAt)}</p>
-                    <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">Fatigue: {log.fatigue.category}{log.fatigue.score !== null ? ` · ${log.fatigue.score}` : ""}</p>
+                    <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{log.logType?.replaceAll("_", " ").toLowerCase()} · Fatigue: {log.fatigue.category}{log.fatigue.score !== null ? ` · ${log.fatigue.score}` : ""}</p>
                   </div>
                 </div>
 
@@ -68,6 +68,17 @@ export default async function MetricsPage({ searchParams }: { searchParams?: Pro
                   <p><span className="text-slate-500">Fatigue:</span> {valueOrDash(log.manualFatigue)}</p>
                   <p><span className="text-slate-500">Soreness:</span> {valueOrDash(log.sorenessJointIrritation)}</p>
                 </div>
+
+                {[log.chest, log.shoulders, log.arms, log.thighs, log.glutes, log.calves].some((value) => value !== null && value !== undefined) ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-2 text-sm text-slate-300 md:grid-cols-3">
+                    <p><span className="text-slate-500">Chest:</span> {valueOrDash(log.chest, " mm")}</p>
+                    <p><span className="text-slate-500">Shoulders:</span> {valueOrDash(log.shoulders, " mm")}</p>
+                    <p><span className="text-slate-500">Arms:</span> {valueOrDash(log.arms, " mm")}</p>
+                    <p><span className="text-slate-500">Thighs:</span> {valueOrDash(log.thighs, " mm")}</p>
+                    <p><span className="text-slate-500">Glutes:</span> {valueOrDash(log.glutes, " mm")}</p>
+                    <p><span className="text-slate-500">Calves:</span> {valueOrDash(log.calves, " mm")}</p>
+                  </div>
+                ) : null}
 
                 {log.notes ? <p className="mt-3 text-sm text-slate-400">{log.notes}</p> : null}
               </div>

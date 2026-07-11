@@ -46,6 +46,29 @@ enum WorkoutSessionStatus {
   COMPLETED
 }
 
+enum RepRangeStatus {
+  IN_RANGE
+  TOO_LOW
+  TOO_HIGH
+  MIXED
+  NOT_LOGGED
+}
+
+enum EffortStatus {
+  TOO_EASY
+  PRODUCTIVE
+  VERY_HARD
+  FAILURE
+  NOT_SURE
+}
+
+enum MetricLogType {
+  DAILY
+  MESOCYCLE_START
+  MESOCYCLE_END
+  OPTIONAL_CHECKIN
+}
+
 model Profile {
   id        String   @id @db.Uuid
   email     String?  @unique
@@ -105,6 +128,8 @@ model MovementGroup {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   exercises Exercise[]
+  mesocycleRepPolicies MesocycleMovementRepPolicy[]
+  mesocycleVolumeTargets MesocycleMovementVolumeTarget[]
 
   @@map("movement_groups")
 }
@@ -127,6 +152,7 @@ model SetType {
   templateExercises TemplateExercise[]
   workoutSets WorkoutSet[]
   templateExerciseSetPlans TemplateExerciseSetPlan[]
+  stimulusSessionExercises WorkoutSessionExercise[] @relation("StimulusSetType")
 
   @@unique([userId, slug])
   @@index([userId, isActive])
@@ -232,6 +258,8 @@ model ProgramMesocycle {
   program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
   volumeTargets MesocycleMuscleVolumeTarget[]
   repPolicies   MesocycleRepPolicy[]
+  movementRepPolicies MesocycleMovementRepPolicy[]
+  movementVolumeTargets MesocycleMovementVolumeTarget[]
   workoutSessions WorkoutSession[]
 
   @@index([userId, startDate])
@@ -271,6 +299,39 @@ model MesocycleRepPolicy {
 
   @@unique([mesocycleId, repBucket])
   @@map("mesocycle_rep_policies")
+}
+
+model MesocycleMovementRepPolicy {
+  id              String   @id @default(uuid()) @db.Uuid
+  mesocycleId     String   @db.Uuid @map("mesocycle_id")
+  movementGroupId String   @db.Uuid @map("movement_group_id")
+  minReps         Int      @map("min_reps")
+  maxReps         Int      @map("max_reps")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  mesocycle     ProgramMesocycle @relation(fields: [mesocycleId], references: [id], onDelete: Cascade)
+  movementGroup MovementGroup    @relation(fields: [movementGroupId], references: [id], onDelete: Restrict)
+
+  @@unique([mesocycleId, movementGroupId])
+  @@index([movementGroupId])
+  @@map("mesocycle_movement_rep_policies")
+}
+
+model MesocycleMovementVolumeTarget {
+  id              String   @id @default(uuid()) @db.Uuid
+  mesocycleId     String   @db.Uuid @map("mesocycle_id")
+  movementGroupId String   @db.Uuid @map("movement_group_id")
+  targetSets      Decimal  @default(0) @map("target_sets") @db.Decimal(5, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  mesocycle     ProgramMesocycle @relation(fields: [mesocycleId], references: [id], onDelete: Cascade)
+  movementGroup MovementGroup    @relation(fields: [movementGroupId], references: [id], onDelete: Restrict)
+
+  @@unique([mesocycleId, movementGroupId])
+  @@index([movementGroupId])
+  @@map("mesocycle_movement_volume_targets")
 }
 
 model ProgramPriorityMuscle {
@@ -419,6 +480,10 @@ model WorkoutSessionExercise {
   prescribedMaxReps         Int?     @map("prescribed_max_reps")
   prescribedRepBucket       String?  @map("prescribed_rep_bucket")
   prescriptionNote          String?  @map("prescription_note")
+  completedSets             Int?     @map("completed_sets")
+  stimulusSetTypeId         String?  @db.Uuid @map("stimulus_set_type_id")
+  repRangeStatus            RepRangeStatus @default(NOT_LOGGED) @map("rep_range_status")
+  effortStatus              EffortStatus   @default(PRODUCTIVE) @map("effort_status")
   notes                     String?
   createdAt                 DateTime @default(now()) @map("created_at")
   updatedAt                 DateTime @updatedAt @map("updated_at")
@@ -427,11 +492,13 @@ model WorkoutSessionExercise {
   exercise                Exercise         @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
   substitutedFromExercise Exercise?        @relation("SubstitutedFromExercise", fields: [substitutedFromExerciseId], references: [id], onDelete: SetNull)
   templateExercise        TemplateExercise? @relation(fields: [templateExerciseId], references: [id], onDelete: SetNull)
+  stimulusSetType         SetType?          @relation("StimulusSetType", fields: [stimulusSetTypeId], references: [id], onDelete: Restrict)
   sets                    WorkoutSet[]
 
   @@index([sessionId, sortOrder])
   @@index([exerciseId])
   @@index([templateExerciseId])
+  @@index([stimulusSetTypeId])
   @@map("workout_session_exercises")
 }
 
@@ -460,8 +527,15 @@ model MetricLog {
   id                      String   @id @default(uuid()) @db.Uuid
   userId                  String   @db.Uuid @map("user_id")
   loggedAt                DateTime @default(now()) @map("logged_at")
+  logType                 MetricLogType @default(DAILY) @map("log_type")
   bodyweight              Decimal? @db.Decimal(7, 2)
   waist                   Decimal? @db.Decimal(7, 2)
+  chest                   Decimal? @db.Decimal(7, 2)
+  shoulders               Decimal? @db.Decimal(7, 2)
+  arms                    Decimal? @db.Decimal(7, 2)
+  thighs                  Decimal? @db.Decimal(7, 2)
+  glutes                  Decimal? @db.Decimal(7, 2)
+  calves                  Decimal? @db.Decimal(7, 2)
   sleepDuration           Decimal? @map("sleep_duration") @db.Decimal(4, 2)
   sleepQuality            Int?     @map("sleep_quality")
   stress                  Int?
@@ -478,5 +552,6 @@ model MetricLog {
 
   @@index([userId, loggedAt])
   @@index([userId, isDraft, loggedAt])
+  @@index([userId, logType, loggedAt])
   @@map("metric_logs")
 }

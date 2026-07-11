@@ -47,6 +47,7 @@ export type GeneratorMesocycle =
         priorityLevel?: number;
       }>;
       repPolicies: Array<{ repBucket: string; minReps: number; maxReps: number }>;
+      movementRepPolicies?: Array<{ movementGroupId: string; minReps: number; maxReps: number }>;
     }
   | null;
 
@@ -58,6 +59,11 @@ export type GeneratorTemplateExercise = {
   expectedOccurrences: unknown;
   exerciseId: string;
   exerciseName: string;
+  movementGroupId: string;
+  movementGroupName: string;
+  movementGroupSortOrder: number;
+  defaultMinReps?: number | null;
+  defaultMaxReps?: number | null;
   sortOrder: number;
   plannedSets: number;
   minSets?: number | null;
@@ -109,6 +115,10 @@ function round(value: number) {
 function repPolicyFor(bucket: string | null | undefined, policies: Array<{ repBucket: string; minReps: number; maxReps: number }>) {
   if (!bucket) return null;
   return policies.find((policy) => policy.repBucket === bucket) ?? null;
+}
+
+function movementRepPolicyFor(movementGroupId: string, policies: Array<{ movementGroupId: string; minReps: number; maxReps: number }>) {
+  return policies.find((policy) => policy.movementGroupId === movementGroupId) ?? null;
 }
 
 function setEffectiveValue(item: GeneratorTemplateExercise, setNumber: number) {
@@ -225,14 +235,15 @@ export function generateMesocyclePrescription(args: {
 }) {
   const secondaryContribution = toNumber(args.program.secondaryContribution, 0.5);
   const items: GeneratedPrescriptionItem[] = args.templateExercises.map((item) => {
-    const policy = repPolicyFor(item.repBucket, args.mesocycle?.repPolicies ?? []);
+    const movementPolicy = movementRepPolicyFor(item.movementGroupId, args.mesocycle?.movementRepPolicies ?? []);
+    const bucketPolicy = repPolicyFor(item.repBucket, args.mesocycle?.repPolicies ?? []);
     return {
       ...item,
       basePlannedSets: item.plannedSets,
       adjustedPlannedSets: item.plannedSets,
       adjustmentDelta: 0,
-      prescribedMinReps: policy?.minReps ?? item.minReps ?? null,
-      prescribedMaxReps: policy?.maxReps ?? item.maxReps ?? null,
+      prescribedMinReps: movementPolicy?.minReps ?? bucketPolicy?.minReps ?? item.minReps ?? item.defaultMinReps ?? null,
+      prescribedMaxReps: movementPolicy?.maxReps ?? bucketPolicy?.maxReps ?? item.maxReps ?? item.defaultMaxReps ?? null,
       adjustmentReason: null,
     };
   });

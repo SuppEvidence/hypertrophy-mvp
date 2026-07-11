@@ -142,7 +142,7 @@ export default async function DashboardPage() {
                     <p className="text-xs font-semibold uppercase tracking-wide">{row.status}</p>
                   </div>
                   <p className="mt-1 text-sm opacity-90">
-                    Effective {formatNumber(row.effective)} / target {formatNumber(row.target)} · Direct {formatNumber(row.direct)}
+                    Productive equiv. {formatNumber(row.effective)} / target {formatNumber(row.target)} · Completed {formatNumber(row.direct)}
                   </p>
                 </div>
               ))}
@@ -196,7 +196,7 @@ export default async function DashboardPage() {
                     </div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-sm text-slate-300">
                       <p><span className="text-slate-500">Direct</span><br />{formatNumber(row.direct)}</p>
-                      <p><span className="text-slate-500">Effective</span><br />{formatNumber(row.effective)}</p>
+                      <p><span className="text-slate-500">Productive equiv.</span><br />{formatNumber(row.effective)}</p>
                       <p><span className="text-slate-500">Target</span><br />{formatNumber(row.target)}</p>
                     </div>
                   </div>
@@ -228,7 +228,7 @@ export default async function DashboardPage() {
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-300">
               <p><span className="text-slate-500">Intensifier sets:</span><br />{dashboard.intensifiers.intensifierSets}</p>
               <p><span className="text-slate-500">Completed sets:</span><br />{dashboard.intensifiers.completedSets}</p>
-              <p><span className="text-slate-500">Effective volume:</span><br />{dashboard.intensifiers.effectiveVolume}</p>
+              <p><span className="text-slate-500">Productive volume-equivalent:</span><br />{dashboard.intensifiers.effectiveVolume}</p>
               <p><span className="text-slate-500">Intensifier share:</span><br />{dashboard.intensifiers.share}%</p>
             </div>
           </Card>
