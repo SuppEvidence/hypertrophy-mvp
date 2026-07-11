@@ -511,6 +511,10 @@ model WorkoutSet {
   rir               Decimal? @db.Decimal(4, 1)
   setTypeId         String   @db.Uuid @map("set_type_id")
   isCompleted       Boolean  @default(false) @map("is_completed")
+  repRangeStatus    RepRangeStatus @default(NOT_LOGGED) @map("rep_range_status")
+  effortStatus      EffortStatus   @default(PRODUCTIVE) @map("effort_status")
+  painFlag          Boolean        @default(false) @map("pain_flag")
+  painNote          String?        @map("pain_note")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 

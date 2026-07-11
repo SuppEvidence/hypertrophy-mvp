@@ -41,7 +41,9 @@ export async function WorkoutHistory() {
     <div className="space-y-3">
       {sessions.map((session: WorkoutHistoryItem) => {
         const completedSetCount = getCompletedSetCount(session);
-        const painFlagCount = session.exercises.filter((item: WorkoutHistoryItem["exercises"][number]) => item.painFlag).length;
+        const painFlagCount = session.exercises.filter((item: WorkoutHistoryItem["exercises"][number]) =>
+          item.painFlag || item.sets.some((set: WorkoutHistoryItem["exercises"][number]["sets"][number]) => set.isCompleted && Boolean(set.painFlag)),
+        ).length;
         const substitutionCount = session.exercises.filter((item: WorkoutHistoryItem["exercises"][number]) => item.isSubstitution).length;
 
         return (

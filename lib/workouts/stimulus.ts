@@ -6,6 +6,9 @@ export type StimulusSetTypeInput = {
 export type StimulusSetInput = {
   setNumber?: number | null;
   isCompleted?: boolean | null;
+  repRangeStatus?: string | null;
+  effortStatus?: string | null;
+  painFlag?: boolean | null;
   setType?: StimulusSetTypeInput;
 };
 
@@ -54,7 +57,39 @@ function sortedSets(sets: StimulusSetInput[] | null | undefined) {
   return [...(sets ?? [])].sort((a, b) => Number(a.setNumber ?? 0) - Number(b.setNumber ?? 0));
 }
 
+function completedRows(item: StimulusExerciseInput) {
+  return sortedSets(item.sets).filter((set) => Boolean(set.isCompleted));
+}
+
 export function getStimulusContribution(item: StimulusExerciseInput): StimulusContribution {
+  const rows = completedRows(item);
+
+  if (rows.length > 0 || (item.sets?.length ?? 0) > 0) {
+    let productiveEquivalent = 0;
+    let productiveSets = 0;
+    let intensifierSets = 0;
+    let intensifierProductiveEquivalent = 0;
+
+    for (const set of rows) {
+      const multiplier = multiplierOf(set.setType ?? item.stimulusSetType);
+      const intensifier = isIntensifier(set.setType ?? item.stimulusSetType);
+      if (intensifier) intensifierSets += 1;
+      if (isProductiveEffort(set.effortStatus ?? item.effortStatus ?? "PRODUCTIVE")) {
+        productiveSets += 1;
+        productiveEquivalent += multiplier;
+        if (intensifier) intensifierProductiveEquivalent += multiplier;
+      }
+    }
+
+    return {
+      completed: rows.length,
+      productiveEquivalent,
+      productiveSets,
+      intensifierSets,
+      intensifierProductiveEquivalent,
+    };
+  }
+
   const productive = isProductiveEffort(item.effortStatus);
 
   if (usesStimulusEntry(item)) {
@@ -63,46 +98,18 @@ export function getStimulusContribution(item: StimulusExerciseInput): StimulusCo
       return { completed: 0, productiveEquivalent: 0, productiveSets: 0, intensifierSets: 0, intensifierProductiveEquivalent: 0 };
     }
 
-    const firstRows = sortedSets(item.sets).slice(0, completed);
-    const rowsWithFallback = [...firstRows];
-    const fallbackNeeded = Math.max(completed - rowsWithFallback.length, 0);
-
-    let multiplierSum = rowsWithFallback.reduce((sum, set) => sum + multiplierOf(set.setType ?? item.stimulusSetType), 0);
-    let intensifierSets = rowsWithFallback.reduce((sum, set) => sum + (isIntensifier(set.setType ?? item.stimulusSetType) ? 1 : 0), 0);
-    let intensifierMultiplierSum = rowsWithFallback.reduce(
-      (sum, set) => sum + (isIntensifier(set.setType ?? item.stimulusSetType) ? multiplierOf(set.setType ?? item.stimulusSetType) : 0),
-      0,
-    );
-
-    if (fallbackNeeded > 0) {
-      const fallbackMultiplier = multiplierOf(item.stimulusSetType);
-      multiplierSum += fallbackNeeded * fallbackMultiplier;
-      if (isIntensifier(item.stimulusSetType)) {
-        intensifierSets += fallbackNeeded;
-        intensifierMultiplierSum += fallbackNeeded * fallbackMultiplier;
-      }
-    }
+    const fallbackMultiplier = multiplierOf(item.stimulusSetType);
+    const intensifierSets = isIntensifier(item.stimulusSetType) ? completed : 0;
+    const intensifierMultiplierSum = isIntensifier(item.stimulusSetType) ? completed * fallbackMultiplier : 0;
 
     return {
       completed,
-      productiveEquivalent: productive ? multiplierSum : 0,
+      productiveEquivalent: productive ? completed * fallbackMultiplier : 0,
       productiveSets: productive ? completed : 0,
       intensifierSets,
       intensifierProductiveEquivalent: productive ? intensifierMultiplierSum : 0,
     };
   }
 
-  const completedRows = sortedSets(item.sets).filter((set) => Boolean(set.isCompleted));
-  const completed = completedRows.length;
-  const multiplierSum = completedRows.reduce((sum, set) => sum + multiplierOf(set.setType), 0);
-  const intensifierSets = completedRows.reduce((sum, set) => sum + (isIntensifier(set.setType) ? 1 : 0), 0);
-  const intensifierMultiplierSum = completedRows.reduce((sum, set) => sum + (isIntensifier(set.setType) ? multiplierOf(set.setType) : 0), 0);
-
-  return {
-    completed,
-    productiveEquivalent: multiplierSum,
-    productiveSets: completed,
-    intensifierSets,
-    intensifierProductiveEquivalent: intensifierMultiplierSum,
-  };
+  return { completed: 0, productiveEquivalent: 0, productiveSets: 0, intensifierSets: 0, intensifierProductiveEquivalent: 0 };
 }

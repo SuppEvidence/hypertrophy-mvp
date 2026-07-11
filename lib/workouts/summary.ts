@@ -11,6 +11,9 @@ export type LoggedSetForSummary = {
   weight: unknown;
   reps: number | null;
   isCompleted: boolean;
+  repRangeStatus?: string | null;
+  effortStatus?: string | null;
+  painFlag?: boolean | null;
   setType: { multiplier: unknown; isIntensifier: boolean };
 };
 
@@ -80,7 +83,8 @@ export function buildWorkoutSummary(args: {
   }
 
   for (const item of args.sessionExercises) {
-    if (item.painFlag) painFlagCount += 1;
+    const setPainFlag = item.sets.some((set) => set.isCompleted && Boolean(set.painFlag));
+    if (item.painFlag || setPainFlag) painFlagCount += 1;
     if (item.isSubstitution) substitutionCount += 1;
 
     const contribution = getStimulusContribution(item);

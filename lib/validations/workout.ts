@@ -5,16 +5,20 @@ export const startWorkoutSchema = z.object({
   templateId: z.string().uuid(),
 });
 
+export const repRangeStatusSchema = z.enum(["IN_RANGE", "TOO_LOW", "TOO_HIGH", "MIXED", "NOT_LOGGED"]);
+export const effortStatusSchema = z.enum(["TOO_EASY", "PRODUCTIVE", "VERY_HARD", "FAILURE", "NOT_SURE"]);
+
 export const workoutSetSchema = z.object({
   weight: z.coerce.number().min(0).max(2000).nullable().optional(),
   reps: z.coerce.number().int().min(0).max(500).nullable().optional(),
   rir: z.coerce.number().min(0).max(10).nullable().optional(),
   setTypeId: z.string().uuid(),
   isCompleted: z.coerce.boolean().default(false),
+  repRangeStatus: repRangeStatusSchema.default("IN_RANGE"),
+  effortStatus: effortStatusSchema.default("PRODUCTIVE"),
+  painFlag: z.coerce.boolean().default(false),
+  painNote: z.string().trim().max(240).optional(),
 });
-
-export const repRangeStatusSchema = z.enum(["IN_RANGE", "TOO_LOW", "TOO_HIGH", "MIXED", "NOT_LOGGED"]);
-export const effortStatusSchema = z.enum(["TOO_EASY", "PRODUCTIVE", "VERY_HARD", "FAILURE", "NOT_SURE"]);
 
 const optionalCompletedSets = z.preprocess((value) => {
   if (value === "" || value === null || value === undefined) return null;
@@ -24,12 +28,17 @@ const optionalCompletedSets = z.preprocess((value) => {
 
 export const sessionExerciseSchema = z.object({
   exerciseId: z.string().uuid(),
-  completedSets: optionalCompletedSets,
+  completedSets: optionalCompletedSets.optional(),
   stimulusSetTypeId: z.string().uuid().nullable().optional(),
   repRangeStatus: repRangeStatusSchema.default("IN_RANGE"),
   effortStatus: effortStatusSchema.default("PRODUCTIVE"),
   painFlag: z.coerce.boolean().default(false),
   painNote: z.string().trim().max(240).optional(),
+  notes: z.string().trim().max(500).optional(),
+});
+
+export const stimulusSessionExerciseSchema = z.object({
+  exerciseId: z.string().uuid(),
   notes: z.string().trim().max(500).optional(),
 });
 

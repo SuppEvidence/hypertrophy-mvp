@@ -77,6 +77,10 @@ type LoggerSet = {
   rir: unknown;
   setTypeId: string;
   isCompleted: boolean;
+  repRangeStatus: string;
+  effortStatus: string;
+  painFlag: boolean;
+  painNote: string | null;
   setType: {
     multiplier: unknown;
     isIntensifier: boolean;
@@ -175,27 +179,45 @@ function formatRepRangeStatus(status: string | null | undefined) {
 }
 
 
-function stimulusContributionPreview(item: LoggerSessionExercise, setTypes: LoggerSetTypeOption[], completedSets: number) {
-  if (!isProductiveEffort(item.effortStatus)) return 0;
-  const byId = new Map(setTypes.map((setType) => [setType.id, setType]));
-  const fallbackType = item.stimulusSetTypeId ? byId.get(item.stimulusSetTypeId) : null;
-  const sortedSets = [...item.sets].sort((a, b) => a.setNumber - b.setNumber).slice(0, Math.max(0, completedSets));
-  let total = sortedSets.reduce((sum, set) => sum + (decimalToNumber(byId.get(set.setTypeId)?.multiplier) ?? 1), 0);
-  const missing = Math.max(completedSets - sortedSets.length, 0);
-  if (missing > 0) total += missing * (decimalToNumber(fallbackType?.multiplier) ?? 1);
-  return total;
+function completedSetRows(item: LoggerSessionExercise) {
+  return [...item.sets].sort((a, b) => a.setNumber - b.setNumber).filter((set) => set.isCompleted);
 }
 
-function setTypeSplitLabel(item: LoggerSessionExercise, setTypes: LoggerSetTypeOption[], completedSets: number) {
+function stimulusContributionPreview(item: LoggerSessionExercise, setTypes: LoggerSetTypeOption[]) {
+  const byId = new Map(setTypes.map((setType) => [setType.id, setType]));
+  const completedRows = completedSetRows(item);
+
+  if (completedRows.length > 0 || item.sets.length > 0) {
+    return completedRows.reduce((sum, set) => {
+      if (!isProductiveEffort(set.effortStatus)) return sum;
+      return sum + (decimalToNumber(byId.get(set.setTypeId)?.multiplier) ?? 1);
+    }, 0);
+  }
+
+  if (!isProductiveEffort(item.effortStatus)) return 0;
+  const completed = Math.max(0, Math.floor(Number(item.completedSets ?? 0)));
+  const fallbackType = item.stimulusSetTypeId ? byId.get(item.stimulusSetTypeId) : null;
+  return completed * (decimalToNumber(fallbackType?.multiplier) ?? 1);
+}
+
+function setTypeSplitLabel(item: LoggerSessionExercise, setTypes: LoggerSetTypeOption[]) {
   const byId = new Map(setTypes.map((setType) => [setType.id, setType.name]));
-  const selectedNames = [...item.sets]
-    .sort((a, b) => a.setNumber - b.setNumber)
-    .slice(0, Math.max(0, completedSets))
-    .map((set) => byId.get(set.setTypeId) ?? "Unknown");
+  const selectedNames = completedSetRows(item).map((set) => byId.get(set.setTypeId) ?? "Unknown");
   const uniqueNames = Array.from(new Set(selectedNames));
-  if (uniqueNames.length === 0) return "No set rows";
+  if (uniqueNames.length === 0) return "No completed sets";
   if (uniqueNames.length === 1) return uniqueNames[0] ?? "—";
   return `Mixed: ${uniqueNames.join(" + ")}`;
+}
+
+function statusCountLabel(sets: LoggerSet[], field: "repRangeStatus" | "effortStatus", formatter: (value: string | null | undefined) => string) {
+  const completed = [...sets].sort((a, b) => a.setNumber - b.setNumber).filter((set) => set.isCompleted);
+  if (completed.length === 0) return "No completed sets";
+  const counts = new Map<string, number>();
+  for (const set of completed) {
+    const key = set[field] ?? "NOT_LOGGED";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).map(([status, count]) => `${formatter(status)} ${count}`).join(" · ");
 }
 
 function formatSuggestedWeight(suggestion: LoggerWeightSuggestion | undefined) {
@@ -217,6 +239,10 @@ function toAutosaveSet(set: {
   rir: unknown;
   setTypeId: string;
   isCompleted: boolean;
+  repRangeStatus: string;
+  effortStatus: string;
+  painFlag: boolean;
+  painNote: string | null;
 }) {
   return {
     id: set.id,
@@ -226,6 +252,10 @@ function toAutosaveSet(set: {
     rir: decimalToNumber(set.rir),
     setTypeId: set.setTypeId,
     isCompleted: set.isCompleted,
+    repRangeStatus: set.repRangeStatus ?? "IN_RANGE",
+    effortStatus: set.effortStatus ?? "PRODUCTIVE",
+    painFlag: Boolean(set.painFlag),
+    painNote: set.painNote ?? null,
   };
 }
 
@@ -470,14 +500,16 @@ function EditableSessionBody({
               const movementExerciseOptions = exercises.filter((exercise) => exercise.movementGroupId === item.exercise.movementGroup.id);
               const exerciseOptions = movementExerciseOptions.length > 0 ? movementExerciseOptions : exercises;
               const plannedSets = item.prescribedPlannedSets ?? item.basePlannedSets ?? item.sets.length;
-              const completedSets = item.completedSets ?? plannedSets;
-              const stimulusSetTypeId = item.stimulusSetTypeId ?? item.sets[0]?.setTypeId ?? autosaveSetTypes[0]?.id ?? "";
-              const productiveEquivalent = stimulusContributionPreview(item, setTypes, completedSets);
-              const setTypeSplit = setTypeSplitLabel(item, setTypes, completedSets);
+              const completedSets = completedSetRows(item).length;
+              const productiveEquivalent = stimulusContributionPreview(item, setTypes);
+              const setTypeSplit = setTypeSplitLabel(item, setTypes);
+              const repQuality = statusCountLabel(item.sets, "repRangeStatus", formatRepRangeStatus);
+              const effortQuality = statusCountLabel(item.sets, "effortStatus", formatEffortStatus);
+              const painSetCount = item.sets.filter((set) => set.isCompleted && set.painFlag).length;
 
               return (
-                <form action={updateSessionExercise.bind(null, item.id)} className="mb-3 space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
-                  <div className="grid gap-3 md:grid-cols-2">
+                <div className="mb-3 space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+                  <form action={updateSessionExercise.bind(null, item.id)} className="grid gap-3 md:grid-cols-2">
                     <label className="block space-y-2 md:col-span-2">
                       <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Selected exercise</span>
                       <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
@@ -487,104 +519,61 @@ function EditableSessionBody({
                       </select>
                       <span className="block text-xs text-slate-500">Pool filtered by movement pattern when possible.</span>
                     </label>
-                    <Field label="Completed sets" name="completedSets" type="number" min="0" max="100" step="1" defaultValue={completedSets} />
-                    <label className="block space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Default set type</span>
-                      <select name="stimulusSetTypeId" defaultValue={stimulusSetTypeId} className={selectClass} required>
-                        {autosaveSetTypes.map((setType: LoggerSetTypeOption) => (
-                          <option key={setType.id} value={setType.id}>{setType.name}</option>
-                        ))}
-                      </select>
-                      <span className="block text-xs text-slate-500">Used for missing/new set rows. Individual sets can differ below.</span>
-                    </label>
-                    <label className="block space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Rep range status</span>
-                      <select name="repRangeStatus" defaultValue={item.repRangeStatus ?? "IN_RANGE"} className={selectClass}>
-                        {repRangeStatusOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Effort status</span>
-                      <select name="effortStatus" defaultValue={item.effortStatus ?? "PRODUCTIVE"} className={selectClass}>
-                        {effortStatusOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
+                    <Field label="Slot note" name="notes" defaultValue={item.notes ?? ""} placeholder="Optional" />
+                    <div className="flex items-end">
+                      <Button variant="secondary" className="w-full">Save exercise / note</Button>
+                    </div>
+                  </form>
 
                   <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
                     <div className="grid gap-2 text-sm text-slate-300 md:grid-cols-4">
                       <span>Planned: <strong className="text-slate-100">{plannedSets}</strong></span>
+                      <span>Completed: <strong className="text-slate-100">{completedSets}</strong></span>
                       <span>Set split: <strong className="text-slate-100">{setTypeSplit}</strong></span>
-                      <span>Rep quality: <strong className="text-slate-100">{formatRepRangeStatus(item.repRangeStatus)}</strong></span>
                       <span>Productive equiv.: <strong className="text-slate-100">{fmt(productiveEquivalent)}</strong></span>
                     </div>
-                    {item.sets.length > 0 ? (
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        {[...item.sets].sort((a, b) => a.setNumber - b.setNumber).map((set: LoggerSet) => (
-                          <label key={set.id} className="block space-y-1 rounded-xl border border-slate-800 bg-slate-900/60 p-2">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Set {set.setNumber} type</span>
-                            <select name={`setTypeId_${set.id}`} defaultValue={set.setTypeId} className={selectClass}>
-                              {autosaveSetTypes.map((setType: LoggerSetTypeOption) => (
-                                <option key={setType.id} value={setType.id}>{setType.name}</option>
-                              ))}
-                            </select>
-                          </label>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-2 text-xs text-slate-500">No individual set rows yet. The default set type will be used for volume-equivalent calculation.</p>
-                    )}
+                    <div className="mt-2 grid gap-2 text-xs text-slate-500 md:grid-cols-3">
+                      <span>Rep quality: <strong className="text-slate-300">{repQuality}</strong></span>
+                      <span>Effort: <strong className="text-slate-300">{effortQuality}</strong></span>
+                      <span>Pain sets: <strong className="text-slate-300">{painSetCount}</strong></span>
+                    </div>
                   </div>
 
-                  <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
-                    <span>
-                      <span className="block text-sm font-semibold text-slate-200">Pain/discomfort flag</span>
-                      <span className="block text-xs text-slate-500">Optional flag for this slot/exercise.</span>
-                    </span>
-                    <input name="painFlag" type="checkbox" defaultChecked={item.painFlag} className="h-5 w-5" />
-                  </label>
-                  <Field label="Pain note" name="painNote" defaultValue={item.painNote ?? ""} placeholder="Optional" />
-                  <Field label="Slot note" name="notes" defaultValue={item.notes ?? ""} placeholder="Optional" />
-                  <Button variant="secondary" className="w-full">Save stimulus row</Button>
-                </form>
+                  <div className="space-y-2">
+                    <div className="grid gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 lg:grid-cols-[0.4fr_0.8fr_1.2fr_1.2fr_1.2fr_0.8fr_auto]">
+                      <span>Set</span>
+                      <span>Done</span>
+                      <span>Type</span>
+                      <span>Rep range</span>
+                      <span>Effort</span>
+                      <span>Pain</span>
+                      <span></span>
+                    </div>
+                    {[...item.sets].sort((a, b) => a.setNumber - b.setNumber).map((set: LoggerSet) => (
+                      <div key={set.id} className="grid gap-2 lg:grid-cols-[1fr_auto]">
+                        <AutosaveSetRow
+                          set={toAutosaveSet(set)}
+                          setTypes={autosaveSetTypes}
+                          repRangeStatusOptions={repRangeStatusOptions}
+                          effortStatusOptions={effortStatusOptions}
+                        />
+                        <form action={removeWorkoutSet} className="flex lg:items-start">
+                          <input type="hidden" name="setId" value={set.id} />
+                          <Button variant="danger" className="w-full gap-2 lg:min-h-[44px] lg:w-auto"><Trash2 size={16} /> Delete</Button>
+                        </form>
+                      </div>
+                    ))}
+                    {item.sets.length === 0 ? (
+                      <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-500">No set rows. Add one set to log stimulus for this slot.</p>
+                    ) : null}
+                    <form action={addWorkoutSet}>
+                      <input type="hidden" name="sessionExerciseId" value={item.id} />
+                      <Button variant="ghost" className="w-full gap-2"><Plus size={16} /> Add set row</Button>
+                    </form>
+                  </div>
+                </div>
               );
             })()}
-
-            <details className="rounded-xl border border-slate-800 bg-slate-900/50 p-3">
-              <summary className="cursor-pointer text-sm font-semibold text-slate-300">Advanced set details: load / reps / RIR</summary>
-              <div className="mt-3">
-                <div className="mb-2 grid grid-cols-[0.6fr_1fr_1fr_1fr_1.4fr] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  <span>Set</span>
-                  <span>Weight</span>
-                  <span>Reps</span>
-                  <span>RIR</span>
-                  <span>Set type</span>
-                </div>
-
-                <div className="space-y-2">
-                  {item.sets.map((set: LoggerSet) => (
-                    <AutosaveSetRow key={set.id} set={toAutosaveSet(set)} setTypes={autosaveSetTypes} />
-                  ))}
-                </div>
-
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <form action={addWorkoutSet}>
-                    <input type="hidden" name="sessionExerciseId" value={item.id} />
-                    <Button variant="ghost" className="w-full gap-2"><Plus size={16} /> Add set</Button>
-                  </form>
-                  {item.sets.length > 0 ? (
-                    <form action={removeWorkoutSet}>
-                      <input type="hidden" name="setId" value={item.sets[item.sets.length - 1].id} />
-                      <Button variant="danger" className="w-full gap-2"><Trash2 size={16} /> Last set</Button>
-                    </form>
-                  ) : null}
-                </div>
-              </div>
-            </details>
           </div>
         ))}
       </div>

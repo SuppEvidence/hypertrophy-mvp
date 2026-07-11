@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { ensureProgramTemplates } from "@/lib/server/templates";
 import { getTemplatePrescription } from "@/lib/server/prescriptions";
 import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
-import { finishWorkoutSchema, sessionExerciseSchema, startWorkoutSchema, workoutSetSchema } from "@/lib/validations/workout";
+import { finishWorkoutSchema, startWorkoutSchema, stimulusSessionExerciseSchema, workoutSetSchema } from "@/lib/validations/workout";
 
 async function requireUserId() {
   const supabase = await createClient();
@@ -25,11 +25,6 @@ function numberOrNull(value: FormDataEntryValue | null) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
-
-function cleanText(value: FormDataEntryValue | null) {
-  return String(value ?? "").trim();
-}
-
 
 function editableSessionStatusWhere() {
   const statuses: ("DRAFT" | "COMPLETED")[] = ["DRAFT", "COMPLETED"];
@@ -378,6 +373,9 @@ export async function startWorkout(formData: FormData) {
             setTypeId: plan.setTypeId,
             rir: item.rirTarget === null || item.rirTarget === undefined ? null : Number(item.rirTarget),
             isCompleted: true,
+            repRangeStatus: "IN_RANGE",
+            effortStatus: "PRODUCTIVE",
+            painFlag: false,
           },
         });
       }
@@ -392,7 +390,7 @@ export async function startWorkout(formData: FormData) {
 
 export async function autosaveWorkoutSet(
   setId: string,
-  payload: { weight?: string; reps?: string; rir?: string; setTypeId?: string; isCompleted?: boolean },
+  payload: { weight?: string; reps?: string; rir?: string; setTypeId?: string; isCompleted?: boolean; repRangeStatus?: string; effortStatus?: string; painFlag?: boolean; painNote?: string },
 ) {
   const userId = await requireUserId();
   const existing = await prisma.workoutSet.findFirst({
@@ -407,18 +405,31 @@ export async function autosaveWorkoutSet(
     rir: parseNullableNumberInput(payload.rir),
     setTypeId: payload.setTypeId,
     isCompleted: Boolean(payload.isCompleted),
+    repRangeStatus: payload.repRangeStatus ?? "IN_RANGE",
+    effortStatus: payload.effortStatus ?? "PRODUCTIVE",
+    painFlag: Boolean(payload.painFlag),
+    painNote: payload.painNote ?? "",
   });
   if (!input.success) return { ok: false, error: "Invalid set values." };
 
-  await prisma.workoutSet.update({
-    where: { id: existing.id },
-    data: {
-      weight: input.data.weight,
-      reps: input.data.reps,
-      rir: input.data.rir,
-      setTypeId: input.data.setTypeId,
-      isCompleted: input.data.isCompleted,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.workoutSet.update({
+      where: { id: existing.id },
+      data: {
+        weight: input.data.weight,
+        reps: input.data.reps,
+        rir: input.data.rir,
+        setTypeId: input.data.setTypeId,
+        isCompleted: input.data.isCompleted,
+        repRangeStatus: input.data.repRangeStatus,
+        effortStatus: input.data.effortStatus,
+        painFlag: input.data.painFlag,
+        painNote: input.data.painNote || null,
+      },
+    });
+
+    const completedCount = await tx.workoutSet.count({ where: { sessionExerciseId: existing.sessionExerciseId, isCompleted: true } });
+    await tx.workoutSessionExercise.update({ where: { id: existing.sessionExerciseId }, data: { completedSets: completedCount } });
   });
 
   revalidateWorkoutViews();
@@ -439,17 +450,29 @@ export async function updateWorkoutSet(setId: string, formData: FormData) {
     rir: numberOrNull(formData.get("rir")),
     setTypeId: formData.get("setTypeId"),
     isCompleted: formData.get("isCompleted") === "on",
+    repRangeStatus: formData.get("repRangeStatus") || "IN_RANGE",
+    effortStatus: formData.get("effortStatus") || "PRODUCTIVE",
+    painFlag: formData.get("painFlag") === "on",
+    painNote: formData.get("painNote") ?? "",
   });
 
-  await prisma.workoutSet.update({
-    where: { id: existing.id },
-    data: {
-      weight: input.weight,
-      reps: input.reps,
-      rir: input.rir,
-      setTypeId: input.setTypeId,
-      isCompleted: input.isCompleted,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.workoutSet.update({
+      where: { id: existing.id },
+      data: {
+        weight: input.weight,
+        reps: input.reps,
+        rir: input.rir,
+        setTypeId: input.setTypeId,
+        isCompleted: input.isCompleted,
+        repRangeStatus: input.repRangeStatus,
+        effortStatus: input.effortStatus,
+        painFlag: input.painFlag,
+        painNote: input.painNote || null,
+      },
+    });
+    const completedCount = await tx.workoutSet.count({ where: { sessionExerciseId: existing.sessionExerciseId, isCompleted: true } });
+    await tx.workoutSessionExercise.update({ where: { id: existing.sessionExerciseId }, data: { completedSets: completedCount } });
   });
 
   revalidateWorkoutViews();
@@ -478,13 +501,20 @@ export async function addWorkoutSet(formData: FormData) {
   const setTypeId = plannedSetTypeId ?? existing.templateExercise?.defaultSetTypeId ?? fallbackSetType?.id;
   if (!setTypeId) redirect(`/log?sessionId=${existing.sessionId}`);
 
-  await prisma.workoutSet.create({
-    data: {
-      sessionExerciseId: existing.id,
-      setNumber: nextSetNumber,
-      setTypeId,
-      isCompleted: false,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.workoutSet.create({
+      data: {
+        sessionExerciseId: existing.id,
+        setNumber: nextSetNumber,
+        setTypeId,
+        isCompleted: true,
+        repRangeStatus: "IN_RANGE",
+        effortStatus: "PRODUCTIVE",
+        painFlag: false,
+      },
+    });
+    const completedCount = await tx.workoutSet.count({ where: { sessionExerciseId: existing.id, isCompleted: true } });
+    await tx.workoutSessionExercise.update({ where: { id: existing.id }, data: { completedSets: completedCount } });
   });
 
   revalidateWorkoutViews();
@@ -500,7 +530,11 @@ export async function removeWorkoutSet(formData: FormData) {
   });
   if (!existing) redirect("/log");
 
-  await prisma.workoutSet.delete({ where: { id: existing.id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.workoutSet.delete({ where: { id: existing.id } });
+    const completedCount = await tx.workoutSet.count({ where: { sessionExerciseId: existing.sessionExerciseId, isCompleted: true } });
+    await tx.workoutSessionExercise.update({ where: { id: existing.sessionExerciseId }, data: { completedSets: completedCount } });
+  });
   revalidateWorkoutViews();
   redirect(`/log?sessionId=${existing.sessionExercise.sessionId}`);
 }
@@ -509,82 +543,28 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
   const userId = await requireUserId();
   const existing = await prisma.workoutSessionExercise.findFirst({
     where: { id: sessionExerciseId, session: { userId, status: editableSessionStatusWhere() } },
-    include: {
-      session: true,
-      exercise: true,
-      sets: { orderBy: { setNumber: "asc" } },
-      templateExercise: { include: { setPlans: { orderBy: { setNumber: "asc" } } } },
-    },
+    include: { session: true, exercise: true },
   });
   if (!existing) redirect("/log");
 
-  const input = sessionExerciseSchema.parse({
+  const input = stimulusSessionExerciseSchema.parse({
     exerciseId: formData.get("exerciseId"),
-    completedSets: formData.get("completedSets"),
-    stimulusSetTypeId: formData.get("stimulusSetTypeId") || null,
-    repRangeStatus: formData.get("repRangeStatus") || "IN_RANGE",
-    effortStatus: formData.get("effortStatus") || "PRODUCTIVE",
-    painFlag: formData.get("painFlag") === "on",
-    painNote: formData.get("painNote") ?? "",
     notes: formData.get("notes") ?? "",
   });
 
-  const [exercise, allowedSetTypes] = await Promise.all([
-    prisma.exercise.findFirst({
-      where: { id: input.exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
-    }),
-    prisma.setType.findMany({ where: { isActive: true, OR: [{ userId: null }, { userId }] } }),
-  ]);
+  const exercise = await prisma.exercise.findFirst({
+    where: { id: input.exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
+  });
   if (!exercise) redirect(`/log?sessionId=${existing.sessionId}`);
 
-  const allowedSetTypeIds = new Set(allowedSetTypes.map((item) => item.id));
-  const selectedStimulusSetTypeId = input.stimulusSetTypeId && allowedSetTypeIds.has(input.stimulusSetTypeId) ? input.stimulusSetTypeId : null;
-  const fallbackSetTypeId = selectedStimulusSetTypeId ?? existing.sets[0]?.setTypeId ?? allowedSetTypes[0]?.id ?? null;
-  if (!fallbackSetTypeId) redirect(`/log?sessionId=${existing.sessionId}`);
-
-  const completedSetCount = Math.max(0, input.completedSets ?? 0);
-
-  await prisma.$transaction(async (tx) => {
-    await tx.workoutSessionExercise.update({
-      where: { id: existing.id },
-      data: {
-        exerciseId: input.exerciseId,
-        isSubstitution: input.exerciseId !== existing.exerciseId || existing.isSubstitution,
-        substitutedFromExerciseId: input.exerciseId !== existing.exerciseId ? existing.exerciseId : existing.substitutedFromExerciseId,
-        completedSets: input.completedSets,
-        stimulusSetTypeId: selectedStimulusSetTypeId,
-        repRangeStatus: input.repRangeStatus,
-        effortStatus: input.effortStatus,
-        painFlag: input.painFlag,
-        painNote: input.painNote || null,
-        notes: input.notes || null,
-      },
-    });
-
-    for (const set of existing.sets) {
-      const submittedSetTypeId = cleanText(formData.get(`setTypeId_${set.id}`));
-      const setTypeId = submittedSetTypeId && allowedSetTypeIds.has(submittedSetTypeId) ? submittedSetTypeId : set.setTypeId;
-      await tx.workoutSet.update({
-        where: { id: set.id },
-        data: {
-          setTypeId,
-          isCompleted: set.setNumber <= completedSetCount,
-        },
-      });
-    }
-
-    const highestExistingSetNumber = existing.sets.reduce((max, set) => Math.max(max, set.setNumber), 0);
-    for (let setNumber = highestExistingSetNumber + 1; setNumber <= completedSetCount; setNumber += 1) {
-      const plannedSetTypeId = existing.templateExercise?.setPlans.find((plan) => plan.setNumber === setNumber)?.setTypeId;
-      await tx.workoutSet.create({
-        data: {
-          sessionExerciseId: existing.id,
-          setNumber,
-          setTypeId: plannedSetTypeId ?? fallbackSetTypeId,
-          isCompleted: true,
-        },
-      });
-    }
+  await prisma.workoutSessionExercise.update({
+    where: { id: existing.id },
+    data: {
+      exerciseId: input.exerciseId,
+      isSubstitution: input.exerciseId !== existing.exerciseId || existing.isSubstitution,
+      substitutedFromExerciseId: input.exerciseId !== existing.exerciseId ? existing.exerciseId : existing.substitutedFromExerciseId,
+      notes: input.notes || null,
+    },
   });
 
   revalidateWorkoutViews();
@@ -633,6 +613,9 @@ export async function addSessionExercise(formData: FormData) {
         setNumber: 1,
         setTypeId: normalSetType.id,
         isCompleted: true,
+        repRangeStatus: "IN_RANGE",
+        effortStatus: "PRODUCTIVE",
+        painFlag: false,
       },
     });
   });

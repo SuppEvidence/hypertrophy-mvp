@@ -32,6 +32,9 @@ export type DashboardSetInput = {
   weight: unknown;
   reps: number | null;
   isCompleted: boolean;
+  repRangeStatus?: string | null;
+  effortStatus?: string | null;
+  painFlag?: boolean | null;
   setType: { multiplier: unknown; isIntensifier: boolean };
 };
 
@@ -305,6 +308,27 @@ export function buildStimulusQuality(sessions: DashboardSessionInput[]): Stimulu
 
   for (const session of sessions) {
     for (const sessionExercise of session.exercises) {
+      const completedRows = [...sessionExercise.sets].filter((set) => set.isCompleted);
+
+      if (completedRows.length > 0 || sessionExercise.sets.length > 0) {
+        for (const set of completedRows) {
+          const effortStatus = set.effortStatus ?? sessionExercise.effortStatus ?? "PRODUCTIVE";
+          if (effortStatus === "TOO_EASY") effort.tooEasy += 1;
+          else if (effortStatus === "PRODUCTIVE") effort.productive += 1;
+          else if (effortStatus === "VERY_HARD") effort.veryHard += 1;
+          else if (effortStatus === "FAILURE") effort.failure += 1;
+          else effort.notSure += 1;
+
+          const repStatus = set.repRangeStatus ?? sessionExercise.repRangeStatus ?? "NOT_LOGGED";
+          if (repStatus === "IN_RANGE") repRange.inRange += 1;
+          else if (repStatus === "TOO_LOW") repRange.tooLow += 1;
+          else if (repStatus === "TOO_HIGH") repRange.tooHigh += 1;
+          else if (repStatus === "MIXED") repRange.mixed += 1;
+          else repRange.notLogged += 1;
+        }
+        continue;
+      }
+
       const completed = getStimulusContribution(sessionExercise).completed;
       if (completed === 0) continue;
 
