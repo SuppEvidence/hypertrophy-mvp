@@ -59,6 +59,7 @@ type LoggerSetTypeOption = {
   id: string;
   name: string;
   multiplier?: unknown;
+  isIntensifier?: boolean;
 };
 
 type LoggerDraftSession = {
@@ -171,6 +172,30 @@ function formatEffortStatus(status: string | null | undefined) {
 
 function formatRepRangeStatus(status: string | null | undefined) {
   return repRangeStatusOptions.find((option) => option.value === status)?.label ?? "Not logged";
+}
+
+
+function stimulusContributionPreview(item: LoggerSessionExercise, setTypes: LoggerSetTypeOption[], completedSets: number) {
+  if (!isProductiveEffort(item.effortStatus)) return 0;
+  const byId = new Map(setTypes.map((setType) => [setType.id, setType]));
+  const fallbackType = item.stimulusSetTypeId ? byId.get(item.stimulusSetTypeId) : null;
+  const sortedSets = [...item.sets].sort((a, b) => a.setNumber - b.setNumber).slice(0, Math.max(0, completedSets));
+  let total = sortedSets.reduce((sum, set) => sum + (decimalToNumber(byId.get(set.setTypeId)?.multiplier) ?? 1), 0);
+  const missing = Math.max(completedSets - sortedSets.length, 0);
+  if (missing > 0) total += missing * (decimalToNumber(fallbackType?.multiplier) ?? 1);
+  return total;
+}
+
+function setTypeSplitLabel(item: LoggerSessionExercise, setTypes: LoggerSetTypeOption[], completedSets: number) {
+  const byId = new Map(setTypes.map((setType) => [setType.id, setType.name]));
+  const selectedNames = [...item.sets]
+    .sort((a, b) => a.setNumber - b.setNumber)
+    .slice(0, Math.max(0, completedSets))
+    .map((set) => byId.get(set.setTypeId) ?? "Unknown");
+  const uniqueNames = Array.from(new Set(selectedNames));
+  if (uniqueNames.length === 0) return "No set rows";
+  if (uniqueNames.length === 1) return uniqueNames[0] ?? "—";
+  return `Mixed: ${uniqueNames.join(" + ")}`;
 }
 
 function formatSuggestedWeight(suggestion: LoggerWeightSuggestion | undefined) {
@@ -349,6 +374,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
             activeSession={activeSession}
             exercises={exercises}
             autosaveSetTypes={autosaveSetTypes}
+            setTypes={setTypes}
             weightSuggestions={weightSuggestions}
             summary={summary}
           />
@@ -396,12 +422,14 @@ function EditableSessionBody({
   activeSession,
   exercises,
   autosaveSetTypes,
+  setTypes,
   weightSuggestions,
   summary,
 }: {
   activeSession: LoggerActiveSession;
   exercises: LoggerExerciseOption[];
   autosaveSetTypes: LoggerSetTypeOption[];
+  setTypes: LoggerSetTypeOption[];
   weightSuggestions: Record<string, LoggerWeightSuggestion>;
   summary: ReturnType<typeof buildWorkoutSummary> | null;
 }) {
@@ -444,8 +472,8 @@ function EditableSessionBody({
               const plannedSets = item.prescribedPlannedSets ?? item.basePlannedSets ?? item.sets.length;
               const completedSets = item.completedSets ?? plannedSets;
               const stimulusSetTypeId = item.stimulusSetTypeId ?? item.sets[0]?.setTypeId ?? autosaveSetTypes[0]?.id ?? "";
-              const setTypeMultiplier = item.stimulusSetType?.multiplier ? Number(item.stimulusSetType.multiplier) : 1;
-              const productiveEquivalent = isProductiveEffort(item.effortStatus) ? completedSets * (Number.isFinite(setTypeMultiplier) ? setTypeMultiplier : 1) : 0;
+              const productiveEquivalent = stimulusContributionPreview(item, setTypes, completedSets);
+              const setTypeSplit = setTypeSplitLabel(item, setTypes, completedSets);
 
               return (
                 <form action={updateSessionExercise.bind(null, item.id)} className="mb-3 space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
@@ -461,12 +489,13 @@ function EditableSessionBody({
                     </label>
                     <Field label="Completed sets" name="completedSets" type="number" min="0" max="100" step="1" defaultValue={completedSets} />
                     <label className="block space-y-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Set type</span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Default set type</span>
                       <select name="stimulusSetTypeId" defaultValue={stimulusSetTypeId} className={selectClass} required>
                         {autosaveSetTypes.map((setType: LoggerSetTypeOption) => (
                           <option key={setType.id} value={setType.id}>{setType.name}</option>
                         ))}
                       </select>
+                      <span className="block text-xs text-slate-500">Used for missing/new set rows. Individual sets can differ below.</span>
                     </label>
                     <label className="block space-y-2">
                       <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Rep range status</span>
@@ -486,10 +515,29 @@ function EditableSessionBody({
                     </label>
                   </div>
 
-                  <div className="grid gap-2 rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300 md:grid-cols-3">
-                    <span>Planned: <strong className="text-slate-100">{plannedSets}</strong></span>
-                    <span>Rep quality: <strong className="text-slate-100">{formatRepRangeStatus(item.repRangeStatus)}</strong></span>
-                    <span>Productive equiv.: <strong className="text-slate-100">{fmt(productiveEquivalent)}</strong></span>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                    <div className="grid gap-2 text-sm text-slate-300 md:grid-cols-4">
+                      <span>Planned: <strong className="text-slate-100">{plannedSets}</strong></span>
+                      <span>Set split: <strong className="text-slate-100">{setTypeSplit}</strong></span>
+                      <span>Rep quality: <strong className="text-slate-100">{formatRepRangeStatus(item.repRangeStatus)}</strong></span>
+                      <span>Productive equiv.: <strong className="text-slate-100">{fmt(productiveEquivalent)}</strong></span>
+                    </div>
+                    {item.sets.length > 0 ? (
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {[...item.sets].sort((a, b) => a.setNumber - b.setNumber).map((set: LoggerSet) => (
+                          <label key={set.id} className="block space-y-1 rounded-xl border border-slate-800 bg-slate-900/60 p-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Set {set.setNumber} type</span>
+                            <select name={`setTypeId_${set.id}`} defaultValue={set.setTypeId} className={selectClass}>
+                              {autosaveSetTypes.map((setType: LoggerSetTypeOption) => (
+                                <option key={setType.id} value={setType.id}>{setType.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500">No individual set rows yet. The default set type will be used for volume-equivalent calculation.</p>
+                    )}
                   </div>
 
                   <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">

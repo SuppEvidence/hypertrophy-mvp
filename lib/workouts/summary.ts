@@ -1,3 +1,5 @@
+import { getStimulusContribution } from "@/lib/workouts/stimulus";
+
 export function estimateE1RM(weight: number | null | undefined, reps: number | null | undefined) {
   if (weight === null || weight === undefined || reps === null || reps === undefined) return null;
   if (!Number.isFinite(weight) || !Number.isFinite(reps) || weight <= 0 || reps <= 0) return null;
@@ -5,6 +7,7 @@ export function estimateE1RM(weight: number | null | undefined, reps: number | n
 }
 
 export type LoggedSetForSummary = {
+  setNumber?: number | null;
   weight: unknown;
   reps: number | null;
   isCompleted: boolean;
@@ -26,18 +29,15 @@ export type LoggedExerciseForSummary = {
   effortStatus?: string | null;
 };
 
+function round(value: number, decimals = 1) {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
 function toNumber(value: unknown, fallback = 0) {
   if (value === null || value === undefined) return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function isProductiveEffort(status: string | null | undefined) {
-  return status === "PRODUCTIVE" || status === "VERY_HARD" || status === "FAILURE";
-}
-
-function shouldUseStimulusRow(item: LoggedExerciseForSummary) {
-  return item.completedSets !== null && item.completedSets !== undefined && item.stimulusSetType;
 }
 
 export function buildWorkoutSummary(args: {
@@ -83,27 +83,18 @@ export function buildWorkoutSummary(args: {
     if (item.painFlag) painFlagCount += 1;
     if (item.isSubstitution) substitutionCount += 1;
 
-    if (shouldUseStimulusRow(item)) {
-      const completed = Math.max(0, item.completedSets ?? 0);
-      const multiplier = toNumber(item.stimulusSetType?.multiplier, 1);
-      const productiveEquivalent = isProductiveEffort(item.effortStatus) ? completed * multiplier : 0;
-      completedSets += completed;
-      if (productiveEquivalent > 0) productiveSets += completed;
-      if (item.stimulusSetType?.isIntensifier) intensifierCount += completed;
-      addVolume(item, completed, productiveEquivalent);
-    } else {
-      for (const set of item.sets) {
-        if (!set.isCompleted) continue;
-        completedSets += 1;
-        productiveSets += 1;
-        const multiplier = toNumber(set.setType.multiplier, 1);
-        if (set.setType.isIntensifier) intensifierCount += 1;
-        const weight = Number(set.weight ?? 0);
-        const e1rm = estimateE1RM(weight, set.reps ?? null);
-        if (e1rm !== null && (!bestSet || e1rm > bestSet.e1rm)) {
-          bestSet = { exerciseName: item.exercise.name, e1rm, weight, reps: set.reps ?? 0 };
-        }
-        addVolume(item, 1, multiplier);
+    const contribution = getStimulusContribution(item);
+    completedSets += contribution.completed;
+    productiveSets += contribution.productiveSets;
+    intensifierCount += contribution.intensifierSets;
+    addVolume(item, contribution.completed, contribution.productiveEquivalent);
+
+    for (const set of item.sets) {
+      if (!set.isCompleted) continue;
+      const weight = toNumber(set.weight, 0);
+      const e1rm = estimateE1RM(weight, set.reps ?? null);
+      if (e1rm !== null && (!bestSet || e1rm > bestSet.e1rm)) {
+        bestSet = { exerciseName: item.exercise.name, e1rm, weight, reps: set.reps ?? 0 };
       }
     }
   }
@@ -115,6 +106,8 @@ export function buildWorkoutSummary(args: {
     painFlagCount,
     substitutionCount,
     bestSet,
-    volumeRows: Array.from(rows.values()).sort((a, b) => a.sortOrder - b.sortOrder),
+    volumeRows: Array.from(rows.values())
+      .map((row) => ({ ...row, direct: round(row.direct), effective: round(row.effective) }))
+      .sort((a, b) => a.sortOrder - b.sortOrder),
   };
 }

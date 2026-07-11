@@ -377,7 +377,7 @@ export async function startWorkout(formData: FormData) {
             setNumber: plan.setNumber,
             setTypeId: plan.setTypeId,
             rir: item.rirTarget === null || item.rirTarget === undefined ? null : Number(item.rirTarget),
-            isCompleted: false,
+            isCompleted: true,
           },
         });
       }
@@ -509,7 +509,12 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
   const userId = await requireUserId();
   const existing = await prisma.workoutSessionExercise.findFirst({
     where: { id: sessionExerciseId, session: { userId, status: editableSessionStatusWhere() } },
-    include: { session: true, exercise: true },
+    include: {
+      session: true,
+      exercise: true,
+      sets: { orderBy: { setNumber: "asc" } },
+      templateExercise: { include: { setPlans: { orderBy: { setNumber: "asc" } } } },
+    },
   });
   if (!existing) redirect("/log");
 
@@ -524,30 +529,62 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
     notes: formData.get("notes") ?? "",
   });
 
-  const [exercise, setType] = await Promise.all([
+  const [exercise, allowedSetTypes] = await Promise.all([
     prisma.exercise.findFirst({
       where: { id: input.exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
     }),
-    input.stimulusSetTypeId
-      ? prisma.setType.findFirst({ where: { id: input.stimulusSetTypeId, isActive: true, OR: [{ userId: null }, { userId }] } })
-      : Promise.resolve(null),
+    prisma.setType.findMany({ where: { isActive: true, OR: [{ userId: null }, { userId }] } }),
   ]);
   if (!exercise) redirect(`/log?sessionId=${existing.sessionId}`);
 
-  await prisma.workoutSessionExercise.update({
-    where: { id: existing.id },
-    data: {
-      exerciseId: input.exerciseId,
-      isSubstitution: input.exerciseId !== existing.exerciseId || existing.isSubstitution,
-      substitutedFromExerciseId: input.exerciseId !== existing.exerciseId ? existing.exerciseId : existing.substitutedFromExerciseId,
-      completedSets: input.completedSets,
-      stimulusSetTypeId: setType?.id ?? null,
-      repRangeStatus: input.repRangeStatus,
-      effortStatus: input.effortStatus,
-      painFlag: input.painFlag,
-      painNote: input.painNote || null,
-      notes: input.notes || null,
-    },
+  const allowedSetTypeIds = new Set(allowedSetTypes.map((item) => item.id));
+  const selectedStimulusSetTypeId = input.stimulusSetTypeId && allowedSetTypeIds.has(input.stimulusSetTypeId) ? input.stimulusSetTypeId : null;
+  const fallbackSetTypeId = selectedStimulusSetTypeId ?? existing.sets[0]?.setTypeId ?? allowedSetTypes[0]?.id ?? null;
+  if (!fallbackSetTypeId) redirect(`/log?sessionId=${existing.sessionId}`);
+
+  const completedSetCount = Math.max(0, input.completedSets ?? 0);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.workoutSessionExercise.update({
+      where: { id: existing.id },
+      data: {
+        exerciseId: input.exerciseId,
+        isSubstitution: input.exerciseId !== existing.exerciseId || existing.isSubstitution,
+        substitutedFromExerciseId: input.exerciseId !== existing.exerciseId ? existing.exerciseId : existing.substitutedFromExerciseId,
+        completedSets: input.completedSets,
+        stimulusSetTypeId: selectedStimulusSetTypeId,
+        repRangeStatus: input.repRangeStatus,
+        effortStatus: input.effortStatus,
+        painFlag: input.painFlag,
+        painNote: input.painNote || null,
+        notes: input.notes || null,
+      },
+    });
+
+    for (const set of existing.sets) {
+      const submittedSetTypeId = cleanText(formData.get(`setTypeId_${set.id}`));
+      const setTypeId = submittedSetTypeId && allowedSetTypeIds.has(submittedSetTypeId) ? submittedSetTypeId : set.setTypeId;
+      await tx.workoutSet.update({
+        where: { id: set.id },
+        data: {
+          setTypeId,
+          isCompleted: set.setNumber <= completedSetCount,
+        },
+      });
+    }
+
+    const highestExistingSetNumber = existing.sets.reduce((max, set) => Math.max(max, set.setNumber), 0);
+    for (let setNumber = highestExistingSetNumber + 1; setNumber <= completedSetCount; setNumber += 1) {
+      const plannedSetTypeId = existing.templateExercise?.setPlans.find((plan) => plan.setNumber === setNumber)?.setTypeId;
+      await tx.workoutSet.create({
+        data: {
+          sessionExerciseId: existing.id,
+          setNumber,
+          setTypeId: plannedSetTypeId ?? fallbackSetTypeId,
+          isCompleted: true,
+        },
+      });
+    }
   });
 
   revalidateWorkoutViews();
@@ -595,7 +632,7 @@ export async function addSessionExercise(formData: FormData) {
         sessionExerciseId: created.id,
         setNumber: 1,
         setTypeId: normalSetType.id,
-        isCompleted: false,
+        isCompleted: true,
       },
     });
   });

@@ -10,6 +10,7 @@ import {
   buildMovementCoverage,
   buildMuscleVolumeRows,
   buildPerformanceTrend,
+  buildStimulusQuality,
   selectedWindowDays,
   selectedWindowStart,
 } from "@/lib/calculations/dashboard";
@@ -133,6 +134,14 @@ export async function getDashboardData(userId: string) {
       movementCoverage: [],
       bodyMetrics,
       flags: [],
+      stimulusQuality: {
+        completedSets: 0,
+        effort: { tooEasy: 0, productive: 0, veryHard: 0, failure: 0, notSure: 0 },
+        repRange: { inRange: 0, tooLow: 0, tooHigh: 0, mixed: 0, notLogged: 0 },
+        tooEasyShare: 0,
+        hardShare: 0,
+        repIssueShare: 0,
+      },
       completedSessionsCount: 0,
       mesocycle: null,
     };
@@ -179,10 +188,11 @@ export async function getDashboardData(userId: string) {
   const performanceTrend = buildPerformanceTrend(sessions);
   const intensifiers = buildIntensifierSummary(sessions);
   const movementCoverage = buildMovementCoverage(sessions);
+  const stimulusQuality = buildStimulusQuality(sessions);
   const bodyMetrics = buildBodyMetricContext(metrics);
   const templateIdsWithSessions = new Set(sessions.map((session: any) => session.templateId).filter(Boolean));
   const missedTemplateNames = templates.filter((template: any) => !templateIdsWithSessions.has(template.id)).map((template: any) => template.name);
-  const flags = buildDecisionFlags({ volumeRows, fatigueTrend, performanceTrend, intensifiers, missedTemplateNames });
+  const flags = buildDecisionFlags({ volumeRows, fatigueTrend, performanceTrend, intensifiers, stimulusQuality, bodyMetrics, missedTemplateNames });
 
   return {
     activeProgram: {
@@ -204,6 +214,7 @@ export async function getDashboardData(userId: string) {
     performanceTrend,
     intensifiers,
     movementCoverage,
+    stimulusQuality,
     bodyMetrics,
     flags,
     completedSessionsCount: sessions.length,

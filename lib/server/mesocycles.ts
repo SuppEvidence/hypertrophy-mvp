@@ -10,6 +10,7 @@ import { estimateE1RM } from "@/lib/calculations/performance";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
 import { mesocycleSchema } from "@/lib/validations/mesocycle";
+import { getStimulusContribution, usesStimulusEntry } from "@/lib/workouts/stimulus";
 
 async function requireUserId() {
   const supabase = await createClient();
@@ -55,10 +56,6 @@ function decimalOrNull(value: FormDataEntryValue | null) {
   if (value === null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function isProductiveEffort(status: string | null | undefined) {
-  return status === "PRODUCTIVE" || status === "VERY_HARD" || status === "FAILURE";
 }
 
 function round(value: number, decimals = 1) {
@@ -448,7 +445,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
       },
       session: true,
       stimulusSetType: true,
-      sets: { include: { setType: true } },
+      sets: { orderBy: { setNumber: "asc" }, include: { setType: true } },
     },
     orderBy: { session: { performedAt: "asc" } },
   });
@@ -458,13 +455,11 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
   const performanceByExercise = new Map<string, Array<{ date: Date; e1rm: number }>>();
 
   for (const item of sessionExercises) {
-    const usesStimulus = item.completedSets !== null && item.completedSets !== undefined && item.stimulusSetType;
-    const completed = usesStimulus ? Math.max(0, item.completedSets ?? 0) : item.sets.filter((set: any) => set.isCompleted).length;
-    const productiveEquivalent = usesStimulus
-      ? isProductiveEffort(item.effortStatus) ? completed * toNumber(item.stimulusSetType?.multiplier, 1) : 0
-      : item.sets.filter((set: any) => set.isCompleted).reduce((sum: number, set: any) => sum + toNumber(set.setType.multiplier, 1), 0);
+    const contribution = getStimulusContribution(item);
+    const completed = contribution.completed;
+    const productiveEquivalent = contribution.productiveEquivalent;
 
-    if (usesStimulus) {
+    if (usesStimulusEntry(item)) {
       if (item.repRangeStatus === "IN_RANGE") repRange.inRange += completed;
       else if (item.repRangeStatus === "TOO_LOW") repRange.tooLow += completed;
       else if (item.repRangeStatus === "TOO_HIGH") repRange.tooHigh += completed;

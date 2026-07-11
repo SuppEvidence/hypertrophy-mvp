@@ -171,7 +171,7 @@ export default async function DashboardPage() {
       </Card>
 
       <Card>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Decision flags</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Coach signals</p>
         <div className="mt-3 space-y-2">
           {dashboard.flags.length > 0 ? dashboard.flags.map((flag: any) => (
             <div key={`${flag.type}-${flag.title}`} className={`rounded-2xl border p-3 ${flagClass(flag.severity)}`}>
@@ -221,6 +221,23 @@ export default async function DashboardPage() {
                 ))}
               </div>
             ) : null}
+          </Card>
+
+          <Card>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stimulus quality</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-300 md:grid-cols-4">
+              <p><span className="text-slate-500">Completed sets:</span><br />{dashboard.stimulusQuality.completedSets}</p>
+              <p><span className="text-slate-500">Too easy:</span><br />{dashboard.stimulusQuality.effort.tooEasy} ({dashboard.stimulusQuality.tooEasyShare}%)</p>
+              <p><span className="text-slate-500">Very hard/failure:</span><br />{dashboard.stimulusQuality.effort.veryHard + dashboard.stimulusQuality.effort.failure} ({dashboard.stimulusQuality.hardShare}%)</p>
+              <p><span className="text-slate-500">Rep issue share:</span><br />{dashboard.stimulusQuality.repIssueShare}%</p>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-400 md:grid-cols-5">
+              <p>In range: {dashboard.stimulusQuality.repRange.inRange}</p>
+              <p>Too low: {dashboard.stimulusQuality.repRange.tooLow}</p>
+              <p>Too high: {dashboard.stimulusQuality.repRange.tooHigh}</p>
+              <p>Mixed: {dashboard.stimulusQuality.repRange.mixed}</p>
+              <p>Not logged: {dashboard.stimulusQuality.repRange.notLogged}</p>
+            </div>
           </Card>
 
           <Card>
