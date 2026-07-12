@@ -487,19 +487,17 @@ function EditableSessionBody({
               <p className="mt-1 text-xs text-slate-500">
                 Selected: {item.exercise.name} · Primary: {item.exercise.primaryMuscles.map((link: MuscleNameLink) => link.muscle.name).join(", ") || "—"}
               </p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Target rep range</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-200">{formatRepRange(item)}</p>
+              <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span className="rounded-full border border-slate-800 bg-slate-950 px-2 py-1 font-semibold text-slate-300">{formatRepRange(item)}</span>
                   {item.prescribedPlannedSets !== null && item.basePlannedSets !== null ? (
-                    <p className="mt-1 text-xs text-slate-500">Base {item.basePlannedSets} sets · Prescribed {item.prescribedPlannedSets} sets</p>
+                    <span>Base {item.basePlannedSets} sets · Prescribed {item.prescribedPlannedSets}</span>
                   ) : null}
-                  {item.prescriptionNote ? <p className="mt-1 text-xs text-amber-300">{item.prescriptionNote}</p> : null}
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Suggested weight</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-200">{formatSuggestedWeight(weightSuggestions[item.id])}</p>
-                </div>
+                {item.prescriptionNote ? <p className="mt-1 text-xs text-amber-300">{item.prescriptionNote}</p> : null}
+                <p className="mt-2 text-xs text-slate-400">
+                  Suggested weight: <span className="font-semibold text-slate-100">{formatSuggestedWeight(weightSuggestions[item.id])}</span>
+                </p>
               </div>
               {item.isSubstitution ? (
                 <p className="mt-1 text-xs text-amber-200">Substituted from {item.substitutedFromExercise?.name ?? "planned exercise"}</p>
@@ -520,20 +518,24 @@ function EditableSessionBody({
 
               return (
                 <div className="mb-3 space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
-                  <form action={updateSessionExercise.bind(null, item.id)} className="grid gap-3 md:grid-cols-2">
-                    <label className="block space-y-2 md:col-span-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Selected exercise</span>
+                  <form action={updateSessionExercise.bind(null, item.id)} className="space-y-2">
+                    <label className="block space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise choice</span>
                       <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
                         {exerciseOptions.map((exercise: LoggerExerciseOption) => (
                           <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
                         ))}
                       </select>
-                      <span className="block text-xs text-slate-500">Pool filtered by the slot movement pattern when possible.</span>
                     </label>
-                    <Field label="Slot note" name="notes" defaultValue={item.notes ?? ""} placeholder="Optional" />
-                    <div className="flex items-end">
-                      <Button variant="secondary" className="w-full">Save exercise / note</Button>
-                    </div>
+                    <details className="rounded-xl border border-slate-800 bg-slate-950 p-2">
+                      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">Slot note / exercise save</summary>
+                      <div className="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+                        <Field label="Slot note" name="notes" defaultValue={item.notes ?? ""} placeholder="Optional" />
+                        <div className="flex items-end">
+                          <Button variant="secondary" className="w-full md:w-auto">Save exercise / note</Button>
+                        </div>
+                      </div>
+                    </details>
                   </form>
 
                   <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
@@ -551,14 +553,8 @@ function EditableSessionBody({
                   </div>
 
                   <div className="space-y-2">
-                    <div className="grid gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 lg:grid-cols-[0.4fr_0.8fr_1.2fr_1.2fr_1.2fr_0.8fr_auto]">
-                      <span>Set</span>
-                      <span>Done</span>
-                      <span>Type</span>
-                      <span>Rep range</span>
-                      <span>Effort</span>
-                      <span>Pain</span>
-                      <span></span>
+                    <div className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Sets · done / type / effort / range / pain
                     </div>
                     {[...item.sets].sort((a, b) => a.setNumber - b.setNumber).map((set: LoggerSet) => (
                       <div key={set.id} className="grid gap-2 lg:grid-cols-[1fr_auto]">
@@ -637,12 +633,6 @@ function SummaryGrid({ summary }: { summary: NonNullable<ReturnType<typeof build
       <Stat label="Intensifiers" value={String(summary.intensifierCount)} />
       <Stat label="Pain flags" value={String(summary.painFlagCount)} />
       <Stat label="Substitutions" value={String(summary.substitutionCount)} />
-      <div className="col-span-2 rounded-xl border border-slate-800 bg-slate-950 p-3 md:col-span-4">
-        <p className="text-xs uppercase tracking-wide text-slate-500">Best e1RM in session</p>
-        <p className="mt-1 text-sm font-semibold text-slate-100">
-          {summary.bestSet ? `${summary.bestSet.exerciseName}: ${fmt(summary.bestSet.e1rm)} kg (${summary.bestSet.weight} × ${summary.bestSet.reps})` : "No completed weighted set yet"}
-        </p>
-      </div>
     </div>
   );
 }
