@@ -258,7 +258,7 @@ function toAutosaveSet(set: {
     rir: decimalToNumber(set.rir),
     setTypeId: set.setTypeId,
     isCompleted: set.isCompleted,
-    repRangeStatus: set.repRangeStatus ?? "IN_RANGE",
+    repRangeStatus: !set.repRangeStatus || set.repRangeStatus === "NOT_LOGGED" ? "IN_RANGE" : set.repRangeStatus,
     effortStatus: set.effortStatus ?? "PRODUCTIVE",
     painFlag: Boolean(set.painFlag),
     painNote: set.painNote ?? null,

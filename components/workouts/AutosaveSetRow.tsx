@@ -51,7 +51,8 @@ export function AutosaveSetRow({ set, setTypes, repRangeStatusOptions, effortSta
   const [rir, setRir] = useState(decimalToInput(set.rir));
   const [setTypeId, setSetTypeId] = useState(set.setTypeId);
   const [isCompleted, setIsCompleted] = useState(set.isCompleted);
-  const [repRangeStatus, setRepRangeStatus] = useState(set.repRangeStatus ?? "IN_RANGE");
+  const initialRepRangeStatus = !set.repRangeStatus || set.repRangeStatus === "NOT_LOGGED" ? "IN_RANGE" : set.repRangeStatus;
+  const [repRangeStatus, setRepRangeStatus] = useState(initialRepRangeStatus);
   const [effortStatus, setEffortStatus] = useState(set.effortStatus ?? "PRODUCTIVE");
   const [painFlag, setPainFlag] = useState(Boolean(set.painFlag));
   const [painNote, setPainNote] = useState(set.painNote ?? "");

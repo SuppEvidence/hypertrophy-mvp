@@ -486,7 +486,7 @@ model WorkoutSessionExercise {
   prescriptionNote          String?  @map("prescription_note")
   completedSets             Int?     @map("completed_sets")
   stimulusSetTypeId         String?  @db.Uuid @map("stimulus_set_type_id")
-  repRangeStatus            RepRangeStatus @default(NOT_LOGGED) @map("rep_range_status")
+  repRangeStatus            RepRangeStatus @default(IN_RANGE) @map("rep_range_status")
   effortStatus              EffortStatus   @default(PRODUCTIVE) @map("effort_status")
   notes                     String?
   createdAt                 DateTime @default(now()) @map("created_at")
@@ -515,7 +515,7 @@ model WorkoutSet {
   rir               Decimal? @db.Decimal(4, 1)
   setTypeId         String   @db.Uuid @map("set_type_id")
   isCompleted       Boolean  @default(false) @map("is_completed")
-  repRangeStatus    RepRangeStatus @default(NOT_LOGGED) @map("rep_range_status")
+  repRangeStatus    RepRangeStatus @default(IN_RANGE) @map("rep_range_status")
   effortStatus      EffortStatus   @default(PRODUCTIVE) @map("effort_status")
   painFlag          Boolean        @default(false) @map("pain_flag")
   painNote          String?        @map("pain_note")
