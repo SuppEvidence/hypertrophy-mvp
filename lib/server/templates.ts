@@ -77,6 +77,7 @@ export async function ensureProgramTemplates(programId: string, userId: string) 
 
 const templateExerciseInclude = {
   defaultSetType: true,
+  movementGroup: true,
   setPlans: { orderBy: { setNumber: "asc" }, include: { setType: true } },
   exercise: {
     include: {
@@ -105,7 +106,7 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
   const templates = selectedProgram ? await ensureProgramTemplates(selectedProgram.id, userId) : [];
   const selectedTemplate = templates.find((template) => template.id === params?.templateId) ?? templates[0] ?? null;
 
-  const [exercises, setTypes] = await Promise.all([
+  const [exercises, allMovementGroups, setTypes] = await Promise.all([
     prisma.exercise.findMany({
       where: {
         isArchived: false,
@@ -118,6 +119,9 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
         primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
         secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
       },
+    }),
+    prisma.movementGroup.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
     prisma.setType.findMany({
       where: { isActive: true, OR: [{ userId: null }, { userId }] },
@@ -164,6 +168,11 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
     : [];
   const rotationSequenceText = selectedProgram ? formatRotationSequenceText(selectedProgram.rotationSequence, templates) : "";
 
+  const availableMovementGroupIds = new Set<string>([
+    ...exercises.map((exercise) => exercise.movementGroupId),
+    ...templateExercises.map((item) => item.movementGroupId ?? item.exercise.movementGroupId),
+  ]);
+
   return {
     programs,
     selectedProgram,
@@ -172,6 +181,7 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
     templateExercises,
     allTemplateExercises,
     exercises,
+    movementGroups: allMovementGroups.filter((movementGroup) => availableMovementGroupIds.has(movementGroup.id)),
     setTypes,
     prescription,
     generatedTemplateItems,
@@ -320,7 +330,7 @@ export async function updateProgramRotationSequence(programId: string, formData:
 
 function parseTemplateExerciseForm(formData: FormData) {
   return templateExerciseSchema.parse({
-    exerciseId: formData.get("exerciseId"),
+    movementGroupId: formData.get("movementGroupId"),
     plannedSets: formData.get("plannedSets"),
     minSets: numberOrNull(formData.get("minSets")),
     maxSets: numberOrNull(formData.get("maxSets")),
@@ -336,15 +346,25 @@ function parseTemplateExerciseForm(formData: FormData) {
   });
 }
 
+async function findFirstExerciseForMovementGroup(movementGroupId: string, userId: string) {
+  return prisma.exercise.findFirst({
+    where: {
+      movementGroupId,
+      isArchived: false,
+      isActive: true,
+      OR: [{ isSeed: true, userId: null }, { userId }],
+    },
+    orderBy: [{ isSeed: "desc" }, { name: "asc" }],
+  });
+}
+
 export async function addTemplateExercise(templateId: string, formData: FormData) {
   const userId = await requireUserId();
   const template = await getTemplateOwnedByUser(templateId, userId);
   if (!template) redirect("/templates");
   const input = parseTemplateExerciseForm(formData);
 
-  const exercise = await prisma.exercise.findFirst({
-    where: { id: input.exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
-  });
+  const exercise = await findFirstExerciseForMovementGroup(input.movementGroupId, userId);
   if (!exercise) redirect(`/templates?programId=${template.programId}&templateId=${template.id}`);
 
   const setType = await prisma.setType.findFirst({
@@ -361,7 +381,8 @@ export async function addTemplateExercise(templateId: string, formData: FormData
     const created = await tx.templateExercise.create({
       data: {
         templateId: template.id,
-        exerciseId: input.exerciseId,
+        exerciseId: exercise.id,
+        movementGroupId: input.movementGroupId,
         sortOrder: (last?.sortOrder ?? -1) + 1,
         plannedSets: input.plannedSets,
         minSets: input.minSets,
@@ -393,16 +414,15 @@ export async function updateTemplateExercise(templateExerciseId: string, formDat
   if (!existing) redirect("/templates");
   const input = parseTemplateExerciseForm(formData);
 
-  const exercise = await prisma.exercise.findFirst({
-    where: { id: input.exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
-  });
+  const exercise = await findFirstExerciseForMovementGroup(input.movementGroupId, userId);
   if (!exercise) redirect(`/templates?programId=${existing.template.programId}&templateId=${existing.templateId}`);
 
   await prisma.$transaction(async (tx) => {
     await tx.templateExercise.update({
       where: { id: existing.id },
       data: {
-        exerciseId: input.exerciseId,
+        exerciseId: exercise.id,
+        movementGroupId: input.movementGroupId,
         plannedSets: input.plannedSets,
         minSets: input.minSets,
         maxSets: input.maxSets,

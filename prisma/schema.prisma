@@ -128,6 +128,7 @@ model MovementGroup {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   exercises Exercise[]
+  templateExercises TemplateExercise[]
   mesocycleRepPolicies MesocycleMovementRepPolicy[]
   mesocycleVolumeTargets MesocycleMovementVolumeTarget[]
 
@@ -392,6 +393,7 @@ model TemplateExercise {
   id               String   @id @default(uuid()) @db.Uuid
   templateId       String   @db.Uuid @map("template_id")
   exerciseId       String   @db.Uuid @map("exercise_id")
+  movementGroupId  String?  @db.Uuid @map("movement_group_id")
   sortOrder        Int      @default(0) @map("sort_order")
   plannedSets      Int      @default(2) @map("planned_sets")
   minSets          Int?     @map("min_sets")
@@ -410,12 +412,14 @@ model TemplateExercise {
 
   template       WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   exercise       Exercise        @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  movementGroup  MovementGroup?  @relation(fields: [movementGroupId], references: [id], onDelete: Restrict)
   defaultSetType SetType         @relation(fields: [defaultSetTypeId], references: [id], onDelete: Restrict)
   setPlans       TemplateExerciseSetPlan[]
   sessionExercises WorkoutSessionExercise[]
 
   @@index([templateId, sortOrder])
   @@index([exerciseId])
+  @@index([movementGroupId])
   @@index([defaultSetTypeId])
   @@map("template_exercises")
 }

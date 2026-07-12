@@ -51,6 +51,7 @@ export async function buildProgramPrescription(programId: string, userId: string
             orderBy: { sortOrder: "asc" },
             include: {
               defaultSetType: true,
+              movementGroup: true,
               setPlans: { orderBy: { setNumber: "asc" }, include: { setType: true } },
               exercise: {
                 include: {
@@ -77,9 +78,9 @@ export async function buildProgramPrescription(programId: string, userId: string
       expectedOccurrences: template.expectedOccurrences,
       exerciseId: item.exerciseId,
       exerciseName: item.exercise.name,
-      movementGroupId: item.exercise.movementGroupId,
-      movementGroupName: item.exercise.movementGroup.name,
-      movementGroupSortOrder: item.exercise.movementGroup.sortOrder,
+      movementGroupId: item.movementGroupId ?? item.exercise.movementGroupId,
+      movementGroupName: item.movementGroup?.name ?? item.exercise.movementGroup.name,
+      movementGroupSortOrder: item.movementGroup?.sortOrder ?? item.exercise.movementGroup.sortOrder,
       defaultMinReps: item.exercise.defaultMinReps,
       defaultMaxReps: item.exercise.defaultMaxReps,
       sortOrder: item.sortOrder,

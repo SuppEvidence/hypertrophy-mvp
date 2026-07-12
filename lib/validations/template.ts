@@ -16,7 +16,7 @@ export const templateRotationSequenceSchema = z.object({
 });
 
 export const templateExerciseSchema = z.object({
-  exerciseId: z.string().uuid(),
+  movementGroupId: z.string().uuid(),
   plannedSets: z.coerce.number().int().min(1).max(20),
   minSets: z.coerce.number().int().min(0).max(20).nullable().optional(),
   maxSets: z.coerce.number().int().min(0).max(30).nullable().optional(),

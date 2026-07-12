@@ -250,6 +250,7 @@ async function getTemplateWithExercises(templateId: string, userId: string) {
         orderBy: { sortOrder: "asc" },
         include: {
           exercise: { include: { movementGroup: true } },
+          movementGroup: true,
           defaultSetType: true,
           setPlans: { orderBy: { setNumber: "asc" }, include: { setType: true } },
         },
@@ -267,7 +268,7 @@ async function getSessionForUser(sessionId: string, userId: string) {
       exercises: {
         orderBy: { sortOrder: "asc" },
         include: {
-          templateExercise: { include: { exercise: { include: { movementGroup: true } } } },
+          templateExercise: { include: { movementGroup: true, exercise: { include: { movementGroup: true } } } },
           stimulusSetType: true,
           exercise: {
             include: {
@@ -543,7 +544,7 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
   const userId = await requireUserId();
   const existing = await prisma.workoutSessionExercise.findFirst({
     where: { id: sessionExerciseId, session: { userId, status: editableSessionStatusWhere() } },
-    include: { session: true, exercise: true },
+    include: { session: true, exercise: true, templateExercise: { include: { movementGroup: true, exercise: { include: { movementGroup: true } } } } },
   });
   if (!existing) redirect("/log");
 
@@ -556,6 +557,11 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
     where: { id: input.exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
   });
   if (!exercise) redirect(`/log?sessionId=${existing.sessionId}`);
+
+  const slotMovementGroupId = existing.templateExercise?.movementGroupId ?? existing.templateExercise?.exercise.movementGroupId ?? existing.exercise.movementGroupId;
+  if (slotMovementGroupId && exercise.movementGroupId !== slotMovementGroupId) {
+    redirect(`/log?sessionId=${existing.sessionId}`);
+  }
 
   await prisma.workoutSessionExercise.update({
     where: { id: existing.id },

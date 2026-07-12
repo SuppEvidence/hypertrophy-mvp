@@ -41,7 +41,7 @@ type AllTemplateExerciseItem = Props["allTemplateExercises"][number] & {
     expectedOccurrences: unknown;
   };
 };
-type ExerciseOption = Props["exercises"][number];
+type MovementGroupOption = Props["movementGroups"][number];
 type SetTypeOption = Props["setTypes"][number];
 type GeneratedTemplateItem = Props["generatedTemplateItems"][number];
 type TargetNotice = ReturnType<typeof buildTemplateTargetNotices>[number];
@@ -105,7 +105,7 @@ function OptionSelect({ name, defaultValue, options }: { name: string; defaultVa
   );
 }
 
-export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, exercises, setTypes, generatedTemplateItems, rotationSequenceText }: Props) {
+export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, movementGroups, setTypes, generatedTemplateItems, rotationSequenceText }: Props) {
   if (!selectedProgram) {
     return (
       <Card>
@@ -123,7 +123,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
   const typedTemplates = templates as TemplateOption[];
   const typedTemplateExercises = templateExercises as TemplateExerciseItem[];
   const typedAllTemplateExercises = allTemplateExercises as AllTemplateExerciseItem[];
-  const typedExercises = exercises as ExerciseOption[];
+  const typedMovementGroups = movementGroups as MovementGroupOption[];
   const typedSetTypes = setTypes as SetTypeOption[];
   const typedGeneratedTemplateItems = generatedTemplateItems as GeneratedTemplateItem[];
   const typedRotationSequenceText = String(rotationSequenceText ?? "");
@@ -262,19 +262,18 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
 
           <Card className="space-y-4">
             <div>
-              <h2 className="text-base font-semibold text-slate-100">Add exercise</h2>
-              <p className="mt-1 text-sm text-slate-400">Add planned exercise exposure. Initial set type is used for all planned sets, then individual set types can be edited below.</p>
+              <h2 className="text-base font-semibold text-slate-100">Add movement-pattern slot</h2>
+              <p className="mt-1 text-sm text-slate-400">Add a workout slot by movement pattern. The logger will offer exercises from that movement-pattern pool.</p>
             </div>
             <form action={addTemplateExercise.bind(null, selectedTemplate.id)} className="space-y-3">
               <label className="block space-y-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise</span>
-                <select name="exerciseId" className={selectClass} required>
-                  {typedExercises.map((exercise: ExerciseOption) => (
-                    <option key={exercise.id} value={exercise.id}>
-                      {exercise.name} · {exercise.movementGroup.name}
-                    </option>
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Movement pattern</span>
+                <select name="movementGroupId" className={selectClass} required>
+                  {typedMovementGroups.map((movementGroup: MovementGroupOption) => (
+                    <option key={movementGroup.id} value={movementGroup.id}>{movementGroup.name}</option>
                   ))}
                 </select>
+                <span className="block text-xs text-slate-500">The template stores the movement pattern. Exercise is chosen during logging from this pool.</span>
               </label>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                 <Field label="Base sets" name="plannedSets" type="number" min={1} max={20} defaultValue={2} required />
@@ -308,11 +307,11 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
 
           <Card className="space-y-4">
             <div>
-              <h2 className="text-base font-semibold text-slate-100">Planned exercises</h2>
-              <p className="mt-1 text-sm text-slate-400">Exercises are collapsed by default. Expand each exercise to edit row-level planning and set-specific set types.</p>
+              <h2 className="text-base font-semibold text-slate-100">Planned movement-pattern slots</h2>
+              <p className="mt-1 text-sm text-slate-400">Slots are collapsed by default. Expand each slot to edit row-level planning and set-specific set types.</p>
             </div>
             {typedTemplateExercises.length === 0 ? (
-              <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No exercises in this template yet.</p>
+              <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No movement-pattern slots in this template yet.</p>
             ) : (
               <div className="space-y-3">
                 {typedTemplateExercises.map((item: TemplateExerciseItem, index: number) => {
@@ -322,7 +321,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                     <details key={item.id} className="group rounded-2xl border border-slate-800 bg-slate-950 p-3" open={index === 0}>
                       <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
+                          <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.movementGroup?.name ?? item.exercise.movementGroup.name}</p>
                           <p className="mt-1 text-xs text-slate-500">
                             Base {item.plannedSets} sets
                             {generated ? ` · Meso ${generated.adjustedPlannedSets} sets` : ""}
@@ -340,7 +339,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-xs text-slate-500">
-                              {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: TemplateExerciseItem["exercise"]["primaryMuscles"][number]) => link.muscle.name).join(", ") || "—"}
+                              Slot movement: {item.movementGroup?.name ?? item.exercise.movementGroup.name} · Primary basis: {item.exercise.primaryMuscles.map((link: TemplateExerciseItem["exercise"]["primaryMuscles"][number]) => link.muscle.name).join(", ") || "—"}
                             </p>
                             <p className="mt-1 text-xs text-slate-500">
                               Secondary: {item.exercise.secondaryMuscles.map((link: TemplateExerciseItem["exercise"]["secondaryMuscles"][number]) => link.muscle.name).join(", ") || "—"}
@@ -362,12 +361,13 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
 
                         <form action={updateTemplateExercise.bind(null, item.id)} className="space-y-3">
                           <label className="block space-y-2">
-                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise</span>
-                            <select name="exerciseId" defaultValue={item.exerciseId} className={selectClass} required>
-                              {typedExercises.map((exercise: ExerciseOption) => (
-                                <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
+                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Movement pattern</span>
+                            <select name="movementGroupId" defaultValue={item.movementGroupId ?? item.exercise.movementGroupId} className={selectClass} required>
+                              {typedMovementGroups.map((movementGroup: MovementGroupOption) => (
+                                <option key={movementGroup.id} value={movementGroup.id}>{movementGroup.name}</option>
                               ))}
                             </select>
+                            <span className="block text-xs text-slate-500">Changing this changes the slot pool. The actual exercise is still selected in the logger.</span>
                           </label>
 
                           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -394,7 +394,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                             <input name="autoAdjustable" type="checkbox" defaultChecked={item.autoAdjustable} className="h-5 w-5" />
                           </label>
                           <Field label="Notes" name="notes" defaultValue={item.notes ?? ""} />
-                          <Button className="w-full">Save exercise plan</Button>
+                          <Button className="w-full">Save slot plan</Button>
                         </form>
 
                         <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/50 p-3">
@@ -403,7 +403,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                             <p className="mt-1 text-xs text-slate-500">Set type can differ per planned set. This drives planned effective volume and prefilled workout logging.</p>
                           </div>
                           {setPlans.length === 0 ? (
-                            <p className="text-sm text-slate-500">Save this exercise plan to initialize set rows.</p>
+                            <p className="text-sm text-slate-500">Save this slot plan to initialize set rows.</p>
                           ) : (
                             <div className="space-y-2">
                               {setPlans.map((plan: TemplateExerciseSetPlan) => (
@@ -422,7 +422,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
 
                         <form action={removeTemplateExercise}>
                           <input type="hidden" name="templateExerciseId" value={item.id} />
-                          <Button variant="danger" className="w-full gap-2"><Trash2 size={16} /> Remove exercise</Button>
+                          <Button variant="danger" className="w-full gap-2"><Trash2 size={16} /> Remove slot</Button>
                         </form>
                       </div>
                     </details>

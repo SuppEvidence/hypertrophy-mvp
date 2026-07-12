@@ -93,7 +93,13 @@ type LoggerSessionExercise = LoggedExerciseForSummary & {
   painNote: string | null;
   notes: string | null;
   substitutedFromExercise: { name: string } | null;
-  templateExercise: { minReps: number | null; maxReps: number | null } | null;
+  templateExercise: {
+    minReps: number | null;
+    maxReps: number | null;
+    movementGroupId?: string | null;
+    movementGroup?: { id: string; name: string } | null;
+    exercise?: { movementGroupId: string; movementGroup?: { id: string; name: string } } | null;
+  } | null;
   basePlannedSets: number | null;
   prescribedPlannedSets: number | null;
   prescribedMinReps: number | null;
@@ -261,6 +267,10 @@ function toAutosaveSet(set: {
 
 function toAutosaveSetTypes(setTypes: LoggerSetTypeOption[]) {
   return setTypes.map((setType: LoggerSetTypeOption) => ({ id: setType.id, name: setType.name }));
+}
+
+function slotMovementGroup(item: LoggerSessionExercise) {
+  return item.templateExercise?.movementGroup ?? item.templateExercise?.exercise?.movementGroup ?? item.exercise.movementGroup;
 }
 
 export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWorkoutLoggerData>> }) {
@@ -435,7 +445,7 @@ function PrescriptionPreview({ prescription }: { prescription: SelectedTemplateP
       <div className="mt-3 space-y-2">
         {(changed.length > 0 ? changed : prescription.items.slice(0, 4)).map((item) => (
           <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-slate-800 p-2 text-sm">
-            <span className="text-slate-200">{item.movementGroupName} · {item.exerciseName}</span>
+            <span className="text-slate-200">{item.movementGroupName}</span>
             <span className={item.adjustedPlannedSets !== item.basePlannedSets ? "text-amber-300" : "text-slate-400"}>
               {item.basePlannedSets} → {item.adjustedPlannedSets} sets
               {item.prescribedMinReps && item.prescribedMaxReps ? ` · ${item.prescribedMinReps}-${item.prescribedMaxReps}` : ""}
@@ -473,9 +483,9 @@ function EditableSessionBody({
         {activeSession.exercises.map((item: LoggerSessionExercise, index: number) => (
           <div key={item.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
             <div className="mb-3">
-              <p className="text-sm font-semibold text-slate-100">{index + 1}. {item.exercise.name}</p>
+              <p className="text-sm font-semibold text-slate-100">{index + 1}. {slotMovementGroup(item).name}</p>
               <p className="mt-1 text-xs text-slate-500">
-                {item.exercise.movementGroup.name} · Primary: {item.exercise.primaryMuscles.map((link: MuscleNameLink) => link.muscle.name).join(", ") || "—"}
+                Selected: {item.exercise.name} · Primary: {item.exercise.primaryMuscles.map((link: MuscleNameLink) => link.muscle.name).join(", ") || "—"}
               </p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
@@ -497,7 +507,8 @@ function EditableSessionBody({
             </div>
 
             {(() => {
-              const movementExerciseOptions = exercises.filter((exercise) => exercise.movementGroupId === item.exercise.movementGroup.id);
+              const movementGroup = slotMovementGroup(item);
+              const movementExerciseOptions = exercises.filter((exercise) => exercise.movementGroupId === movementGroup.id);
               const exerciseOptions = movementExerciseOptions.length > 0 ? movementExerciseOptions : exercises;
               const plannedSets = item.prescribedPlannedSets ?? item.basePlannedSets ?? item.sets.length;
               const completedSets = completedSetRows(item).length;
@@ -517,7 +528,7 @@ function EditableSessionBody({
                           <option key={exercise.id} value={exercise.id}>{exercise.name}</option>
                         ))}
                       </select>
-                      <span className="block text-xs text-slate-500">Pool filtered by movement pattern when possible.</span>
+                      <span className="block text-xs text-slate-500">Pool filtered by the slot movement pattern when possible.</span>
                     </label>
                     <Field label="Slot note" name="notes" defaultValue={item.notes ?? ""} placeholder="Optional" />
                     <div className="flex items-end">
