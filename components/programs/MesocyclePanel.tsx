@@ -124,14 +124,16 @@ function MesocycleForm({ programId, mesocycle, activePhase }: { programId: strin
       <div className="flex flex-wrap gap-2">
         <Button type="submit" variant="secondary">{mesocycle ? "Save mesocycle" : "Create mesocycle"}</Button>
         {mesocycle ? (
-          <button
+          <Button
+            type="submit"
             formAction={archiveMesocycle}
             name="mesocycleId"
             value={mesocycle.id}
-            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-transparent px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-900"
+            variant="ghost"
+            pendingText="Archiving…"
           >
             Archive
-          </button>
+          </Button>
         ) : null}
       </div>
     </form>

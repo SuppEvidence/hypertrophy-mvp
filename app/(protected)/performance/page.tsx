@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BarChart3, Trophy } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getExercisePerformanceData } from "@/lib/server/performance";
@@ -54,9 +55,9 @@ export default async function PerformancePage({ searchParams }: PageProps) {
                 </option>
               ))}
             </select>
-            <button className="rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-950 hover:bg-white" type="submit">
+            <Button type="submit" pendingText="Loading…">
               Load
-            </button>
+            </Button>
           </div>
         </form>
       </Card>

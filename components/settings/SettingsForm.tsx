@@ -163,12 +163,15 @@ export function SettingsForm({ settings, setTypes }: SettingsFormProps) {
               {!setType.isEditable ? <p className="mt-2 text-xs text-slate-500">Normal set multiplier is locked.</p> : null}
               {setType.isCustom ? (
                 <div className="mt-3 border-t border-slate-800 pt-3">
-                  <button
+                  <Button
+                    type="submit"
                     formAction={toggleCustomSetType}
-                    className="text-sm font-semibold text-slate-300 hover:text-slate-100"
+                    variant="ghost"
+                    className="min-h-9 px-0"
+                    pendingText={setType.isActive ? "Hiding…" : "Restoring…"}
                   >
                     {setType.isActive ? "Hide from planning/logging" : "Restore to planning/logging"}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </form>
