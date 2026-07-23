@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { ensureProgramTemplates } from "@/lib/server/templates";
 import { phaseLabels, programTypeLabels, volumeWindowLabels } from "@/lib/programs/options";
 import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
+import { parseStoredWeeklyPlan } from "@/lib/templates/weeklyPlan";
 import {
   buildBodyMetricContext,
   buildDecisionFlags,
@@ -86,9 +87,13 @@ async function getSuggestedTemplate(programId: string, userId: string, templates
   const program = await prisma.program.findFirst({ where: { id: programId, userId } });
   if (!program) return orderedTemplates[0] ?? null;
 
+  const weeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan);
+  const availableTemplates = orderedTemplates.filter((template) => !weeklyPlan.missedTemplateIds.includes(template.id));
+  const planningTemplates = availableTemplates.length > 0 ? availableTemplates : orderedTemplates;
+
   if (program.rotationStyle === "WEEKDAY_BASED") {
     const day = new Date().getDay();
-    return orderedTemplates.find((template) => template.weekday === day) ?? orderedTemplates[0] ?? null;
+    return planningTemplates.find((template) => template.weekday === day) ?? planningTemplates[0] ?? null;
   }
 
   const recentCompleted = await prisma.workoutSession.findMany({
@@ -99,7 +104,7 @@ async function getSuggestedTemplate(programId: string, userId: string, templates
   });
 
   return getNextTemplateFromRotation({
-    templates: orderedTemplates,
+    templates: planningTemplates,
     rotationSequence: program.rotationSequence,
     completedTemplateHistory: recentCompleted
       .map((session) => session.templateId)

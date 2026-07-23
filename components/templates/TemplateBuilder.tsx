@@ -12,6 +12,7 @@ import {
   updateTemplateExerciseSetPlan,
   updateTemplateExpectedOccurrences,
   updateProgramRotationSequence,
+  updateProgramWeeklyMissedWorkouts,
 } from "@/lib/server/templates";
 import { buildTemplateTargetNotices, buildTemplateVolumePreview, type TemplateVolumePreviewRow } from "@/lib/templates/volumePreview";
 import { repBuckets, slotPriorities, slotRoles } from "@/lib/planning/mesocycleGenerator";
@@ -43,7 +44,21 @@ type AllTemplateExerciseItem = Props["allTemplateExercises"][number] & {
 };
 type MovementGroupOption = Props["movementGroups"][number];
 type SetTypeOption = Props["setTypes"][number];
-type GeneratedTemplateItem = Props["generatedTemplateItems"][number];
+type GeneratedTemplateItem = Props["generatedTemplateItems"][number] & {
+  weeklyAdjustedPlannedSets: number;
+  weeklyAdjustmentDelta: number;
+  isMissedThisWeek: boolean;
+  weeklyAdjustmentReason: string | null;
+};
+
+type WeeklyPlanSummary = {
+  weekStart: string;
+  missedTemplateIds: string[];
+  completedTemplateIds: string[];
+  missedSets: number;
+  reallocatedSets: number;
+  unallocatedSets: number;
+};
 type TargetNotice = ReturnType<typeof buildTemplateTargetNotices>[number];
 
 const selectClass =
@@ -105,7 +120,7 @@ function OptionSelect({ name, defaultValue, options }: { name: string; defaultVa
   );
 }
 
-export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, movementGroups, setTypes, generatedTemplateItems, rotationSequenceText }: Props) {
+export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, movementGroups, setTypes, prescription, generatedTemplateItems, rotationSequenceText }: Props) {
   if (!selectedProgram) {
     return (
       <Card>
@@ -127,7 +142,18 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
   const typedSetTypes = setTypes as SetTypeOption[];
   const typedGeneratedTemplateItems = generatedTemplateItems as GeneratedTemplateItem[];
   const typedRotationSequenceText = String(rotationSequenceText ?? "");
+  const weeklyPlan = (prescription?.generated.weeklyPlan ?? null) as WeeklyPlanSummary | null;
+  const allGeneratedItems = (prescription?.generated.items ?? []) as GeneratedTemplateItem[];
   const generatedByTemplateExercise = new Map(typedGeneratedTemplateItems.map((item: GeneratedTemplateItem) => [item.id, item]));
+  const weeklyTemplateRows = typedTemplates.map((template) => {
+    const items = allGeneratedItems.filter((item) => item.templateId === template.id);
+    return {
+      templateId: template.id,
+      baseSets: items.reduce((sum, item) => sum + item.adjustedPlannedSets, 0),
+      plannedSets: items.reduce((sum, item) => sum + item.weeklyAdjustedPlannedSets, 0),
+      changes: items.filter((item) => item.weeklyAdjustmentDelta !== 0),
+    };
+  });
 
   const selectedTemplatePreview = buildTemplateVolumePreview({
     program: typedSelectedProgram,
@@ -249,6 +275,64 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
             </form>
           ))}
         </div>
+      </Card>
+
+      <Card className="space-y-3">
+        <div>
+          <h2 className="text-base font-semibold text-slate-100">This week availability</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Mark a workout that will be missed. Its movement-pattern sets are spread across remaining, not-yet-completed workouts where matching slots have capacity.
+          </p>
+          {weeklyPlan ? <p className="mt-1 text-xs text-slate-500">Week starting {weeklyPlan.weekStart}</p> : null}
+        </div>
+
+        <form action={updateProgramWeeklyMissedWorkouts.bind(null, typedSelectedProgram.id)} className="space-y-2">
+          <input type="hidden" name="selectedTemplateId" value={selectedTemplate?.id ?? typedTemplates[0]?.id ?? ""} />
+          {typedTemplates.map((template) => {
+            const completed = weeklyPlan?.completedTemplateIds.includes(template.id) ?? false;
+            const missed = weeklyPlan?.missedTemplateIds.includes(template.id) ?? false;
+            const preview = weeklyTemplateRows.find((row) => row.templateId === template.id);
+            return (
+              <label key={template.id} className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${completed ? "border-emerald-500/20 bg-emerald-500/5" : "border-slate-800 bg-slate-950"}`}>
+                <div>
+                  <p className="text-sm font-semibold text-slate-100">{template.name}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {completed ? "Completed this week" : missed ? "Marked missed" : "Planned"}
+                    {preview ? ` · ${preview.baseSets} → ${preview.plannedSets} sets` : ""}
+                  </p>
+                  {preview?.changes.length ? (
+                    <p className="mt-1 text-xs text-amber-300">
+                      {preview.changes.slice(0, 3).map((item) => `${item.movementGroupName} ${item.weeklyAdjustmentDelta > 0 ? "+" : ""}${item.weeklyAdjustmentDelta}`).join(" · ")}
+                    </p>
+                  ) : null}
+                </div>
+                <span className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+                  {completed ? "Done" : "Miss"}
+                  <input
+                    type="checkbox"
+                    name="missedTemplateId"
+                    value={template.id}
+                    defaultChecked={missed && !completed}
+                    disabled={completed}
+                    className="h-5 w-5"
+                  />
+                </span>
+              </label>
+            );
+          })}
+
+          {weeklyPlan && weeklyPlan.missedSets > 0 ? (
+            <div className={`rounded-xl border p-3 text-sm ${weeklyPlan.unallocatedSets > 0 ? "border-amber-400/30 bg-amber-400/10 text-amber-100" : "border-slate-800 bg-slate-950 text-slate-300"}`}>
+              Missed {weeklyPlan.missedSets} sets · reallocated {weeklyPlan.reallocatedSets}
+              {weeklyPlan.unallocatedSets > 0 ? ` · ${weeklyPlan.unallocatedSets} could not be placed within matching movement-pattern capacity` : " · all sets placed"}
+            </div>
+          ) : null}
+
+          <p className="text-xs text-slate-500">
+            Redistribution is week-specific and does not alter the base template. If no explicit max is set, a remaining slot can receive at most one recovery set.
+          </p>
+          <Button className="w-full sm:w-auto">Save weekly availability</Button>
+        </form>
       </Card>
 
       {selectedTemplate ? (

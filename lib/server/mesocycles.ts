@@ -321,7 +321,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
   const endExclusive = addDays(startDate, mesocycle.lengthWeeks * 7);
   const days = mesocycle.lengthWeeks * 7;
   const priorityIds = new Set(program.priorityMuscles.map((link: any) => link.muscleId));
-  const prescription = await buildProgramPrescription(program.id, userId, { mesocycleId: mesocycle.id });
+  const prescription = await buildProgramPrescription(program.id, userId, { mesocycleId: mesocycle.id, includeWeeklyPlan: false });
   const windowDays = volumeWindowDays(program.volumeWindowType, program.customWindowDays ?? null);
   const planMultiplier = days / windowDays;
   const secondaryContribution = toNumber(program.secondaryContribution, 0.5);

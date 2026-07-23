@@ -134,15 +134,19 @@ type LoggerWeightSuggestion = {
 
 type SelectedTemplatePrescription = {
   mesocycleName: string | null;
+  weekStart: string;
   items: Array<{
     id: string;
     exerciseName: string;
     movementGroupName: string;
     basePlannedSets: number;
     adjustedPlannedSets: number;
+    weeklyAdjustedPlannedSets: number;
+    isMissedThisWeek: boolean;
     prescribedMinReps: number | null;
     prescribedMaxReps: number | null;
     adjustmentReason: string | null;
+    weeklyAdjustmentReason: string | null;
   }>;
 };
 
@@ -434,25 +438,36 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
 }
 
 function PrescriptionPreview({ prescription }: { prescription: SelectedTemplatePrescription }) {
-  const changed = prescription.items.filter((item) => item.adjustedPlannedSets !== item.basePlannedSets || item.adjustmentReason);
+  const finalSets = (item: SelectedTemplatePrescription["items"][number]) =>
+    item.isMissedThisWeek ? item.adjustedPlannedSets : item.weeklyAdjustedPlannedSets;
+  const changed = prescription.items.filter(
+    (item) => finalSets(item) !== item.basePlannedSets || item.adjustmentReason || item.weeklyAdjustmentReason || item.isMissedThisWeek,
+  );
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Planned prescription</p>
       <p className="mt-1 text-sm text-slate-300">
-        {prescription.mesocycleName ? `Mesocycle overlay: ${prescription.mesocycleName}` : "No active mesocycle overlay"}
+        {prescription.mesocycleName ? `Mesocycle overlay: ${prescription.mesocycleName}` : "No active mesocycle overlay"} · week starting {prescription.weekStart}
       </p>
       <div className="mt-3 space-y-2">
-        {(changed.length > 0 ? changed : prescription.items.slice(0, 4)).map((item) => (
-          <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-slate-800 p-2 text-sm">
-            <span className="text-slate-200">{item.movementGroupName}</span>
-            <span className={item.adjustedPlannedSets !== item.basePlannedSets ? "text-amber-300" : "text-slate-400"}>
-              {item.basePlannedSets} → {item.adjustedPlannedSets} sets
-              {item.prescribedMinReps && item.prescribedMaxReps ? ` · ${item.prescribedMinReps}-${item.prescribedMaxReps}` : ""}
-            </span>
-            {item.adjustmentReason ? <span className="col-span-2 text-xs text-slate-500">{item.adjustmentReason}</span> : null}
-          </div>
-        ))}
+        {(changed.length > 0 ? changed : prescription.items.slice(0, 4)).map((item) => {
+          const planned = finalSets(item);
+          return (
+            <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-slate-800 p-2 text-sm">
+              <span className="text-slate-200">{item.movementGroupName}</span>
+              <span className={planned !== item.basePlannedSets ? "text-amber-300" : "text-slate-400"}>
+                {item.basePlannedSets} → {planned} sets
+                {item.prescribedMinReps && item.prescribedMaxReps ? ` · ${item.prescribedMinReps}-${item.prescribedMaxReps}` : ""}
+              </span>
+              {item.adjustmentReason ? <span className="col-span-2 text-xs text-slate-500">{item.adjustmentReason}</span> : null}
+              {item.weeklyAdjustmentReason ? <span className="col-span-2 text-xs text-amber-300">{item.weeklyAdjustmentReason}</span> : null}
+              {item.isMissedThisWeek ? (
+                <span className="col-span-2 text-xs text-amber-300">This template is marked missed. Starting it manually uses its normal mesocycle prescription.</span>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

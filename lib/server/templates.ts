@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db/prisma";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
 import { defaultTemplateName } from "@/lib/templates/defaults";
 import { formatRotationSequenceText, parseRotationSequenceInput } from "@/lib/templates/rotationSequence";
+import { endOfIsoWeek, startOfIsoWeek, toDateOnly } from "@/lib/templates/weeklyPlan";
 import {
   templateExerciseSchema,
   templateExerciseSetPlanSchema,
@@ -295,6 +296,60 @@ export async function updateTemplateExpectedOccurrences(templateId: string, form
   revalidatePath("/templates");
   revalidatePath("/dashboard");
   redirect(`/templates?programId=${template.programId}&templateId=${input.selectedTemplateId ?? template.id}`);
+}
+
+export async function updateProgramWeeklyMissedWorkouts(programId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const program = await prisma.program.findFirst({ where: { id: programId, userId, isArchived: false } });
+  if (!program) redirect("/templates");
+
+  const templates = await prisma.workoutTemplate.findMany({
+    where: { programId, userId, isArchived: false, isActive: true },
+    select: { id: true },
+  });
+  const validTemplateIds = new Set(templates.map((template) => template.id));
+  const weekStartDate = startOfIsoWeek();
+  const completedSessions: Array<{ templateId: string | null }> = await prisma.workoutSession.findMany({
+    where: {
+      userId,
+      programId,
+      status: "COMPLETED",
+      templateId: { not: null },
+      performedAt: { gte: weekStartDate, lt: endOfIsoWeek(weekStartDate) },
+    },
+    select: { templateId: true },
+  });
+  const completedTemplateIds = new Set<string>(
+    completedSessions
+      .map((session: { templateId: string | null }) => session.templateId)
+      .filter((templateId: string | null): templateId is string => Boolean(templateId)),
+  );
+
+  const missedTemplateIds = Array.from(
+    new Set(
+      formData
+        .getAll("missedTemplateId")
+        .map((value) => String(value))
+        .filter((templateId) => validTemplateIds.has(templateId) && !completedTemplateIds.has(templateId)),
+    ),
+  );
+
+  await prisma.program.update({
+    where: { id: program.id },
+    data: {
+      weeklyPlan: {
+        weekStart: toDateOnly(weekStartDate),
+        missedTemplateIds,
+        recipientExcludedTemplateIds: Array.from(completedTemplateIds),
+      },
+    },
+  });
+
+  const selectedTemplateId = String(formData.get("selectedTemplateId") ?? templates[0]?.id ?? "");
+  revalidatePath("/templates");
+  revalidatePath("/log");
+  revalidatePath("/dashboard");
+  redirect(`/templates?programId=${program.id}&templateId=${selectedTemplateId}`);
 }
 
 export async function updateProgramRotationSequence(programId: string, formData: FormData) {

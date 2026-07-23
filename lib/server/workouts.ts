@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { ensureProgramTemplates } from "@/lib/server/templates";
 import { getTemplatePrescription } from "@/lib/server/prescriptions";
 import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
+import { parseStoredWeeklyPlan } from "@/lib/templates/weeklyPlan";
 import { finishWorkoutSchema, startWorkoutSchema, stimulusSessionExerciseSchema, workoutSetSchema } from "@/lib/validations/workout";
 
 async function requireUserId() {
@@ -194,15 +195,19 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
     selectedTemplatePrescription: selectedTemplatePrescription
       ? {
           mesocycleName: selectedTemplatePrescription.activeMesocycle?.name ?? null,
+          weekStart: selectedTemplatePrescription.generated.weeklyPlan.weekStart,
           items: selectedTemplatePrescription.templateItems.map((item) => ({
             id: item.id,
             exerciseName: item.exerciseName,
             movementGroupName: item.movementGroupName,
             basePlannedSets: item.basePlannedSets,
             adjustedPlannedSets: item.adjustedPlannedSets,
+            weeklyAdjustedPlannedSets: item.weeklyAdjustedPlannedSets,
+            isMissedThisWeek: item.isMissedThisWeek,
             prescribedMinReps: item.prescribedMinReps,
             prescribedMaxReps: item.prescribedMaxReps,
             adjustmentReason: item.adjustmentReason,
+            weeklyAdjustmentReason: item.weeklyAdjustmentReason,
           })),
         }
       : null,
@@ -218,12 +223,16 @@ async function getSuggestedTemplate(
   const program = await prisma.program.findFirst({ where: { id: programId, userId } });
   if (!program) return templates[0] ?? null;
 
+  const weeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan);
+  const availableTemplates = templates.filter((template) => !weeklyPlan.missedTemplateIds.includes(template.id));
+  const planningTemplates = availableTemplates.length > 0 ? availableTemplates : templates;
+
   if (program.rotationStyle === "WEEKDAY_BASED") {
     const day = new Date().getDay();
-    return templates.find((template) => template.weekday === day) ?? templates[0] ?? null;
+    return planningTemplates.find((template) => template.weekday === day) ?? planningTemplates[0] ?? null;
   }
 
-  const orderedTemplates = [...templates].sort((a, b) => a.sequenceIndex - b.sequenceIndex);
+  const orderedTemplates = [...planningTemplates].sort((a, b) => a.sequenceIndex - b.sequenceIndex);
   const recentCompleted = await prisma.workoutSession.findMany({
     where: { userId, programId, status: "COMPLETED", templateId: { not: null } },
     orderBy: { performedAt: "desc" },
@@ -335,11 +344,17 @@ export async function startWorkout(formData: FormData) {
           mesocycleId: prescription.activeMesocycle?.id ?? null,
           mesocycleName: prescription.activeMesocycle?.name ?? null,
           generatedAt: new Date().toISOString(),
+          weekStart: prescription.generated.weeklyPlan.weekStart,
+          missedTemplateIds: prescription.generated.weeklyPlan.missedTemplateIds,
+          weeklyReallocatedSets: prescription.generated.weeklyPlan.reallocatedSets,
+          weeklyUnallocatedSets: prescription.generated.weeklyPlan.unallocatedSets,
         },
       },
     });
 
     for (const [index, item] of prescription.templateItems.entries()) {
+      const prescribedSets = item.isMissedThisWeek ? item.adjustedPlannedSets : item.weeklyAdjustedPlannedSets;
+      const prescriptionNotes = [item.adjustmentReason, item.isMissedThisWeek ? "Template was marked missed this week; base prescription used because it was started manually" : item.weeklyAdjustmentReason].filter(Boolean);
       const sessionExercise = await tx.workoutSessionExercise.create({
         data: {
           sessionId: created.id,
@@ -348,11 +363,11 @@ export async function startWorkout(formData: FormData) {
           sortOrder: index,
           isSubstitution: false,
           basePlannedSets: item.basePlannedSets,
-          prescribedPlannedSets: item.adjustedPlannedSets,
+          prescribedPlannedSets: prescribedSets,
           prescribedMinReps: item.prescribedMinReps,
           prescribedMaxReps: item.prescribedMaxReps,
           prescribedRepBucket: item.repBucket,
-          prescriptionNote: item.adjustmentReason,
+          prescriptionNote: prescriptionNotes.length > 0 ? prescriptionNotes.join("; ") : null,
           completedSets: 0,
           stimulusSetTypeId: item.defaultSetTypeId,
           repRangeStatus: "IN_RANGE",
@@ -360,7 +375,7 @@ export async function startWorkout(formData: FormData) {
         },
       });
 
-      const plannedSetRows = Array.from({ length: item.adjustedPlannedSets }, (_, setIndex) => {
+      const plannedSetRows = Array.from({ length: prescribedSets }, (_, setIndex) => {
         const setNumber = setIndex + 1;
         const planned = item.setPlans.find((plan) => plan.setNumber === setNumber);
         return { setNumber, setTypeId: planned?.setTypeId ?? item.defaultSetTypeId };

@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@prisma/adapter-pg": "latest",
-    "@prisma/client": "latest",
+    "@prisma/client": "^7.9.0",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "clsx": "latest",
@@ -38,7 +38,7 @@
     "eslint-config-next": "^16.2.9",
     "postcss": "latest",
     "prettier": "latest",
-    "prisma": "latest",
+    "prisma": "^7.9.0",
     "tailwindcss": "latest",
     "tsx": "latest",
     "typescript": "latest"

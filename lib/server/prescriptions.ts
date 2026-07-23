@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { generateMesocyclePrescription } from "@/lib/planning/mesocycleGenerator";
+import { applyWeeklyMissedWorkoutPlan, endOfIsoWeek, parseStoredWeeklyPlan, startOfIsoWeek, toDateOnly } from "@/lib/templates/weeklyPlan";
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
@@ -38,7 +39,11 @@ async function getMesocycleForPrescription(programId: string, userId: string, me
   });
 }
 
-export async function buildProgramPrescription(programId: string, userId: string, options?: { mesocycleId?: string | null }) {
+export async function buildProgramPrescription(
+  programId: string,
+  userId: string,
+  options?: { mesocycleId?: string | null; includeWeeklyPlan?: boolean },
+) {
   const program = await prisma.program.findFirst({
     where: { id: programId, userId, isArchived: false },
     include: {
@@ -152,7 +157,55 @@ export async function buildProgramPrescription(programId: string, userId: string
     templateExercises,
   });
 
-  return { program, activeMesocycle, generated };
+  const includeWeeklyPlan = options?.includeWeeklyPlan !== false;
+  const weekStartDate = startOfIsoWeek();
+  const weekStart = toDateOnly(weekStartDate);
+  const storedWeeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan, weekStart);
+  const completedSessions: Array<{ templateId: string | null }> = includeWeeklyPlan
+    ? await prisma.workoutSession.findMany({
+        where: {
+          userId,
+          programId: program.id,
+          status: "COMPLETED",
+          templateId: { not: null },
+          performedAt: { gte: weekStartDate, lt: endOfIsoWeek(weekStartDate) },
+        },
+        select: { templateId: true },
+      })
+    : [];
+  const completedTemplateIds: string[] = Array.from(
+    new Set(
+      completedSessions
+        .map((session: { templateId: string | null }) => session.templateId)
+        .filter((templateId: string | null): templateId is string => Boolean(templateId)),
+    ),
+  );
+
+  const weekly = includeWeeklyPlan
+    ? applyWeeklyMissedWorkoutPlan({
+        items: generated.items,
+        weekStart,
+        missedTemplateIds: storedWeeklyPlan.missedTemplateIds,
+        completedTemplateIds,
+        recipientExcludedTemplateIds: storedWeeklyPlan.recipientExcludedTemplateIds,
+      })
+    : applyWeeklyMissedWorkoutPlan({
+        items: generated.items,
+        weekStart,
+        missedTemplateIds: [],
+        completedTemplateIds: [],
+        recipientExcludedTemplateIds: [],
+      });
+
+  return {
+    program,
+    activeMesocycle,
+    generated: {
+      ...generated,
+      items: weekly.items,
+      weeklyPlan: weekly.summary,
+    },
+  };
 }
 
 export async function getTemplatePrescription(programId: string, templateId: string, userId: string) {
