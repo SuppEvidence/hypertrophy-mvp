@@ -2,9 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Activity, BarChart3, Database, Dumbbell, Home, LogOut, Settings, ClipboardList, MoreHorizontal, TrendingUp } from "lucide-react";
 import { createClient } from "@/lib/auth/server";
-import { ensureProfile } from "@/lib/auth/profile";
-import { prisma } from "@/lib/db/prisma";
 import { Button } from "@/components/ui/Button";
+import { requireUser } from "@/lib/auth/user";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
@@ -33,21 +32,7 @@ async function signOut() {
 }
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
-  await ensureProfile(user);
-
-  const [muscleCount, movementCount, setTypeCount, exerciseCount] = await Promise.all([
-    prisma.muscle.count(),
-    prisma.movementGroup.count(),
-    prisma.setType.count(),
-    prisma.exercise.count({ where: { isSeed: true } }),
-  ]);
+  await requireUser();
 
   return (
     <div className="min-h-screen bg-slate-950 pb-24 text-slate-100 md:pb-0">
@@ -72,13 +57,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </nav>
-          <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-400">
-            <p className="font-semibold text-slate-200">Seed foundation</p>
-            <p>{muscleCount} muscles</p>
-            <p>{movementCount} movement groups</p>
-            <p>{setTypeCount} set types</p>
-            <p>{exerciseCount} seed exercises</p>
-          </div>
           <form action={signOut} className="mt-4">
             <Button variant="secondary" className="w-full gap-2">
               <LogOut size={16} /> Logout

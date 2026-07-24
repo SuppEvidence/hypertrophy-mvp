@@ -18,8 +18,10 @@ function formatDate(value: Date | string) {
 
 function getCompletedSetCount(session: WorkoutHistoryItem) {
   return session.exercises.reduce((total: number, item: WorkoutHistoryItem["exercises"][number]) => {
-    if (item.completedSets !== null && item.completedSets !== undefined) return total + item.completedSets;
-    return total + item.sets.filter((set: WorkoutHistoryItem["exercises"][number]["sets"][number]) => set.isCompleted).length;
+    if (item.sets.length > 0) {
+      return total + item.sets.filter((set: WorkoutHistoryItem["exercises"][number]["sets"][number]) => set.isCompleted).length;
+    }
+    return total + Math.max(0, Number(item.completedSets ?? 0));
   }, 0);
 }
 

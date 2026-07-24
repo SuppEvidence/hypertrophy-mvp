@@ -13,10 +13,19 @@ const globalForPrisma = globalThis as unknown as {
   prismaPool?: Pool;
 };
 
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 const pool =
   globalForPrisma.prismaPool ??
   new Pool({
     connectionString,
+    max: positiveInteger(process.env.PG_POOL_MAX, process.env.NODE_ENV === "production" ? 4 : 10),
+    idleTimeoutMillis: positiveInteger(process.env.PG_IDLE_TIMEOUT_MS, 20_000),
+    connectionTimeoutMillis: positiveInteger(process.env.PG_CONNECTION_TIMEOUT_MS, 10_000),
+    allowExitOnIdle: process.env.NODE_ENV !== "production",
   });
 
 const adapter = new PrismaPg(pool);

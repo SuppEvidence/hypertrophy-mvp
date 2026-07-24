@@ -3,24 +3,13 @@
 import type { ProgramPhase } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/auth/server";
-import { ensureProfile } from "@/lib/auth/profile";
+import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { estimateE1RM } from "@/lib/calculations/performance";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
 import { mesocycleSchema } from "@/lib/validations/mesocycle";
 import { getStimulusContribution, usesStimulusEntry } from "@/lib/workouts/stimulus";
-
-async function requireUserId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  await ensureProfile(user);
-  return user.id;
-}
 
 function toNumber(value: unknown, fallback = 0) {
   if (value === null || value === undefined) return fallback;

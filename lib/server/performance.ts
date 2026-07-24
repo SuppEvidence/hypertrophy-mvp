@@ -1,6 +1,4 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/auth/server";
-import { ensureProfile } from "@/lib/auth/profile";
+import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { calculateVolumeLoad, estimateE1RM, getBestSet, getTrendStatus } from "@/lib/calculations/performance";
 
@@ -14,16 +12,6 @@ function round(value: number | null, digits = 1) {
   if (value === null || !Number.isFinite(value)) return null;
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
-}
-
-async function requireUserId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  await ensureProfile(user);
-  return user.id;
 }
 
 type ExposureSet = {
@@ -42,49 +30,80 @@ type ExposureSet = {
 export async function getExercisePerformanceData(params?: { exerciseId?: string }) {
   const userId = await requireUserId();
 
-  const loggedSessionExercises = await prisma.workoutSessionExercise.findMany({
-    where: { session: { userId, status: "COMPLETED" }, sets: { some: { isCompleted: true } } },
-    orderBy: { session: { performedAt: "desc" } },
-    include: {
-      exercise: { include: { movementGroup: true } },
-      session: { include: { program: true, template: true } },
+  const loggedExercises = await prisma.exercise.findMany({
+    where: {
+      sessionExercises: {
+        some: {
+          session: { userId, status: "COMPLETED" },
+          sets: { some: { isCompleted: true } },
+        },
+      },
+    },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      movementGroup: { select: { name: true } },
     },
   });
 
-  const exerciseMap = new Map<string, { id: string; name: string; movementGroupName: string }>();
-  for (const item of loggedSessionExercises) {
-    exerciseMap.set(item.exerciseId, {
-      id: item.exerciseId,
-      name: item.exercise.name,
-      movementGroupName: item.exercise.movementGroup.name,
-    });
-  }
+  const exerciseOptions = loggedExercises.map((exercise) => ({
+    id: exercise.id,
+    name: exercise.name,
+    movementGroupName: exercise.movementGroup.name,
+  }));
+  const exerciseIds = new Set(exerciseOptions.map((exercise) => exercise.id));
+  const selectedExerciseId = params?.exerciseId && exerciseIds.has(params.exerciseId) ? params.exerciseId : exerciseOptions[0]?.id ?? null;
 
-  const exerciseOptions = Array.from(exerciseMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  const selectedExerciseId = params?.exerciseId && exerciseMap.has(params.exerciseId) ? params.exerciseId : exerciseOptions[0]?.id ?? null;
-
-  const selectedExercise = selectedExerciseId
-    ? await prisma.exercise.findFirst({
-        where: { id: selectedExerciseId, OR: [{ isSeed: true, userId: null }, { userId }] },
-        include: {
-          movementGroup: true,
-          primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
-          secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
-        },
-      })
-    : null;
-
-  const rawExposures = selectedExerciseId
-    ? await prisma.workoutSessionExercise.findMany({
-        where: { exerciseId: selectedExerciseId, session: { userId, status: "COMPLETED" } },
-        orderBy: { session: { performedAt: "desc" } },
-        take: 20,
-        include: {
-          session: { include: { program: true, template: true } },
-          sets: { orderBy: { setNumber: "asc" }, include: { setType: true } },
-        },
-      })
-    : [];
+  const [selectedExercise, rawExposures, activeProgram] = await Promise.all([
+    selectedExerciseId
+      ? prisma.exercise.findFirst({
+          where: { id: selectedExerciseId, OR: [{ isSeed: true, userId: null }, { userId }] },
+          include: {
+            movementGroup: true,
+            primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+            secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+          },
+        })
+      : Promise.resolve(null),
+    selectedExerciseId
+      ? prisma.workoutSessionExercise.findMany({
+          where: { exerciseId: selectedExerciseId, session: { userId, status: "COMPLETED" } },
+          orderBy: { session: { performedAt: "desc" } },
+          take: 20,
+          select: {
+            id: true,
+            painFlag: true,
+            painNote: true,
+            isSubstitution: true,
+            session: {
+              select: {
+                performedAt: true,
+                name: true,
+                program: { select: { name: true } },
+                template: { select: { name: true } },
+              },
+            },
+            sets: {
+              orderBy: { setNumber: "asc" },
+              select: {
+                id: true,
+                setNumber: true,
+                weight: true,
+                reps: true,
+                rir: true,
+                isCompleted: true,
+                setType: { select: { name: true, isIntensifier: true } },
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    prisma.program.findFirst({
+      where: { userId, isActive: true, isArchived: false },
+      select: { name: true },
+    }),
+  ]);
 
   const exposures = rawExposures.map((item: any) => {
     const sets: ExposureSet[] = item.sets.map((set: any) => {
@@ -148,7 +167,6 @@ export async function getExercisePerformanceData(params?: { exerciseId?: string 
     return best;
   }, null);
 
-  const activeProgram = await prisma.program.findFirst({ where: { userId, isActive: true, isArchived: false } });
   const programBest = activeProgram
     ? exposures
         .filter((exposure: any) => exposure.programName === activeProgram.name && exposure.bestSet?.e1rm)
@@ -203,10 +221,13 @@ async function buildComparableExerciseContext(userId: string, exerciseId: string
     },
     orderBy: { session: { performedAt: "desc" } },
     take: 30,
-    include: {
-      exercise: true,
-      session: true,
-      sets: { include: { setType: true } },
+    select: {
+      exerciseId: true,
+      exercise: { select: { name: true } },
+      session: { select: { performedAt: true } },
+      sets: {
+        select: { weight: true, reps: true, isCompleted: true },
+      },
     },
   });
 

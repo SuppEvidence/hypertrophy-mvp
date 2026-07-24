@@ -2,21 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/auth/server";
-import { ensureProfile } from "@/lib/auth/profile";
+import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { calculateFatigueSummary } from "@/lib/metrics/fatigue";
 import { metricLogSchema } from "@/lib/validations/metrics";
-
-async function requireUserId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  await ensureProfile(user);
-  return user.id;
-}
 
 function dateInputToDate(value: string) {
   const parsed = new Date(`${value}T12:00:00`);

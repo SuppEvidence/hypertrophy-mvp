@@ -3,8 +3,7 @@
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/auth/server";
-import { ensureProfile } from "@/lib/auth/profile";
+import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
 import { defaultTemplateName } from "@/lib/templates/defaults";
@@ -18,60 +17,95 @@ import {
   templateRotationSequenceSchema,
 } from "@/lib/validations/template";
 
-async function requireUserId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  await ensureProfile(user);
-  return user.id;
-}
-
 function numberOrNull(value: FormDataEntryValue | null) {
   if (value === null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export async function ensureProgramTemplates(programId: string, userId: string) {
-  const program = await prisma.program.findFirst({ where: { id: programId, userId, isArchived: false } });
+export async function ensureProgramTemplates(
+  programId: string,
+  userId: string,
+  programSnapshot?: {
+    id: string;
+    userId: string;
+    isArchived: boolean;
+    templateCount: number;
+    programType: Parameters<typeof defaultTemplateName>[0];
+  },
+) {
+  const [program, allTemplates] = await Promise.all([
+    programSnapshot
+      ? Promise.resolve(
+          programSnapshot.id === programId && programSnapshot.userId === userId && !programSnapshot.isArchived
+            ? programSnapshot
+            : null,
+        )
+      : prisma.program.findFirst({
+          where: { id: programId, userId, isArchived: false },
+          select: { id: true, userId: true, isArchived: true, templateCount: true, programType: true },
+        }),
+    prisma.workoutTemplate.findMany({
+      where: { programId, userId },
+      orderBy: { sequenceIndex: "asc" },
+    }),
+  ]);
+
   if (!program) return [];
 
-  const allTemplates = await prisma.workoutTemplate.findMany({
-    where: { programId, userId },
-    orderBy: { sequenceIndex: "asc" },
-  });
   const byIndex = new Map(allTemplates.map((template) => [template.sequenceIndex, template]));
+  const reactivateIds: string[] = [];
+  const missingIndexes: number[] = [];
+
+  for (let index = 0; index < program.templateCount; index += 1) {
+    const existing = byIndex.get(index);
+    if (!existing) {
+      missingIndexes.push(index);
+    } else if (existing.isArchived || !existing.isActive) {
+      reactivateIds.push(existing.id);
+    }
+  }
+
+  const archiveIds = allTemplates
+    .filter((template) => template.sequenceIndex >= program.templateCount && (!template.isArchived || template.isActive))
+    .map((template) => template.id);
+
+  const needsSync = reactivateIds.length > 0 || missingIndexes.length > 0 || archiveIds.length > 0;
+
+  if (!needsSync) {
+    return allTemplates.filter((template) => template.sequenceIndex < program.templateCount && !template.isArchived && template.isActive);
+  }
 
   await prisma.$transaction(async (tx) => {
-    for (let index = 0; index < program.templateCount; index += 1) {
-      const existing = byIndex.get(index);
-      if (existing) {
-        if (existing.isArchived || !existing.isActive) {
-          await tx.workoutTemplate.update({ where: { id: existing.id }, data: { isArchived: false, isActive: true } });
-        }
-      } else {
-        await tx.workoutTemplate.create({
-          data: {
-            userId,
-            programId,
-            name: defaultTemplateName(program.programType, index),
-            sequenceIndex: index,
-            expectedOccurrences: 1,
-          },
-        });
-      }
+    if (reactivateIds.length > 0) {
+      await tx.workoutTemplate.updateMany({
+        where: { id: { in: reactivateIds } },
+        data: { isArchived: false, isActive: true },
+      });
     }
 
-    await tx.workoutTemplate.updateMany({
-      where: { programId, userId, sequenceIndex: { gte: program.templateCount } },
-      data: { isArchived: true, isActive: false },
-    });
+    if (missingIndexes.length > 0) {
+      await tx.workoutTemplate.createMany({
+        data: missingIndexes.map((index) => ({
+          userId,
+          programId,
+          name: defaultTemplateName(program.programType, index),
+          sequenceIndex: index,
+          expectedOccurrences: 1,
+        })),
+      });
+    }
+
+    if (archiveIds.length > 0) {
+      await tx.workoutTemplate.updateMany({
+        where: { id: { in: archiveIds } },
+        data: { isArchived: true, isActive: false },
+      });
+    }
   });
 
   return prisma.workoutTemplate.findMany({
-    where: { programId, userId, isArchived: false },
+    where: { programId, userId, isArchived: false, isActive: true },
     orderBy: { sequenceIndex: "asc" },
   });
 }
@@ -104,10 +138,8 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
   const selectedProgram =
     programs.find((program) => program.id === params?.programId) ?? programs.find((program) => program.isActive) ?? programs[0] ?? null;
 
-  const templates = selectedProgram ? await ensureProgramTemplates(selectedProgram.id, userId) : [];
-  const selectedTemplate = templates.find((template) => template.id === params?.templateId) ?? templates[0] ?? null;
-
-  const [exercises, allMovementGroups, setTypes] = await Promise.all([
+  const [templates, exercises, allMovementGroups, setTypes] = await Promise.all([
+    selectedProgram ? ensureProgramTemplates(selectedProgram.id, userId, selectedProgram) : Promise.resolve([]),
     prisma.exercise.findMany({
       where: {
         isArchived: false,
@@ -129,41 +161,43 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
       orderBy: [{ userId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
     }),
   ]);
+  const selectedTemplate = templates.find((template) => template.id === params?.templateId) ?? templates[0] ?? null;
 
-  const templateExercises = selectedTemplate
-    ? await prisma.templateExercise.findMany({
-        where: { templateId: selectedTemplate.id },
-        orderBy: { sortOrder: "asc" },
-        include: templateExerciseInclude,
-      })
-    : [];
-
-  const allTemplateExercises = selectedProgram
-    ? await prisma.templateExercise.findMany({
-        where: {
-          template: {
-            programId: selectedProgram.id,
-            userId,
-            isArchived: false,
-            isActive: true,
-          },
-        },
-        orderBy: [{ template: { sequenceIndex: "asc" } }, { sortOrder: "asc" }],
-        include: {
-          ...templateExerciseInclude,
-          template: {
-            select: {
-              id: true,
-              name: true,
-              sequenceIndex: true,
-              expectedOccurrences: true,
+  const [templateExercises, allTemplateExercises, prescription] = await Promise.all([
+    selectedTemplate
+      ? prisma.templateExercise.findMany({
+          where: { templateId: selectedTemplate.id },
+          orderBy: { sortOrder: "asc" },
+          include: templateExerciseInclude,
+        })
+      : Promise.resolve([]),
+    selectedProgram
+      ? prisma.templateExercise.findMany({
+          where: {
+            template: {
+              programId: selectedProgram.id,
+              userId,
+              isArchived: false,
+              isActive: true,
             },
           },
-        },
-      })
-    : [];
+          orderBy: [{ template: { sequenceIndex: "asc" } }, { sortOrder: "asc" }],
+          include: {
+            ...templateExerciseInclude,
+            template: {
+              select: {
+                id: true,
+                name: true,
+                sequenceIndex: true,
+                expectedOccurrences: true,
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    selectedProgram ? buildProgramPrescription(selectedProgram.id, userId) : Promise.resolve(null),
+  ]);
 
-  const prescription = selectedProgram ? await buildProgramPrescription(selectedProgram.id, userId) : null;
   const generatedTemplateItems = selectedTemplate
     ? prescription?.generated.items.filter((item) => item.templateId === selectedTemplate.id).sort((a, b) => a.sortOrder - b.sortOrder) ?? []
     : [];

@@ -81,11 +81,13 @@ async function getDashboardMesocycle(programId: string, userId: string) {
   };
 }
 
-async function getSuggestedTemplate(programId: string, userId: string, templates: Array<{ id: string; name: string; sequenceIndex: number; weekday: number | null }>) {
+async function getSuggestedTemplate(
+  program: { id: string; rotationStyle: string; rotationSequence: unknown; weeklyPlan: unknown },
+  userId: string,
+  templates: Array<{ id: string; name: string; sequenceIndex: number; weekday: number | null }>,
+) {
   if (templates.length === 0) return null;
   const orderedTemplates = [...templates].sort((a, b) => a.sequenceIndex - b.sequenceIndex);
-  const program = await prisma.program.findFirst({ where: { id: programId, userId } });
-  if (!program) return orderedTemplates[0] ?? null;
 
   const weeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan);
   const availableTemplates = orderedTemplates.filter((template) => !weeklyPlan.missedTemplateIds.includes(template.id));
@@ -97,7 +99,7 @@ async function getSuggestedTemplate(programId: string, userId: string, templates
   }
 
   const recentCompleted = await prisma.workoutSession.findMany({
-    where: { userId, programId, status: "COMPLETED", templateId: { not: null } },
+    where: { userId, programId: program.id, status: "COMPLETED", templateId: { not: null } },
     orderBy: { performedAt: "desc" },
     take: 20,
     select: { templateId: true },
@@ -123,7 +125,22 @@ export async function getDashboardData(userId: string) {
   });
 
   if (!activeProgram) {
-    const latestMetrics = await prisma.metricLog.findMany({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" }, take: 30 });
+    const latestMetrics = await prisma.metricLog.findMany({
+      where: { userId, isDraft: false },
+      orderBy: { loggedAt: "desc" },
+      take: 30,
+      select: {
+        loggedAt: true,
+        bodyweight: true,
+        waist: true,
+        sleepDuration: true,
+        sleepQuality: true,
+        stress: true,
+        readiness: true,
+        manualFatigue: true,
+        sorenessJointIrritation: true,
+      },
+    });
     const fatigueTrend = buildFatigueTrend(latestMetrics);
     const bodyMetrics = buildBodyMetricContext(latestMetrics);
     return {
@@ -154,10 +171,8 @@ export async function getDashboardData(userId: string) {
 
   const windowDays = selectedWindowDays(activeProgram);
   const windowStart = selectedWindowStart(new Date(), windowDays);
-  const templates = await ensureProgramTemplates(activeProgram.id, userId);
-  const suggestedTemplate = await getSuggestedTemplate(activeProgram.id, userId, templates);
-
-  const [sessions, metrics, mesocycle] = await Promise.all([
+  const [templates, sessions, metrics, mesocycle] = await Promise.all([
+    ensureProgramTemplates(activeProgram.id, userId, activeProgram),
     prisma.workoutSession.findMany({
       where: {
         userId,
@@ -166,26 +181,69 @@ export async function getDashboardData(userId: string) {
         performedAt: { gte: windowStart },
       },
       orderBy: { performedAt: "asc" },
-      include: {
+      select: {
+        id: true,
+        performedAt: true,
+        templateId: true,
         exercises: {
           orderBy: { sortOrder: "asc" },
-          include: {
-            stimulusSetType: true,
+          select: {
+            exerciseId: true,
+            completedSets: true,
+            repRangeStatus: true,
+            effortStatus: true,
+            stimulusSetType: { select: { multiplier: true, isIntensifier: true } },
             exercise: {
-              include: {
-                movementGroup: true,
-                primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
-                secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+              select: {
+                name: true,
+                movementGroup: { select: { id: true, name: true, sortOrder: true } },
+                primaryMuscles: {
+                  orderBy: { muscle: { sortOrder: "asc" } },
+                  select: { muscleId: true, muscle: { select: { name: true, sortOrder: true } } },
+                },
+                secondaryMuscles: {
+                  orderBy: { muscle: { sortOrder: "asc" } },
+                  select: { muscleId: true, muscle: { select: { name: true, sortOrder: true } } },
+                },
               },
             },
-            sets: { orderBy: { setNumber: "asc" }, include: { setType: true } },
+            sets: {
+              orderBy: { setNumber: "asc" },
+              select: {
+                setNumber: true,
+                weight: true,
+                reps: true,
+                isCompleted: true,
+                repRangeStatus: true,
+                effortStatus: true,
+                painFlag: true,
+                setType: { select: { multiplier: true, isIntensifier: true } },
+              },
+            },
           },
         },
       },
     }),
-    prisma.metricLog.findMany({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" }, take: 30 }),
+    prisma.metricLog.findMany({
+      where: { userId, isDraft: false },
+      orderBy: { loggedAt: "desc" },
+      take: 30,
+      select: {
+        loggedAt: true,
+        bodyweight: true,
+        waist: true,
+        sleepDuration: true,
+        sleepQuality: true,
+        stress: true,
+        readiness: true,
+        manualFatigue: true,
+        sorenessJointIrritation: true,
+      },
+    }),
     getDashboardMesocycle(activeProgram.id, userId),
   ]);
+
+  const suggestedTemplate = await getSuggestedTemplate(activeProgram, userId, templates);
 
   const volumeRows = buildMuscleVolumeRows(activeProgram, sessions);
   const priorityRows = volumeRows.filter((row: any) => row.isPriority);

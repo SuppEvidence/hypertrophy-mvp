@@ -15,6 +15,7 @@ async function getActiveMesocycle(programId: string, userId: string, now = new D
   const mesocycles = await prisma.programMesocycle.findMany({
     where: { programId, userId, isArchived: false, startDate: { lte: now } },
     orderBy: { startDate: "desc" },
+    take: 12,
     include: {
       volumeTargets: { include: { muscle: true } },
       repPolicies: true,
@@ -44,36 +45,54 @@ export async function buildProgramPrescription(
   userId: string,
   options?: { mesocycleId?: string | null; includeWeeklyPlan?: boolean },
 ) {
-  const program = await prisma.program.findFirst({
-    where: { id: programId, userId, isArchived: false },
-    include: {
-      volumeTargets: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
-      templates: {
-        where: { userId, isActive: true, isArchived: false },
-        orderBy: { sequenceIndex: "asc" },
-        include: {
-          exercises: {
-            orderBy: { sortOrder: "asc" },
-            include: {
-              defaultSetType: true,
-              movementGroup: true,
-              setPlans: { orderBy: { setNumber: "asc" }, include: { setType: true } },
-              exercise: {
-                include: {
-                  movementGroup: true,
-                  primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
-                  secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+  const includeWeeklyPlan = options?.includeWeeklyPlan !== false;
+  const weekStartDate = startOfIsoWeek();
+  const weekStart = toDateOnly(weekStartDate);
+
+  const [program, activeMesocycle, completedSessions] = await Promise.all([
+    prisma.program.findFirst({
+      where: { id: programId, userId, isArchived: false },
+      include: {
+        volumeTargets: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+        templates: {
+          where: { userId, isActive: true, isArchived: false },
+          orderBy: { sequenceIndex: "asc" },
+          include: {
+            exercises: {
+              orderBy: { sortOrder: "asc" },
+              include: {
+                defaultSetType: true,
+                movementGroup: true,
+                setPlans: { orderBy: { setNumber: "asc" }, include: { setType: true } },
+                exercise: {
+                  include: {
+                    movementGroup: true,
+                    primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+                    secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
+                  },
                 },
               },
             },
           },
         },
       },
-    },
-  });
-  if (!program) return null;
+    }),
+    getMesocycleForPrescription(programId, userId, options?.mesocycleId),
+    includeWeeklyPlan
+      ? prisma.workoutSession.findMany({
+          where: {
+            userId,
+            programId,
+            status: "COMPLETED",
+            templateId: { not: null },
+            performedAt: { gte: weekStartDate, lt: endOfIsoWeek(weekStartDate) },
+          },
+          select: { templateId: true },
+        })
+      : Promise.resolve([]),
+  ]);
 
-  const activeMesocycle = await getMesocycleForPrescription(programId, userId, options?.mesocycleId);
+  if (!program) return null;
   const templateExercises = program.templates.flatMap((template) =>
     template.exercises.map((item) => ({
       id: item.id,
@@ -157,22 +176,7 @@ export async function buildProgramPrescription(
     templateExercises,
   });
 
-  const includeWeeklyPlan = options?.includeWeeklyPlan !== false;
-  const weekStartDate = startOfIsoWeek();
-  const weekStart = toDateOnly(weekStartDate);
   const storedWeeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan, weekStart);
-  const completedSessions: Array<{ templateId: string | null }> = includeWeeklyPlan
-    ? await prisma.workoutSession.findMany({
-        where: {
-          userId,
-          programId: program.id,
-          status: "COMPLETED",
-          templateId: { not: null },
-          performedAt: { gte: weekStartDate, lt: endOfIsoWeek(weekStartDate) },
-        },
-        select: { templateId: true },
-      })
-    : [];
   const completedTemplateIds: string[] = Array.from(
     new Set(
       completedSessions

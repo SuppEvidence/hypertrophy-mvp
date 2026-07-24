@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { createClient } from "@/lib/auth/server";
-import { ensureProfile } from "@/lib/auth/profile";
 import { getDashboardData } from "@/lib/server/dashboard";
+import { requireUserId } from "@/lib/auth/user";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -54,13 +53,8 @@ function DetailsCard({ title, children }: { title: string; children: React.React
 }
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  await ensureProfile(user);
-  const dashboard = await getDashboardData(user.id);
+  const userId = await requireUserId();
+  const dashboard = await getDashboardData(userId);
 
   return (
     <div className="space-y-5">
