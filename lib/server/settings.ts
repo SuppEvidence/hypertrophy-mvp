@@ -38,8 +38,8 @@ function normalizeMetricVisibility(value: unknown): MetricVisibility {
   if (!value || typeof value !== "object" || Array.isArray(value)) return defaultMetricVisibility;
   const source = value as Record<string, unknown>;
   return {
-    bodyweight: typeof source.bodyweight === "boolean" ? source.bodyweight : true,
-    waist: typeof source.waist === "boolean" ? source.waist : true,
+    bodyweight: true,
+    waist: true,
     sleep: typeof source.sleep === "boolean" ? source.sleep : true,
     stress: typeof source.stress === "boolean" ? source.stress : true,
     readiness: typeof source.readiness === "boolean" ? source.readiness : true,
@@ -117,10 +117,10 @@ export async function updateUserSettings(formData: FormData) {
   const parsed = settingsSchema.parse({
     preferredUnit: formData.get("preferredUnit"),
     defaultSecondaryContribution: formData.get("defaultSecondaryContribution"),
-    advancedMuscleMode: boolFromForm(formData, "advancedMuscleMode"),
+    advancedMuscleMode: false,
     metricVisibility: {
-      bodyweight: boolFromForm(formData, "metric_bodyweight"),
-      waist: boolFromForm(formData, "metric_waist"),
+      bodyweight: true,
+      waist: true,
       sleep: boolFromForm(formData, "metric_sleep"),
       stress: boolFromForm(formData, "metric_stress"),
       readiness: boolFromForm(formData, "metric_readiness"),

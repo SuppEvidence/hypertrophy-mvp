@@ -368,7 +368,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                 <OptionSelect name="slotPriority" defaultValue="STANDARD" options={slotPriorities} />
                 <OptionSelect name="slotRole" defaultValue="ISOLATION" options={slotRoles} />
                 <OptionSelect name="repBucket" defaultValue="ISOLATION" options={repBuckets} />
-                <Field label="RIR" name="rirTarget" type="number" min={0} max={10} step="0.5" defaultValue={2} />
+                <input type="hidden" name="rirTarget" value="" />
                 <label className="block space-y-2 col-span-2 md:col-span-1">
                   <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Initial set type</span>
                   <select name="defaultSetTypeId" className={selectClass} defaultValue={normalSetType?.id} required>
@@ -409,7 +409,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                           <p className="mt-1 text-xs text-slate-500">
                             Base {item.plannedSets} sets
                             {generated ? ` · Meso ${generated.adjustedPlannedSets} sets` : ""}
-                            {" · "}{generated?.prescribedMinReps ?? item.minReps ?? "?"}–{generated?.prescribedMaxReps ?? item.maxReps ?? "?"} reps · RIR {item.rirTarget === null ? "—" : Number(item.rirTarget)}
+                            {" · "}{generated?.prescribedMinReps ?? item.minReps ?? "?"}–{generated?.prescribedMaxReps ?? item.maxReps ?? "?"} reps
                           </p>
                           {generated?.adjustmentReason ? <p className="mt-1 text-xs text-amber-300">{generated.adjustmentReason}</p> : null}
                           <p className="mt-1 text-xs text-slate-500">
@@ -463,7 +463,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                             <OptionSelect name="slotPriority" defaultValue={item.slotPriority} options={slotPriorities} />
                             <OptionSelect name="slotRole" defaultValue={item.slotRole} options={slotRoles} />
                             <OptionSelect name="repBucket" defaultValue={item.repBucket} options={repBuckets} />
-                            <Field label="RIR" name="rirTarget" type="number" min={0} max={10} step="0.5" defaultValue={item.rirTarget === null ? "" : Number(item.rirTarget)} />
+                            <input type="hidden" name="rirTarget" value={item.rirTarget === null ? "" : Number(item.rirTarget)} />
                             <label className="block space-y-2 col-span-2 md:col-span-1">
                               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">New-set default</span>
                               <select name="defaultSetTypeId" defaultValue={item.defaultSetTypeId} className={selectClass} required>

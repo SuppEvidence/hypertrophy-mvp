@@ -170,6 +170,7 @@ model Exercise {
   defaultMinReps  Int?     @map("default_min_reps")
   defaultMaxReps  Int?     @map("default_max_reps")
   tags            String[] @default([])
+  setupNotes      String?  @map("setup_notes")
   isSeed          Boolean  @default(false) @map("is_seed")
   isActive        Boolean  @default(true) @map("is_active")
   isArchived      Boolean  @default(false) @map("is_archived")

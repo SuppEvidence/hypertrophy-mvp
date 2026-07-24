@@ -50,6 +50,7 @@ export type ExerciseFormExercise = {
   name: string;
   movementGroupId: string;
   tags: string[];
+  setupNotes: string | null;
   isSeed: boolean;
   isActive: boolean;
   isArchived: boolean;

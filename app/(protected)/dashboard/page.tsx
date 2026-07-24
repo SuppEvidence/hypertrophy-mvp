@@ -76,7 +76,7 @@ export default async function DashboardPage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active setup</p>
               <h2 className="mt-2 text-xl font-semibold text-slate-100">{dashboard.activeProgram.name}</h2>
               <p className="mt-1 text-sm text-slate-400">
-                {dashboard.activeProgram.phaseLabel} · {dashboard.activeProgram.volumeWindowLabel} · {dashboard.completedSessionsCount} sessions
+                {dashboard.activeProgram.volumeWindowLabel} · {dashboard.completedSessionsCount} sessions
               </p>
             </div>
             <Link href="/log" className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-white">

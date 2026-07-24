@@ -51,6 +51,7 @@ type LoggerTemplate = {
 type LoggerExerciseOption = {
   id: string;
   name: string;
+  setupNotes: string | null;
   movementGroupId: string;
   movementGroup?: { id: string; name: string };
 };
@@ -112,6 +113,7 @@ type LoggerSessionExercise = LoggedExerciseForSummary & {
   stimulusSetType: { id: string; name: string; multiplier: unknown; isIntensifier: boolean } | null;
   exercise: LoggedExerciseForSummary["exercise"] & {
     name: string;
+    setupNotes: string | null;
     movementGroup: { id: string; name: string };
   };
   sets: LoggerSet[];
@@ -502,6 +504,14 @@ function EditableSessionBody({
               <p className="mt-1 text-xs text-slate-500">
                 Selected: {item.exercise.name} · Primary: {item.exercise.primaryMuscles.map((link: MuscleNameLink) => link.muscle.name).join(", ") || "—"}
               </p>
+              {item.exercise.setupNotes ? (
+                <details className="mt-2 rounded-lg border border-sky-900/60 bg-sky-950/20 px-2 py-1.5">
+                  <summary className="cursor-pointer truncate text-xs text-sky-200" title={item.exercise.setupNotes}>
+                    Setup: {item.exercise.setupNotes}
+                  </summary>
+                  <p className="mt-1 whitespace-pre-wrap border-t border-sky-900/40 pt-1 text-xs leading-5 text-sky-100/80">{item.exercise.setupNotes}</p>
+                </details>
+              ) : null}
               <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <span className="rounded-full border border-slate-800 bg-slate-950 px-2 py-1 font-semibold text-slate-300">{formatRepRange(item)}</span>

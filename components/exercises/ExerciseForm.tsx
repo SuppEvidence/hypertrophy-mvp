@@ -56,6 +56,18 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
           <span className="block text-xs text-slate-500">Comma-separated classification tags only.</span>
         </label>
 
+        <label className="block space-y-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Setup notes</span>
+          <textarea
+            name="setupNotes"
+            defaultValue={exercise?.setupNotes ?? ""}
+            placeholder="Seat 4, handles at upper chest, cable height 7…"
+            maxLength={500}
+            className="min-h-24 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400"
+          />
+          <span className="block text-xs text-slate-500">Shown compactly in the workout logger for machine settings and setup cues.</span>
+        </label>
+
         <div className="grid gap-3 md:grid-cols-2">
           <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
             <span>

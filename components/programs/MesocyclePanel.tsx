@@ -4,11 +4,9 @@ import {
   updateMesocycle,
   updateMesocycleMovementRepPolicies,
   updateMesocycleMovementVolumeTargets,
-  updateMesocycleRepPolicies,
   updateMesocycleVolumeTargets,
 } from "@/lib/server/mesocycles";
 import { phaseOptions } from "@/lib/programs/options";
-import { repBuckets } from "@/lib/planning/mesocycleGenerator";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -154,14 +152,14 @@ function MesocycleTargetsForm({ mesocycle, muscles, programTargets }: { mesocycl
         {muscles.map((muscle) => {
           const target = targetMap.get(muscle.id);
           return (
-            <div key={muscle.id} className="grid grid-cols-[1fr_70px_70px_70px_auto] items-end gap-2 rounded-xl border border-slate-800 p-2">
+            <div key={muscle.id} className="grid grid-cols-[1fr_90px_auto] items-end gap-2 rounded-xl border border-slate-800 p-2">
               <div>
                 <p className="text-sm font-semibold text-slate-200">{muscle.name}</p>
                 <p className="text-xs text-slate-500">Program {fallbackMap.get(muscle.id) ?? 0}/wk</p>
               </div>
-              <Field label="Target" name={`target:${muscle.id}`} type="number" min="0" max="40" step="0.5" defaultValue={target?.targetSets ?? ""} />
-              <Field label="Min" name={`min:${muscle.id}`} type="number" min="0" max="40" step="0.5" defaultValue={target?.minimumSets ?? ""} />
-              <Field label="Max" name={`max:${muscle.id}`} type="number" min="0" max="50" step="0.5" defaultValue={target?.maximumSets ?? ""} />
+              <Field label="Weekly target" name={`target:${muscle.id}`} type="number" min="0" max="40" step="0.5" defaultValue={target?.targetSets ?? ""} />
+              <input type="hidden" name={`min:${muscle.id}`} value={target?.minimumSets ?? ""} />
+              <input type="hidden" name={`max:${muscle.id}`} value={target?.maximumSets ?? ""} />
               <label className="flex min-h-12 flex-col justify-end gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Priority
                 <span className="flex min-h-12 items-center justify-center rounded-xl border border-slate-800 bg-slate-950 px-3">
@@ -177,33 +175,6 @@ function MesocycleTargetsForm({ mesocycle, muscles, programTargets }: { mesocycl
   );
 }
 
-function MesocycleRepPolicyForm({ mesocycle }: { mesocycle: Mesocycle }) {
-  const policyMap = new Map(mesocycle.repPolicies.map((policy) => [policy.repBucket, policy]));
-
-  return (
-    <form action={updateMesocycleRepPolicies.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-      <div>
-        <h4 className="font-semibold text-slate-100">Rep bucket policy</h4>
-        <p className="mt-1 text-xs text-slate-500">Blank rows fall back to template exercise rep ranges.</p>
-      </div>
-      {repBuckets.map((bucket) => {
-        const policy = policyMap.get(bucket.value);
-        return (
-          <div key={bucket.value} className="grid grid-cols-[1fr_80px_80px] items-end gap-2 rounded-xl border border-slate-800 p-2">
-            <div>
-              <p className="text-sm font-semibold text-slate-200">{bucket.label}</p>
-              <p className="text-xs text-slate-500">Default {bucket.defaultMin}-{bucket.defaultMax}</p>
-            </div>
-            <Field label="Min" name={`min:${bucket.value}`} type="number" min="1" max="100" defaultValue={policy?.minReps ?? ""} />
-            <Field label="Max" name={`max:${bucket.value}`} type="number" min="1" max="100" defaultValue={policy?.maxReps ?? ""} />
-          </div>
-        );
-      })}
-      <Button type="submit" variant="secondary" className="w-full">Save rep policy</Button>
-    </form>
-  );
-}
-
 function MesocycleMovementRepPolicyForm({ mesocycle, movementGroups }: { mesocycle: Mesocycle; movementGroups: Array<{ id: string; name: string }> }) {
   const policyMap = new Map(mesocycle.movementRepPolicies.map((policy) => [policy.movementGroupId, policy]));
 
@@ -211,7 +182,7 @@ function MesocycleMovementRepPolicyForm({ mesocycle, movementGroups }: { mesocyc
     <form action={updateMesocycleMovementRepPolicies.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
       <div>
         <h4 className="font-semibold text-slate-100">Movement-pattern rep policy</h4>
-        <p className="mt-1 text-xs text-slate-500">Overrides rep buckets for the selected movement pattern. Blank rows fall back to bucket/template/exercise defaults.</p>
+        <p className="mt-1 text-xs text-slate-500">Overrides the target range for the selected movement pattern. Blank rows fall back to template and exercise defaults.</p>
       </div>
       {movementGroups.map((movementGroup) => {
         const policy = policyMap.get(movementGroup.id);
@@ -242,7 +213,7 @@ function MesocycleMovementVolumeTargetsForm({ mesocycle, movementGroups }: { mes
         return (
           <div key={movementGroup.id} className="grid grid-cols-[1fr_90px] items-end gap-2 rounded-xl border border-slate-800 p-2">
             <p className="text-sm font-semibold text-slate-200">{movementGroup.name}</p>
-            <Field label="Target" name={`target:${movementGroup.id}`} type="number" min="0" max="60" step="0.5" defaultValue={target?.targetSets ?? ""} />
+            <Field label="Weekly target" name={`target:${movementGroup.id}`} type="number" min="0" max="60" step="0.5" defaultValue={target?.targetSets ?? ""} />
           </div>
         );
       })}
@@ -349,7 +320,6 @@ export function MesocyclePanel({ data }: Props) {
                   <MesocycleTargetsForm mesocycle={mesocycle} muscles={data.muscles} programTargets={data.programTargets} />
                   <MesocycleMovementVolumeTargetsForm mesocycle={mesocycle} movementGroups={data.movementGroups} />
                   <MesocycleMovementRepPolicyForm mesocycle={mesocycle} movementGroups={data.movementGroups} />
-                  <MesocycleRepPolicyForm mesocycle={mesocycle} />
                 </div>
               </div>
             </details>

@@ -3,9 +3,8 @@ import { archiveProgram, createProgramFromPreset, listUserPrograms, switchActive
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
-import type { ProgramPhase, ProgramType, ReferenceMuscle, RotationStyle, VolumeWindowType } from "@/lib/types/domain";
+import type { ProgramType, ReferenceMuscle, RotationStyle, VolumeWindowType } from "@/lib/types/domain";
 import {
-  phaseLabels,
   programTypeLabels,
   rotationStyleLabels,
   volumeWindowDays,
@@ -23,7 +22,6 @@ type ProgramListItem = {
   volumeWindowType: VolumeWindowType;
   customWindowDays: number | null;
   secondaryContribution: unknown;
-  activePhase: ProgramPhase;
   isActive: boolean;
   priorityMuscles: Array<{ muscle: Pick<ReferenceMuscle, "name"> }>;
   volumeTargets: Array<{ weeklyTargetSets: unknown }>;
@@ -89,7 +87,6 @@ export default async function ProgramsPage() {
                 <p><span className="text-slate-500">Rotation:</span> {rotationStyleLabels[program.rotationStyle]}</p>
                 <p><span className="text-slate-500">Window:</span> {volumeWindowLabels[program.volumeWindowType]} ({volumeWindowDays(program.volumeWindowType, program.customWindowDays)}d)</p>
                 <p><span className="text-slate-500">Secondary:</span> {percent(program.secondaryContribution)}</p>
-                <p><span className="text-slate-500">Phase:</span> {phaseLabels[program.activePhase]}</p>
                 <p><span className="text-slate-500">Targets:</span> {targetCount} muscles</p>
               </div>
               <p className="mt-3 text-sm text-slate-400"><span className="text-slate-500">Priority:</span> {priorityMuscles}</p>

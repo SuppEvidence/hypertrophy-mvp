@@ -74,18 +74,15 @@ export function SettingsForm({ settings, setTypes }: SettingsFormProps) {
             hint="Used as the default when creating future programs. Existing programs keep their own value."
           />
 
-          <Toggle name="advancedMuscleMode" label="Advanced muscle mode" defaultChecked={settings.advancedMuscleMode} />
         </Card>
 
         <Card className="mt-5 space-y-4">
           <div>
             <h2 className="font-semibold text-slate-100">Metric visibility</h2>
-            <p className="mt-1 text-sm text-slate-400">Controls which optional fields appear in the Metrics Logger. Hidden fields remain optional and do not affect existing logs.</p>
+            <p className="mt-1 text-sm text-slate-400">Bodyweight and waist are always available. Use these toggles only for optional recovery and lifestyle fields.</p>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2">
-            <Toggle name="metric_bodyweight" label="Bodyweight" defaultChecked={metrics.bodyweight} />
-            <Toggle name="metric_waist" label="Waist" defaultChecked={metrics.waist} />
             <Toggle name="metric_sleep" label="Sleep" defaultChecked={metrics.sleep} />
             <Toggle name="metric_stress" label="Stress" defaultChecked={metrics.stress} />
             <Toggle name="metric_readiness" label="Readiness" defaultChecked={metrics.readiness} />
