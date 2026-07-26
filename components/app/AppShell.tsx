@@ -1,28 +1,9 @@
-import Link from "next/link";
+import { LogOut } from "lucide-react";
 import { redirect } from "next/navigation";
-import { Activity, BarChart3, Database, Dumbbell, Home, LogOut, Settings, ClipboardList, MoreHorizontal, TrendingUp } from "lucide-react";
 import { createClient } from "@/lib/auth/server";
 import { Button } from "@/components/ui/Button";
 import { requireUser } from "@/lib/auth/user";
-
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: Home },
-  { href: "/programs", label: "Programs", icon: ClipboardList },
-  { href: "/exercises", label: "Exercises", icon: Database },
-  { href: "/templates", label: "Templates", icon: BarChart3 },
-  { href: "/log", label: "Log", icon: Dumbbell },
-  { href: "/metrics", label: "Metrics", icon: Activity },
-  { href: "/performance", label: "Performance", icon: TrendingUp },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
-
-const mobileNavItems = [
-  { href: "/dashboard", label: "Dashboard", icon: Home },
-  { href: "/programs", label: "Programs", icon: ClipboardList },
-  { href: "/templates", label: "Templates", icon: BarChart3 },
-  { href: "/log", label: "Log", icon: Dumbbell },
-  { href: "/more", label: "More", icon: MoreHorizontal },
-];
+import { DesktopNavigation, MobileNavigation } from "@/components/app/AppNavigation";
 
 async function signOut() {
   "use server";
@@ -31,72 +12,60 @@ async function signOut() {
   redirect("/login");
 }
 
+function BrandLockup({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className={`${compact ? "h-10 w-10" : "h-11 w-11"} grid shrink-0 place-items-center rounded-xl bg-gradient-to-br from-orange-400 to-orange-600 text-sm font-black tracking-[-0.04em] text-white shadow-[0_12px_28px_-12px_rgba(249,115,22,0.95)]`}>
+        RFD
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-[10px] font-bold uppercase tracking-[0.2em] text-orange-400">Ripped Fat Dude</p>
+        <p className={`${compact ? "text-base" : "text-lg"} truncate font-bold tracking-[-0.02em] text-slate-50`}>Hypertrophy Tracker</p>
+      </div>
+    </div>
+  );
+}
+
 export async function AppShell({ children }: { children: React.ReactNode }) {
-  await requireUser();
+  const user = await requireUser();
 
   return (
-    <div className="min-h-screen bg-slate-950 pb-24 text-slate-100 md:pb-0">
-      <div className="mx-auto flex min-h-screen max-w-6xl md:grid md:grid-cols-[260px_1fr]">
-        <aside className="hidden border-r border-slate-800 bg-slate-950/95 p-4 md:block">
-          <div className="mb-6">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Hypertrophy</p>
-            <h1 className="mt-1 text-xl font-bold">Tracker MVP</h1>
+    <div className="min-h-screen pb-24 text-slate-100 md:pb-0">
+      <div className="mx-auto min-h-screen max-w-[1440px] md:grid md:grid-cols-[276px_minmax(0,1fr)]">
+        <aside className="sticky top-0 hidden h-screen border-r border-white/[0.06] bg-slate-950/[0.72] px-4 py-5 backdrop-blur-xl md:flex md:flex-col">
+          <div className="px-1">
+            <BrandLockup />
           </div>
-          <nav className="space-y-1">
-            {navItems.map((item: any) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-900 hover:text-white"
-                >
-                  <Icon size={18} />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-          <form action={signOut} className="mt-4">
-            <Button variant="secondary" className="w-full gap-2">
-              <LogOut size={16} /> Logout
-            </Button>
-          </form>
+
+          <div className="mt-7 flex-1 overflow-y-auto pr-1">
+            <DesktopNavigation />
+          </div>
+
+          <div className="mt-5 border-t border-white/[0.06] pt-4">
+            {user.email ? <p className="mb-3 truncate px-2 text-xs text-slate-500">{user.email}</p> : null}
+            <form action={signOut}>
+              <Button variant="ghost" className="w-full justify-start gap-3 text-slate-400">
+                <LogOut size={17} /> Sign out
+              </Button>
+            </form>
+            <p className="mt-3 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">Version 1.0.0</p>
+          </div>
         </aside>
 
-        <main className="w-full px-4 py-5 md:px-8 md:py-8">
-          <div className="mb-5 flex items-center justify-between md:hidden">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Hypertrophy</p>
-              <p className="text-lg font-bold">Tracker MVP</p>
-            </div>
+        <main className="min-w-0 px-3 py-4 sm:px-5 md:px-8 md:py-7 lg:px-10">
+          <div className="mb-5 flex items-center justify-between rounded-2xl border border-white/[0.06] bg-slate-950/[0.55] p-3 shadow-sm backdrop-blur md:hidden">
+            <BrandLockup compact />
             <form action={signOut}>
-              <Button variant="ghost" className="px-3">
+              <Button variant="ghost" className="h-10 min-h-10 w-10 px-0" aria-label="Sign out">
                 <LogOut size={18} />
               </Button>
             </form>
           </div>
-          {children}
+          <div className="mx-auto w-full max-w-6xl">{children}</div>
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-800 bg-slate-950/95 px-2 py-2 backdrop-blur md:hidden">
-        <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
-          {mobileNavItems.map((item: any) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[11px] font-medium text-slate-400 hover:bg-slate-900 hover:text-white"
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      <MobileNavigation />
     </div>
   );
 }

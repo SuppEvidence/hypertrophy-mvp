@@ -271,6 +271,113 @@ export async function renameTemplate(templateId: string, formData: FormData) {
   redirect(`/templates?programId=${template.programId}&templateId=${template.id}`);
 }
 
+function duplicateTemplateName(sourceName: string, existingNames: string[]) {
+  const used = new Set(existingNames.map((name) => name.trim().toLowerCase()));
+
+  for (let copyNumber = 1; copyNumber <= 99; copyNumber += 1) {
+    const suffix = copyNumber === 1 ? " copy" : ` copy ${copyNumber}`;
+    const candidate = `${sourceName.slice(0, Math.max(1, 80 - suffix.length)).trimEnd()}${suffix}`;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+
+  return `${sourceName.slice(0, 70).trimEnd()} copy ${Date.now().toString().slice(-5)}`;
+}
+
+export async function duplicateTemplate(templateId: string, _formData: FormData) {
+  const userId = await requireUserId();
+  const source = await prisma.workoutTemplate.findFirst({
+    where: { id: templateId, userId, isArchived: false, program: { userId, isArchived: false } },
+    include: {
+      program: true,
+      exercises: {
+        orderBy: { sortOrder: "asc" },
+        include: { setPlans: { orderBy: { setNumber: "asc" } } },
+      },
+    },
+  });
+
+  if (!source) redirect("/templates");
+  if (source.program.templateCount >= 12) {
+    throw new Error("A program can contain at most 12 templates.");
+  }
+
+  const duplicate = await prisma.$transaction(async (tx) => {
+    const existingTemplates = await tx.workoutTemplate.findMany({
+      where: { programId: source.programId, userId },
+      select: { id: true, name: true, sequenceIndex: true, isArchived: true },
+      orderBy: { sequenceIndex: "asc" },
+    });
+    const newSequenceIndex = source.program.templateCount;
+    const sequenceConflict = existingTemplates.find((template) => template.sequenceIndex === newSequenceIndex);
+
+    if (sequenceConflict) {
+      const highestSequenceIndex = existingTemplates.reduce((highest, template) => Math.max(highest, template.sequenceIndex), -1);
+      await tx.workoutTemplate.update({
+        where: { id: sequenceConflict.id },
+        data: { sequenceIndex: highestSequenceIndex + 1 },
+      });
+    }
+
+    const created = await tx.workoutTemplate.create({
+      data: {
+        userId,
+        programId: source.programId,
+        name: duplicateTemplateName(source.name, existingTemplates.map((template) => template.name)),
+        sequenceIndex: newSequenceIndex,
+        weekday: null,
+        expectedOccurrences: source.expectedOccurrences,
+        isActive: true,
+        isArchived: false,
+        exercises: {
+          create: source.exercises.map((item) => ({
+            exerciseId: item.exerciseId,
+            movementGroupId: item.movementGroupId,
+            sortOrder: item.sortOrder,
+            plannedSets: item.plannedSets,
+            minSets: item.minSets,
+            maxSets: item.maxSets,
+            minReps: item.minReps,
+            maxReps: item.maxReps,
+            rirTarget: item.rirTarget,
+            defaultSetTypeId: item.defaultSetTypeId,
+            slotPriority: item.slotPriority,
+            slotRole: item.slotRole,
+            repBucket: item.repBucket,
+            autoAdjustable: item.autoAdjustable,
+            notes: item.notes,
+            setPlans: {
+              create: item.setPlans.map((plan) => ({
+                setNumber: plan.setNumber,
+                setTypeId: plan.setTypeId,
+              })),
+            },
+          })),
+        },
+      },
+    });
+
+    const currentRotation = Array.isArray(source.program.rotationSequence)
+      ? source.program.rotationSequence.filter((value): value is string => typeof value === "string")
+      : [];
+
+    await tx.program.update({
+      where: { id: source.programId },
+      data: {
+        templateCount: newSequenceIndex + 1,
+        rotationSequence: currentRotation.length > 0 ? [...currentRotation, created.id] : undefined,
+      },
+    });
+
+    return created;
+  });
+
+  revalidatePath("/templates");
+  revalidatePath("/programs");
+  revalidatePath("/dashboard");
+  revalidatePath("/log");
+  redirect(`/templates?programId=${source.programId}&templateId=${duplicate.id}`);
+}
+
 async function reorderProgramTemplates(params: {
   tx: Prisma.TransactionClient;
   userId: string;

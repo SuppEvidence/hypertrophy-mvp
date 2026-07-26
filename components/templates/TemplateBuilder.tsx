@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ChevronDown, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import {
   addTemplateExercise,
+  duplicateTemplate,
   moveTemplateExercise,
   removeTemplateExercise,
   renameTemplate,
@@ -62,7 +63,7 @@ type WeeklyPlanSummary = {
 type TargetNotice = ReturnType<typeof buildTemplateTargetNotices>[number];
 
 const selectClass =
-  "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-400";
+  "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-orange-400/80";
 
 function formatNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -337,11 +338,30 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
 
       {selectedTemplate ? (
         <>
-          <Card>
+          <Card className="space-y-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-400">Current template</p>
+                <h2 className="mt-1 text-lg font-semibold text-slate-100">{selectedTemplate.name}</h2>
+              </div>
+              <form action={duplicateTemplate.bind(null, selectedTemplate.id)}>
+                <Button
+                  variant="secondary"
+                  className="w-full gap-2 sm:w-auto"
+                  disabled={typedTemplates.length >= 12}
+                  title={typedTemplates.length >= 12 ? "A program can contain at most 12 templates." : undefined}
+                >
+                  <Copy size={16} /> Duplicate template
+                </Button>
+              </form>
+            </div>
             <form action={renameTemplate.bind(null, selectedTemplate.id)} className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
               <Field label="Template name" name="name" defaultValue={selectedTemplate.name} required />
               <Button>Save name</Button>
             </form>
+            <p className="text-xs leading-5 text-slate-500">
+              Duplicating copies every movement-pattern slot, set plan, rep range, set type, note, and weekly occurrence into a new independently editable template.
+            </p>
           </Card>
 
           <Card className="space-y-4">

@@ -20,7 +20,7 @@ export default async function EditProgramPage({ params, searchParams }: { params
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Edit program" description="Program-level hypertrophy settings. Templates and logging are intentionally deferred." />
+      <PageHeader title="Edit program" description="Edit program structure, volume defaults, priorities, and mesocycle overlays." />
       {query?.saved ? (
         <div className="rounded-2xl border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-100">Program planning saved.</div>
       ) : null}

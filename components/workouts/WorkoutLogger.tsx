@@ -17,7 +17,7 @@ import {
 import { buildWorkoutSummary, type LoggedExerciseForSummary } from "@/lib/workouts/summary";
 
 const selectClass =
-  "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400";
+  "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-orange-400/80";
 
 const repRangeStatusOptions = [
   { value: "IN_RANGE", label: "In range" },

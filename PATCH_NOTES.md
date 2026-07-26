@@ -1,19 +1,12 @@
-# Speed optimization patch
+# Version 1 productization patch
 
 No database migration is required.
 
 Main changes:
-- Deduplicated authentication/profile initialization per request.
-- Profile creation is now read-first and write-only when missing or email changed.
-- Removed four development count queries from every protected layout render.
-- Added conservative PostgreSQL pool limits/timeouts, configurable with optional env vars.
-- Workout autosave performs one scoped update and does not revalidate unrelated routes.
-- Completed workout changes still revalidate history, Dashboard, and Performance.
-- Suggested-weight history is bounded instead of loading lifetime set history.
-- Dashboard, Logger, Template Builder, history, and Performance queries use slimmer selects and more parallel reads.
-- Template synchronization exits without writes when templates are already aligned.
 
-Optional environment overrides:
-- PG_POOL_MAX
-- PG_IDLE_TIMEOUT_MS
-- PG_CONNECTION_TIMEOUT_MS
+- Branding changed to Ripped Fat Dude Hypertrophy Tracker.
+- Package and visible application version set to 1.0.0.
+- Product-level shell, navigation, authentication, card, form, loading, and error-state styling.
+- Remaining prototype and slice language removed from active views.
+- Template duplication added with a 12-template program limit.
+- Duplicate templates are independently editable and copy movement slots, volume rules, rep ranges, set plans, set types, notes, and expected occurrences.

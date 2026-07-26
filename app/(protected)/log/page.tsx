@@ -18,7 +18,7 @@ export default async function LogPage({ searchParams }: PageProps) {
     <div className="space-y-5">
       <PageHeader
         title="Workout Logger"
-        description="Template-based logging for real persisted sessions. Fast set entry first; analytics remain limited to session summary in this slice."
+        description="Choose the planned workout, select exercises from each movement-pattern pool, and log set quality with minimal friction."
       />
       <WorkoutLogger data={data} />
     </div>

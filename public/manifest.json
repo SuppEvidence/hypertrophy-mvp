@@ -1,10 +1,10 @@
 {
-  "name": "Hypertrophy Tracker",
-  "short_name": "Hypertrophy",
-  "description": "A hypertrophy-focused workout planning and tracking app for experienced lifters.",
+  "name": "Ripped Fat Dude Hypertrophy Tracker",
+  "short_name": "RFD Tracker",
+  "description": "Hypertrophy planning, stimulus logging, mesocycle review, and physique metrics for experienced lifters.",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#020617",
+  "background_color": "#071018",
+  "theme_color": "#071018",
   "orientation": "portrait"
 }

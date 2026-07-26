@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { autosaveWorkoutSet } from "@/lib/server/workouts";
 
 const inputClass =
-  "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400";
+  "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-orange-400/80";
 
 const smallSelectClass =
-  "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-2 py-2 text-sm text-slate-100 outline-none focus:border-slate-400";
+  "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-2 py-2 text-sm text-slate-100 outline-none focus:border-orange-400/80";
 
 type SetTypeOption = {
   id: string;

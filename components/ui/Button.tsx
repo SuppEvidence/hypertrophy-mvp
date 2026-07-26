@@ -12,10 +12,12 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variants = {
-  primary: "bg-slate-100 text-slate-950 hover:bg-white",
-  secondary: "bg-slate-800 text-slate-100 hover:bg-slate-700 border border-slate-700",
-  ghost: "bg-transparent text-slate-300 hover:bg-slate-900",
-  danger: "bg-red-950 text-red-100 border border-red-900 hover:bg-red-900",
+  primary:
+    "border border-orange-400/80 bg-orange-500 text-white shadow-[0_10px_28px_-14px_rgba(249,115,22,0.9)] hover:border-orange-300 hover:bg-orange-400",
+  secondary:
+    "border border-slate-700/80 bg-slate-800/80 text-slate-100 shadow-sm hover:border-slate-600 hover:bg-slate-700/90",
+  ghost: "border border-transparent bg-transparent text-slate-300 hover:border-slate-800 hover:bg-slate-900/70 hover:text-white",
+  danger: "border border-red-800/80 bg-red-950/70 text-red-100 hover:border-red-700 hover:bg-red-900/80",
 };
 
 function textFromChildren(children: ReactNode): string {
@@ -33,6 +35,7 @@ function inferPendingText(children: ReactNode) {
   if (!label) return null;
   if (label.startsWith("save")) return "Saving…";
   if (label.startsWith("create")) return "Creating…";
+  if (label.startsWith("duplicate")) return "Duplicating…";
   if (label.startsWith("add")) return "Adding…";
   if (label.startsWith("start")) return "Starting…";
   if (label.startsWith("finish")) return "Finishing…";
@@ -77,7 +80,7 @@ export function Button({
       disabled={disabled || isPending}
       aria-busy={showPendingContent || undefined}
       className={clsx(
-        "inline-flex min-h-11 items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex min-h-11 items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition duration-150 active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
         variants[variant],
         className,
       )}
@@ -88,7 +91,9 @@ export function Button({
           <LoaderCircle size={16} className="mr-2 shrink-0 animate-spin" aria-hidden="true" />
           {resolvedPendingText ?? children}
         </>
-      ) : children}
+      ) : (
+        children
+      )}
     </button>
   );
 }

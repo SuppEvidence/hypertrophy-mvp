@@ -39,7 +39,7 @@ export default async function ProgramsPage() {
       <div className="flex items-start justify-between gap-3">
         <PageHeader
           title="Programs"
-          description="Persisted program setup. Templates, sessions, and dashboard analytics are intentionally deferred."
+          description="Create and manage program structure, weekly volume targets, and active training blocks."
         />
         <Link href="/programs/new" className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-white">
           New

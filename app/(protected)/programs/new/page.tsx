@@ -10,7 +10,7 @@ export default async function NewProgramPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="New program" description="Create a persisted program configuration. Workout templates come in the next slice." />
+      <PageHeader title="New program" description="Create a program manually or start from a training-structure preset." />
       <Card>
         <h2 className="font-semibold text-slate-100">Quick presets</h2>
         <p className="mt-1 text-sm text-slate-400">Creates sensible defaults for structure, volume window, rotation, and secondary contribution.</p>

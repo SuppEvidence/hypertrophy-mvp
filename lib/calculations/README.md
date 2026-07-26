@@ -1,15 +1,12 @@
-# Calculation Layer Placeholder
+# Calculation layer
 
-Slice 1 intentionally does not implement hypertrophy calculations.
+Deterministic hypertrophy calculations live in this directory. UI components consume calculated outputs rather than embedding training logic directly.
 
-Future slices should place deterministic, unit-tested logic here for:
+Current responsibilities include:
 
-- Direct volume
-- Effective volume
-- Target conversion
-- e1RM
-- Fatigue scoring
-- Performance trends
-- Decision flags
-
-UI components should consume calculation outputs instead of embedding formulas.
+- Direct and secondary muscle volume
+- Productive-volume equivalents from set-type multipliers
+- Target coverage and movement-pattern coverage
+- Exercise performance trends and estimated 1RM context
+- Fatigue context
+- Dashboard coach signals

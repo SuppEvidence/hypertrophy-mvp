@@ -1,4 +1,7 @@
 {
+  "name": "ripped-fat-dude-hypertrophy-tracker",
+  "version": "1.0.0",
+  "private": true,
   "scripts": {
     "dev": "next dev",
     "verify:boundaries": "node scripts/verify-production-boundaries.mjs",

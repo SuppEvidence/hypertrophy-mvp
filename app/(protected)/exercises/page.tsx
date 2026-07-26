@@ -19,7 +19,7 @@ type ReferenceMovementGroup = { id: string; name: string };
 type ReferenceMuscle = { id: string; name: string };
 
 const inputClass =
-  "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-400";
+  "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-orange-400/80";
 
 export default async function ExercisesPage({ searchParams }: PageProps) {
   const params = await searchParams;

@@ -8,7 +8,7 @@ const moreItems = [
   { href: "/log/history", label: "Training Log History", description: "View, edit, or delete persisted workout sessions.", icon: History },
   { href: "/metrics", label: "Metrics", description: "Optional recovery and body metric logging.", icon: Activity },
   { href: "/performance", label: "Exercise Performance", description: "Exercise-level exposure, e1RM, volume-load, and PR context.", icon: TrendingUp },
-  { href: "/settings", label: "Settings", description: "User preferences and MVP configuration placeholder.", icon: Settings },
+  { href: "/settings", label: "Settings", description: "Units, metric visibility, and custom set-type configuration.", icon: Settings },
 ];
 
 type MoreItem = (typeof moreItems)[number];
@@ -16,7 +16,7 @@ type MoreItem = (typeof moreItems)[number];
 export default function MorePage() {
   return (
     <div className="space-y-5">
-      <PageHeader title="More" description="Secondary app areas for the authenticated app shell." />
+      <PageHeader title="More" description="Exercise management, history, metrics, performance, and app settings." />
       <div className="space-y-3">
         {moreItems.map((item: MoreItem) => {
           const Icon = item.icon;

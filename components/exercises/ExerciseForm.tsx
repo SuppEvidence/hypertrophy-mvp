@@ -11,7 +11,7 @@ type Props = {
 };
 
 const selectClass =
-  "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400";
+  "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-orange-400/80";
 
 export function ExerciseForm({ exercise, muscles, movementGroups, action }: Props) {
   const primaryIds = new Set(exercise?.primaryMuscles.map((link: any) => link.muscleId) ?? []);
@@ -63,7 +63,7 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
             defaultValue={exercise?.setupNotes ?? ""}
             placeholder="Seat 4, handles at upper chest, cable height 7…"
             maxLength={500}
-            className="min-h-24 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400"
+            className="min-h-24 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-orange-400/80"
           />
           <span className="block text-xs text-slate-500">Shown compactly in the workout logger for machine settings and setup cues.</span>
         </label>

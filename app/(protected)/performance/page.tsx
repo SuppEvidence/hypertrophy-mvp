@@ -46,7 +46,7 @@ export default async function PerformancePage({ searchParams }: PageProps) {
               id="exerciseId"
               name="exerciseId"
               defaultValue={data.selectedExercise?.id ?? ""}
-              className="min-h-12 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none focus:border-slate-400"
+              className="min-h-12 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none focus:border-orange-400/80"
             >
               {data.exerciseOptions.length === 0 ? <option value="">No completed exercise data yet</option> : null}
               {data.exerciseOptions.map((exercise: any) => (

@@ -1,9 +1,9 @@
 export default function ProtectedLoading() {
   return (
-    <div className="space-y-4">
-      <div className="h-8 w-48 animate-pulse rounded-xl bg-slate-800" />
-      <div className="h-28 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/80" />
-      <div className="h-40 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/80" />
+    <div className="space-y-4" aria-label="Loading view">
+      <div className="h-24 animate-pulse rounded-2xl border border-white/[0.05] bg-slate-900/[0.55]" />
+      <div className="h-32 animate-pulse rounded-2xl border border-white/[0.05] bg-slate-900/[0.55]" />
+      <div className="h-48 animate-pulse rounded-2xl border border-white/[0.05] bg-slate-900/[0.55]" />
     </div>
   );
 }

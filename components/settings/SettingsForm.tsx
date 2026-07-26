@@ -37,7 +37,7 @@ function Toggle({ name, label, defaultChecked }: { name: string; label: string; 
   return (
     <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/40 p-3 text-sm">
       <span className="font-medium text-slate-200">{label}</span>
-      <input name={name} type="checkbox" defaultChecked={defaultChecked} className="h-5 w-5 accent-slate-100" />
+      <input name={name} type="checkbox" defaultChecked={defaultChecked} className="h-5 w-5 accent-orange-500" />
     </label>
   );
 }
@@ -56,7 +56,7 @@ export function SettingsForm({ settings, setTypes }: SettingsFormProps) {
 
           <label className="block space-y-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Preferred unit</span>
-            <select name="preferredUnit" defaultValue={settings.preferredUnit} className="min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400">
+            <select name="preferredUnit" defaultValue={settings.preferredUnit} className="min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-orange-400/80">
               <option value="KG">kg</option>
               <option value="LB">lb</option>
             </select>
@@ -94,6 +94,18 @@ export function SettingsForm({ settings, setTypes }: SettingsFormProps) {
           <Button type="submit" className="w-full">Save settings</Button>
         </Card>
       </form>
+
+
+      <Card className="overflow-hidden border-orange-400/15 bg-gradient-to-br from-orange-500/[0.08] via-slate-900/70 to-slate-900/70">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-400">Ripped Fat Dude</p>
+            <h2 className="mt-1 font-semibold text-slate-100">Hypertrophy Tracker</h2>
+            <p className="mt-1 text-sm text-slate-400">Production release focused on hypertrophy planning, stimulus logging, and mesocycle review.</p>
+          </div>
+          <span className="shrink-0 rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1.5 text-xs font-bold text-orange-300">v1.0.0</span>
+        </div>
+      </Card>
 
       <Card className="space-y-4">
         <div>

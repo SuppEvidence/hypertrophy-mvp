@@ -16,7 +16,7 @@ type Props = {
   defaultSecondaryContribution?: number;
 };
 
-const inputClass = "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400";
+const inputClass = "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-orange-400/80";
 const selectClass = inputClass;
 
 function toInputNumber(value: unknown, fallback = "") {
@@ -125,7 +125,7 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
                 step="0.5"
                 defaultValue={targetMap.get(muscle.id) ?? ""}
                 placeholder="sets"
-                className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-right text-base text-slate-100 outline-none focus:border-slate-400"
+                className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-right text-base text-slate-100 outline-none focus:border-orange-400/80"
               />
             </div>
           ))}

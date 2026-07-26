@@ -2,7 +2,7 @@ import { createMetricLog } from "@/lib/server/metrics";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 
-const selectClass = "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-slate-400";
+const selectClass = "min-h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-orange-400/80";
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
@@ -116,7 +116,7 @@ export function MetricsForm({ visibility, draft }: { visibility: MetricVisibilit
         <textarea
           name="notes"
           rows={3}
-          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-slate-400"
+          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-orange-400/80"
           placeholder="Optional context"
           defaultValue={draft?.notes ?? ""}
         />
