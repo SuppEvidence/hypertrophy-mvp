@@ -1,12 +1,7 @@
-# Version 1 productization patch
+# V1.0.1 typecheck follow-up
 
-No database migration is required.
+No migration is required.
 
-Main changes:
-
-- Branding changed to Ripped Fat Dude Hypertrophy Tracker.
-- Package and visible application version set to 1.0.0.
-- Product-level shell, navigation, authentication, card, form, loading, and error-state styling.
-- Remaining prototype and slice language removed from active views.
-- Template duplication added with a 12-template program limit.
-- Duplicate templates are independently editable and copy movement slots, volume rules, rep ranges, set plans, set types, notes, and expected occurrences.
+Fixes:
+- Keeps mesocycle status inferred as the literal union ACTIVE | UPCOMING | COMPLETED.
+- Replaces the summary set type in LoggerSessionExercise so logger set rows retain their required id field.

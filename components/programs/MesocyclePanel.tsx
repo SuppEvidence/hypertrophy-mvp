@@ -1,6 +1,8 @@
+import Link from "next/link";
 import {
   archiveMesocycle,
   createMesocycle,
+  endMesocycle,
   updateMesocycle,
   updateMesocycleMovementRepPolicies,
   updateMesocycleMovementVolumeTargets,
@@ -11,12 +13,18 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 
+type MesocycleStatus = "ACTIVE" | "UPCOMING" | "COMPLETED";
+
 type Mesocycle = {
   id: string;
   name: string;
   phase: string;
+  status: MesocycleStatus;
   startDate: string;
   endDate: string;
+  plannedEndDate: string;
+  actualEndDate: string | null;
+  endedEarly: boolean;
   lengthWeeks: number;
   notes: string;
   volumeTargets: Array<{
@@ -36,6 +44,9 @@ type Review = {
   name: string;
   startDate: string;
   endDate: string;
+  plannedEndDate: string;
+  endedEarly: boolean;
+  durationDays: number;
   sessionCount: number;
   volume: Array<{
     muscleId: string;
@@ -91,6 +102,10 @@ function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function earliestDate(first: string, second: string) {
+  return first < second ? first : second;
+}
+
 function PhaseSelect({ defaultValue }: { defaultValue: string }) {
   return (
     <label className="block space-y-2">
@@ -109,18 +124,26 @@ function MesocycleForm({ programId, mesocycle, activePhase }: { programId: strin
 
   return (
     <form action={action} className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+      <div>
+        <h3 className="font-semibold text-slate-100">{mesocycle ? "Block settings" : "Create a mesocycle block"}</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          {mesocycle
+            ? "Dates and phase define this temporary block. Program structure remains unchanged."
+            : "Create the date range first. Program defaults are inherited automatically."}
+        </p>
+      </div>
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Mesocycle name" name="name" defaultValue={mesocycle?.name ?? "New mesocycle"} required />
         <PhaseSelect defaultValue={mesocycle?.phase ?? activePhase} />
         <Field label="Start date" name="startDate" type="date" defaultValue={mesocycle?.startDate ?? todayInputValue()} required />
-        <Field label="Length weeks" name="lengthWeeks" type="number" min="1" max="52" defaultValue={mesocycle?.lengthWeeks ?? 4} required />
+        <Field label="Planned length (weeks)" name="lengthWeeks" type="number" min="1" max="52" defaultValue={mesocycle?.lengthWeeks ?? 4} required />
       </div>
       <label className="block space-y-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Notes</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Block notes</span>
         <textarea name="notes" defaultValue={mesocycle?.notes ?? ""} className={textareaClass} />
       </label>
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="secondary">{mesocycle ? "Save mesocycle" : "Create mesocycle"}</Button>
+        <Button type="submit" variant="secondary">{mesocycle ? "Save block settings" : "Create mesocycle"}</Button>
         {mesocycle ? (
           <Button
             type="submit"
@@ -138,6 +161,32 @@ function MesocycleForm({ programId, mesocycle, activePhase }: { programId: strin
   );
 }
 
+function EndMesocycleForm({ mesocycle }: { mesocycle: Mesocycle }) {
+  const today = todayInputValue();
+  const latestAllowedDate = earliestDate(today, mesocycle.plannedEndDate);
+
+  return (
+    <details className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3">
+      <summary className="cursor-pointer text-sm font-semibold text-amber-200">End active mesocycle early</summary>
+      <form action={endMesocycle.bind(null, mesocycle.id)} className="mt-3 space-y-3">
+        <p className="text-xs leading-5 text-amber-100/70">
+          This stops the mesocycle overlay after the selected date. The original planned end date stays stored, and the review is scaled to the actual active duration.
+        </p>
+        <Field
+          label="Actual end date"
+          name="actualEndDate"
+          type="date"
+          min={mesocycle.startDate}
+          max={latestAllowedDate}
+          defaultValue={latestAllowedDate}
+          required
+        />
+        <Button type="submit" variant="danger" pendingText="Ending…" className="w-full">End mesocycle</Button>
+      </form>
+    </details>
+  );
+}
+
 function MesocycleTargetsForm({ mesocycle, muscles, programTargets }: { mesocycle: Mesocycle; muscles: Array<{ id: string; name: string }>; programTargets: Array<{ muscleId: string; weeklyTargetSets: number }> }) {
   const targetMap = new Map(mesocycle.volumeTargets.map((target) => [target.muscleId, target]));
   const fallbackMap = new Map(programTargets.map((target) => [target.muscleId, target.weeklyTargetSets]));
@@ -145,8 +194,8 @@ function MesocycleTargetsForm({ mesocycle, muscles, programTargets }: { mesocycl
   return (
     <form action={updateMesocycleVolumeTargets.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
       <div>
-        <h4 className="font-semibold text-slate-100">Mesocycle volume targets</h4>
-        <p className="mt-1 text-xs text-slate-500">Weekly targets. Blank rows fall back to program-level targets.</p>
+        <h4 className="font-semibold text-slate-100">Muscle-target exceptions</h4>
+        <p className="mt-1 text-xs text-slate-500">Optional weekly overrides. Leave a target blank to inherit the program baseline shown below it.</p>
       </div>
       <div className="space-y-2">
         {muscles.map((muscle) => {
@@ -155,13 +204,13 @@ function MesocycleTargetsForm({ mesocycle, muscles, programTargets }: { mesocycl
             <div key={muscle.id} className="grid grid-cols-[1fr_90px_auto] items-end gap-2 rounded-xl border border-slate-800 p-2">
               <div>
                 <p className="text-sm font-semibold text-slate-200">{muscle.name}</p>
-                <p className="text-xs text-slate-500">Program {fallbackMap.get(muscle.id) ?? 0}/wk</p>
+                <p className="text-xs text-slate-500">Inherited: {fallbackMap.get(muscle.id) ?? 0} sets/wk</p>
               </div>
-              <Field label="Weekly target" name={`target:${muscle.id}`} type="number" min="0" max="40" step="0.5" defaultValue={target?.targetSets ?? ""} />
+              <Field label="Override / wk" name={`target:${muscle.id}`} type="number" min="0" max="40" step="0.5" defaultValue={target?.targetSets ?? ""} />
               <input type="hidden" name={`min:${muscle.id}`} value={target?.minimumSets ?? ""} />
               <input type="hidden" name={`max:${muscle.id}`} value={target?.maximumSets ?? ""} />
               <label className="flex min-h-12 flex-col justify-end gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Priority
+                Block priority
                 <span className="flex min-h-12 items-center justify-center rounded-xl border border-slate-800 bg-slate-950 px-3">
                   <input name={`priority:${muscle.id}`} type="checkbox" defaultChecked={(target?.priorityLevel ?? 0) > 0} className="h-5 w-5" />
                 </span>
@@ -170,7 +219,7 @@ function MesocycleTargetsForm({ mesocycle, muscles, programTargets }: { mesocycl
           );
         })}
       </div>
-      <Button type="submit" variant="secondary" className="w-full">Save volume targets</Button>
+      <Button type="submit" variant="secondary" className="w-full">Save muscle exceptions</Button>
     </form>
   );
 }
@@ -181,8 +230,8 @@ function MesocycleMovementRepPolicyForm({ mesocycle, movementGroups }: { mesocyc
   return (
     <form action={updateMesocycleMovementRepPolicies.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
       <div>
-        <h4 className="font-semibold text-slate-100">Movement-pattern rep policy</h4>
-        <p className="mt-1 text-xs text-slate-500">Overrides the target range for the selected movement pattern. Blank rows fall back to template and exercise defaults.</p>
+        <h4 className="font-semibold text-slate-100">Movement-pattern rep-range exceptions</h4>
+        <p className="mt-1 text-xs text-slate-500">Optional block-specific ranges. Blank rows continue using template and exercise ranges.</p>
       </div>
       {movementGroups.map((movementGroup) => {
         const policy = policyMap.get(movementGroup.id);
@@ -194,7 +243,7 @@ function MesocycleMovementRepPolicyForm({ mesocycle, movementGroups }: { mesocyc
           </div>
         );
       })}
-      <Button type="submit" variant="secondary" className="w-full">Save movement rep policy</Button>
+      <Button type="submit" variant="secondary" className="w-full">Save rep-range exceptions</Button>
     </form>
   );
 }
@@ -205,21 +254,31 @@ function MesocycleMovementVolumeTargetsForm({ mesocycle, movementGroups }: { mes
   return (
     <form action={updateMesocycleMovementVolumeTargets.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
       <div>
-        <h4 className="font-semibold text-slate-100">Movement-pattern volume targets</h4>
-        <p className="mt-1 text-xs text-slate-500">Weekly target sets by movement pattern. Used for review now and set adjustment later.</p>
+        <h4 className="font-semibold text-slate-100">Movement-pattern review targets</h4>
+        <p className="mt-1 text-xs text-slate-500">Optional weekly targets for this block’s movement-pattern review. These do not replace the program’s muscle baselines.</p>
       </div>
       {movementGroups.map((movementGroup) => {
         const target = targetMap.get(movementGroup.id);
         return (
           <div key={movementGroup.id} className="grid grid-cols-[1fr_90px] items-end gap-2 rounded-xl border border-slate-800 p-2">
             <p className="text-sm font-semibold text-slate-200">{movementGroup.name}</p>
-            <Field label="Weekly target" name={`target:${movementGroup.id}`} type="number" min="0" max="60" step="0.5" defaultValue={target?.targetSets ?? ""} />
+            <Field label="Target / wk" name={`target:${movementGroup.id}`} type="number" min="0" max="60" step="0.5" defaultValue={target?.targetSets ?? ""} />
           </div>
         );
       })}
       <Button type="submit" variant="secondary" className="w-full">Save movement targets</Button>
     </form>
   );
+}
+
+function StatusBadge({ status }: { status: MesocycleStatus }) {
+  const style = status === "ACTIVE"
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+    : status === "UPCOMING"
+      ? "border-sky-500/30 bg-sky-500/10 text-sky-200"
+      : "border-slate-700 bg-slate-900 text-slate-400";
+
+  return <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${style}`}>{status.toLowerCase()}</span>;
 }
 
 function StatusTone({ status }: { status: string }) {
@@ -235,7 +294,8 @@ function ReviewCard({ review }: { review: Review }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold text-slate-100">{review.name}</h3>
-          <p className="mt-1 text-sm text-slate-500">{review.startDate} to {review.endDate} · {review.sessionCount} sessions</p>
+          <p className="mt-1 text-sm text-slate-500">{review.startDate} to {review.endDate} · {review.durationDays} days · {review.sessionCount} sessions</p>
+          {review.endedEarly ? <p className="mt-1 text-xs text-amber-300">Ended early · original planned end {review.plannedEndDate}</p> : null}
         </div>
         <div className="rounded-xl border border-slate-800 px-3 py-2 text-sm text-slate-300">
           Performance detail: {review.performance.up} up / {review.performance.flat} flat / {review.performance.down} down
@@ -296,39 +356,102 @@ function ReviewCard({ review }: { review: Review }) {
   );
 }
 
-export function MesocyclePanel({ data }: Props) {
+function MesocycleItem({ mesocycle, data }: { mesocycle: Mesocycle; data: Props["data"] }) {
+  const summaryEnd = mesocycle.endedEarly
+    ? `${mesocycle.endDate} (planned ${mesocycle.plannedEndDate})`
+    : mesocycle.endDate;
+
   return (
-    <Card className="space-y-4">
+    <details open={mesocycle.status === "ACTIVE"} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+      <summary className="cursor-pointer list-none">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold text-slate-100">{mesocycle.name}</p>
+            <p className="mt-1 text-xs text-slate-500">{mesocycle.startDate} to {summaryEnd}</p>
+          </div>
+          <StatusBadge status={mesocycle.status} />
+        </div>
+      </summary>
+
+      <div className="mt-3 space-y-3 border-t border-slate-800 pt-3">
+        <MesocycleForm programId={data.programId} mesocycle={mesocycle} activePhase={data.activePhase} />
+
+        {mesocycle.status === "ACTIVE" ? <EndMesocycleForm mesocycle={mesocycle} /> : null}
+
+        {mesocycle.status === "COMPLETED" ? (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-slate-300">
+            <p className="font-semibold text-emerald-200">Completed block</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {mesocycle.endedEarly ? `Actual end ${mesocycle.endDate}; planned end ${mesocycle.plannedEndDate}.` : `Completed on ${mesocycle.endDate}.`}
+              {" "}The review below uses the effective duration.
+            </p>
+            <Link href="/metrics" className="mt-2 inline-flex text-xs font-semibold text-orange-300 hover:text-orange-200">Open Metrics for end check-in</Link>
+          </div>
+        ) : null}
+
+        <details className="rounded-2xl border border-slate-800 bg-slate-900/40 p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-200">Optional mesocycle overrides</summary>
+          <p className="mt-2 text-xs leading-5 text-slate-500">Use these only for differences from the reusable program foundation. Blank fields inherit program or template values.</p>
+          <div className="mt-3 space-y-3">
+            <MesocycleTargetsForm mesocycle={mesocycle} muscles={data.muscles} programTargets={data.programTargets} />
+            <MesocycleMovementVolumeTargetsForm mesocycle={mesocycle} movementGroups={data.movementGroups} />
+            <MesocycleMovementRepPolicyForm mesocycle={mesocycle} movementGroups={data.movementGroups} />
+          </div>
+        </details>
+      </div>
+    </details>
+  );
+}
+
+export function MesocyclePanel({ data }: Props) {
+  const active = data.mesocycles.filter((mesocycle) => mesocycle.status === "ACTIVE");
+  const upcoming = data.mesocycles.filter((mesocycle) => mesocycle.status === "UPCOMING");
+  const completed = data.mesocycles.filter((mesocycle) => mesocycle.status === "COMPLETED");
+
+  return (
+    <Card className="space-y-5 border-orange-500/20">
       <div>
-        <h2 className="font-semibold text-slate-100">Mesocycles</h2>
-        <p className="mt-1 text-sm text-slate-400">A light planning layer for date-bounded review. Programs and templates remain reusable.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">Mesocycle layer</p>
+        <h2 className="mt-1 text-lg font-semibold text-slate-100">Temporary training block</h2>
+        <p className="mt-1 text-sm text-slate-400">A mesocycle adds dates, phase, review boundaries, and optional exceptions. It does not duplicate or replace the reusable program and templates.</p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Inherited from program</p>
+          <p className="mt-2 text-sm text-slate-300">Templates, rotation, exercise pools, contribution rules, and baseline weekly muscle targets.</p>
+        </div>
+        <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-orange-300">Set per mesocycle</p>
+          <p className="mt-2 text-sm text-slate-300">Start, planned length, phase, optional target/range exceptions, and actual end date.</p>
+        </div>
       </div>
 
       <MesocycleForm programId={data.programId} activePhase={data.activePhase} />
 
-      {data.mesocycles.length > 0 ? (
+      {active.length > 0 ? (
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Existing mesocycles</h3>
-          {data.mesocycles.map((mesocycle) => (
-            <details key={mesocycle.id} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-              <summary className="cursor-pointer font-semibold text-slate-100">
-                {mesocycle.name} · {mesocycle.startDate} to {mesocycle.endDate}
-              </summary>
-              <div className="mt-3">
-                <MesocycleForm programId={data.programId} mesocycle={mesocycle} activePhase={data.activePhase} />
-                <div className="mt-3 space-y-3">
-                  <MesocycleTargetsForm mesocycle={mesocycle} muscles={data.muscles} programTargets={data.programTargets} />
-                  <MesocycleMovementVolumeTargetsForm mesocycle={mesocycle} movementGroups={data.movementGroups} />
-                  <MesocycleMovementRepPolicyForm mesocycle={mesocycle} movementGroups={data.movementGroups} />
-                </div>
-              </div>
-            </details>
-          ))}
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-300">Active mesocycle</h3>
+          {active.map((mesocycle) => <MesocycleItem key={mesocycle.id} mesocycle={mesocycle} data={data} />)}
         </div>
       ) : null}
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">End-of-mesocycle review</h3>
+      {upcoming.length > 0 ? (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-sky-300">Upcoming</h3>
+          {upcoming.map((mesocycle) => <MesocycleItem key={mesocycle.id} mesocycle={mesocycle} data={data} />)}
+        </div>
+      ) : null}
+
+      {completed.length > 0 ? (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Completed</h3>
+          {completed.map((mesocycle) => <MesocycleItem key={mesocycle.id} mesocycle={mesocycle} data={data} />)}
+        </div>
+      ) : null}
+
+      <div className="space-y-3 border-t border-slate-800 pt-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Mesocycle review</h3>
         {data.reviews.length > 0 ? data.reviews.map((review) => <ReviewCard key={review.id} review={review} />) : (
           <p className="text-sm text-slate-500">Create a mesocycle to unlock actual vs target volume and performance review.</p>
         )}

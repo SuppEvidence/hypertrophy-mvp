@@ -251,8 +251,9 @@ model ProgramMesocycle {
   name        String
   phase       ProgramPhase @default(PUSH)
   startDate   DateTime     @map("start_date") @db.Date
-  lengthWeeks Int          @default(4) @map("length_weeks")
-  notes       String?
+  lengthWeeks   Int          @default(4) @map("length_weeks")
+  actualEndDate DateTime?     @map("actual_end_date") @db.Date
+  notes         String?
   isArchived  Boolean      @default(false) @map("is_archived")
   createdAt   DateTime     @default(now()) @map("created_at")
   updatedAt   DateTime     @updatedAt @map("updated_at")
@@ -267,6 +268,7 @@ model ProgramMesocycle {
 
   @@index([userId, startDate])
   @@index([programId, startDate])
+  @@index([programId, actualEndDate, startDate])
   @@map("program_mesocycles")
 }
 

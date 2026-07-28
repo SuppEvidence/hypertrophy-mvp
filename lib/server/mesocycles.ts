@@ -31,6 +31,21 @@ function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function plannedMesocycleEndDate(startDate: Date, lengthWeeks: number) {
+  return addDays(startDate, lengthWeeks * 7 - 1);
+}
+
+function effectiveMesocycleEndDate(startDate: Date, lengthWeeks: number, actualEndDate?: Date | null) {
+  const plannedEndDate = plannedMesocycleEndDate(startDate, lengthWeeks);
+  if (!actualEndDate) return plannedEndDate;
+  return actualEndDate < plannedEndDate ? actualEndDate : plannedEndDate;
+}
+
+function durationDaysInclusive(startDate: Date, endDate: Date) {
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  return Math.max(Math.round((endDate.getTime() - startDate.getTime()) / millisecondsPerDay) + 1, 1);
+}
+
 function parseMesocycleForm(formData: FormData) {
   return mesocycleSchema.parse({
     name: formData.get("name"),
@@ -79,13 +94,19 @@ export async function updateMesocycle(mesocycleId: string, formData: FormData) {
   const mesocycle = await prisma.programMesocycle.findFirst({ where: { id: mesocycleId, userId, isArchived: false } });
   if (!mesocycle) redirect("/programs");
   const input = parseMesocycleForm(formData);
+  const nextStartDate = parseDateOnly(input.startDate);
+  const nextPlannedEndDate = plannedMesocycleEndDate(nextStartDate, input.lengthWeeks);
+
+  if (mesocycle.actualEndDate && (mesocycle.actualEndDate < nextStartDate || mesocycle.actualEndDate > nextPlannedEndDate)) {
+    redirect(`/programs/${mesocycle.programId}?mesocycleEndError=1`);
+  }
 
   await prisma.programMesocycle.update({
     where: { id: mesocycle.id },
     data: {
       name: input.name,
       phase: input.phase as ProgramPhase,
-      startDate: parseDateOnly(input.startDate),
+      startDate: nextStartDate,
       lengthWeeks: input.lengthWeeks,
       notes: input.notes || null,
     },
@@ -93,6 +114,34 @@ export async function updateMesocycle(mesocycleId: string, formData: FormData) {
 
   revalidatePath(`/programs/${mesocycle.programId}`);
   redirect(`/programs/${mesocycle.programId}?saved=1`);
+}
+
+export async function endMesocycle(mesocycleId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const mesocycle = await prisma.programMesocycle.findFirst({
+    where: { id: mesocycleId, userId, isArchived: false, actualEndDate: null },
+  });
+  if (!mesocycle) redirect("/programs");
+
+  const requestedDate = String(formData.get("actualEndDate") ?? toDateInputValue(new Date()));
+  const actualEndDate = parseDateOnly(requestedDate);
+  const today = parseDateOnly(toDateInputValue(new Date()));
+  const plannedEndDate = plannedMesocycleEndDate(mesocycle.startDate, mesocycle.lengthWeeks);
+
+  if (Number.isNaN(actualEndDate.getTime()) || actualEndDate < mesocycle.startDate || actualEndDate > plannedEndDate || actualEndDate > today) {
+    redirect(`/programs/${mesocycle.programId}?mesocycleEndError=1`);
+  }
+
+  await prisma.programMesocycle.update({
+    where: { id: mesocycle.id },
+    data: { actualEndDate },
+  });
+
+  revalidatePath(`/programs/${mesocycle.programId}`);
+  revalidatePath("/templates");
+  revalidatePath("/log");
+  revalidatePath("/dashboard");
+  redirect(`/programs/${mesocycle.programId}?mesocycleEnded=1`);
 }
 
 export async function archiveMesocycle(formData: FormData) {
@@ -261,6 +310,7 @@ export async function getMesocyclePanelData(programId: string) {
   const reviews = await Promise.all(
     mesocycles.slice(0, 4).map(async (mesocycle) => buildMesocycleReview(userId, program, mesocycle)),
   );
+  const today = parseDateOnly(toDateInputValue(new Date()));
 
   return {
     programId,
@@ -271,12 +321,25 @@ export async function getMesocyclePanelData(programId: string) {
       muscleId: target.muscleId,
       weeklyTargetSets: toNumber(target.weeklyTargetSets),
     })),
-    mesocycles: mesocycles.map((mesocycle) => ({
+    mesocycles: mesocycles.map((mesocycle) => {
+      const plannedEndDate = plannedMesocycleEndDate(mesocycle.startDate, mesocycle.lengthWeeks);
+      const effectiveEndDate = effectiveMesocycleEndDate(mesocycle.startDate, mesocycle.lengthWeeks, mesocycle.actualEndDate);
+      const status: "ACTIVE" | "UPCOMING" | "COMPLETED" = mesocycle.actualEndDate || plannedEndDate < today
+        ? "COMPLETED"
+        : mesocycle.startDate > today
+          ? "UPCOMING"
+          : "ACTIVE";
+
+      return {
       id: mesocycle.id,
       name: mesocycle.name,
       phase: mesocycle.phase,
+      status,
       startDate: toDateInputValue(mesocycle.startDate),
-      endDate: toDateInputValue(addDays(mesocycle.startDate, mesocycle.lengthWeeks * 7 - 1)),
+      endDate: toDateInputValue(effectiveEndDate),
+      plannedEndDate: toDateInputValue(plannedEndDate),
+      actualEndDate: mesocycle.actualEndDate ? toDateInputValue(mesocycle.actualEndDate) : null,
+      endedEarly: Boolean(mesocycle.actualEndDate && mesocycle.actualEndDate < plannedEndDate),
       lengthWeeks: mesocycle.lengthWeeks,
       notes: mesocycle.notes ?? "",
       volumeTargets: mesocycle.volumeTargets.map((target: any) => ({
@@ -300,15 +363,19 @@ export async function getMesocyclePanelData(programId: string) {
         movementGroupId: target.movementGroupId,
         targetSets: toNumber(target.targetSets),
       })),
-    })),
+      };
+    }),
     reviews,
   };
 }
 
 async function buildMesocycleReview(userId: string, program: any, mesocycle: any) {
   const startDate = mesocycle.startDate;
-  const endExclusive = addDays(startDate, mesocycle.lengthWeeks * 7);
-  const days = mesocycle.lengthWeeks * 7;
+  const plannedEndDate = plannedMesocycleEndDate(startDate, mesocycle.lengthWeeks);
+  const endDate = effectiveMesocycleEndDate(startDate, mesocycle.lengthWeeks, mesocycle.actualEndDate);
+  const endExclusive = addDays(endDate, 1);
+  const days = durationDaysInclusive(startDate, endDate);
+  const durationWeeks = days / 7;
   const priorityIds = new Set(program.priorityMuscles.map((link: any) => link.muscleId));
   const prescription = await buildProgramPrescription(program.id, userId, { mesocycleId: mesocycle.id, includeWeeklyPlan: false });
   const windowDays = volumeWindowDays(program.volumeWindowType, program.customWindowDays ?? null);
@@ -333,7 +400,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
       muscleId: target.muscleId,
       muscleName: target.muscle.name,
       sortOrder: target.muscle.sortOrder,
-      target: toNumber(target.weeklyTargetSets) * mesocycle.lengthWeeks,
+      target: toNumber(target.weeklyTargetSets) * durationWeeks,
       planned: 0,
       completed: 0,
       productive: 0,
@@ -349,7 +416,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
       muscleId: target.muscleId,
       muscleName: target.muscle.name,
       sortOrder: target.muscle.sortOrder,
-      target: overrideTarget > 0 ? overrideTarget * mesocycle.lengthWeeks : previous?.target ?? 0,
+      target: overrideTarget > 0 ? overrideTarget * durationWeeks : previous?.target ?? 0,
       planned: previous?.planned ?? 0,
       completed: previous?.completed ?? 0,
       productive: previous?.productive ?? 0,
@@ -391,7 +458,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
       movementGroupId: target.movementGroupId,
       movementGroupName: target.movementGroup.name,
       sortOrder: target.movementGroup.sortOrder,
-      target: toNumber(target.targetSets) * mesocycle.lengthWeeks,
+      target: toNumber(target.targetSets) * durationWeeks,
       planned: 0,
       completed: 0,
       productive: 0,
@@ -638,7 +705,10 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
     id: mesocycle.id,
     name: mesocycle.name,
     startDate: toDateInputValue(startDate),
-    endDate: toDateInputValue(addDays(startDate, days - 1)),
+    endDate: toDateInputValue(endDate),
+    plannedEndDate: toDateInputValue(plannedEndDate),
+    endedEarly: Boolean(mesocycle.actualEndDate && mesocycle.actualEndDate < plannedEndDate),
+    durationDays: days,
     sessionCount: new Set(sessionExercises.map((item: any) => item.sessionId)).size,
     volume,
     movementVolume,

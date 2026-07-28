@@ -1,6 +1,6 @@
 # Ripped Fat Dude Hypertrophy Tracker
 
-Version 1.0.0 of a mobile-first hypertrophy planning and tracking application for experienced lifters.
+Version 1.0.1 of a mobile-first hypertrophy planning and tracking application for experienced lifters.
 
 ## Product scope
 

@@ -114,8 +114,13 @@ export default async function DashboardPage() {
               <div className="h-2 rounded-full bg-slate-200" style={{ width: progressWidth(dashboard.mesocycle.progressPct) }} />
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              {dashboard.mesocycle.progressPct}% complete · {dashboard.mesocycle.daysRemaining} days remaining · {formatDate(dashboard.mesocycle.startDate)} to {formatDate(dashboard.mesocycle.endDate)}
+              {dashboard.mesocycle.progressPct}% complete
+              {dashboard.mesocycle.status === "Completed" ? "" : ` · ${dashboard.mesocycle.daysRemaining} days remaining`}
+              {` · ${formatDate(dashboard.mesocycle.startDate)} to ${formatDate(dashboard.mesocycle.endDate)}`}
             </p>
+            {dashboard.mesocycle.endedEarly ? (
+              <p className="mt-1 text-xs text-amber-300">Ended early · original planned end {formatDate(dashboard.mesocycle.plannedEndDate)}</p>
+            ) : null}
           </div>
         </Card>
       ) : dashboard.activeProgram ? (

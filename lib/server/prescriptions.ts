@@ -13,7 +13,7 @@ function addDays(date: Date, days: number) {
 
 async function getActiveMesocycle(programId: string, userId: string, now = new Date()) {
   const mesocycles = await prisma.programMesocycle.findMany({
-    where: { programId, userId, isArchived: false, startDate: { lte: now } },
+    where: { programId, userId, isArchived: false, actualEndDate: null, startDate: { lte: now } },
     orderBy: { startDate: "desc" },
     take: 12,
     include: {

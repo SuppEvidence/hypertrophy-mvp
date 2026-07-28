@@ -48,7 +48,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                 <LogOut size={17} /> Sign out
               </Button>
             </form>
-            <p className="mt-3 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">Version 1.0.0</p>
+            <p className="mt-3 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">Version 1.0.1</p>
           </div>
         </aside>
 

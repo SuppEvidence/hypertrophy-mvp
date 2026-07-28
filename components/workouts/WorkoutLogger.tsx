@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CheckCircle2, History, Plus, Trash2 } from "lucide-react";
 import { AutosaveSetRow } from "@/components/workouts/AutosaveSetRow";
 import { DeleteWorkoutButton } from "@/components/workouts/DeleteWorkoutButton";
+import { ExerciseCollapseCard } from "@/components/workouts/ExerciseCollapseCard";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -88,7 +89,7 @@ type LoggerSet = {
   };
 };
 
-type LoggerSessionExercise = LoggedExerciseForSummary & {
+type LoggerSessionExercise = Omit<LoggedExerciseForSummary, "sets" | "exercise"> & {
   id: string;
   exerciseId: string;
   painNote: string | null;
@@ -497,52 +498,58 @@ function EditableSessionBody({
           <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">No exercises in this session yet.</p>
         ) : null}
 
-        {activeSession.exercises.map((item: LoggerSessionExercise, index: number) => (
-          <div key={item.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
-            <div className="mb-3">
-              <p className="text-sm font-semibold text-slate-100">{index + 1}. {slotMovementGroup(item).name}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                Selected: {item.exercise.name} · Primary: {item.exercise.primaryMuscles.map((link: MuscleNameLink) => link.muscle.name).join(", ") || "—"}
-              </p>
-              {item.exercise.setupNotes ? (
-                <details className="mt-2 rounded-lg border border-sky-900/60 bg-sky-950/20 px-2 py-1.5">
-                  <summary className="cursor-pointer truncate text-xs text-sky-200" title={item.exercise.setupNotes}>
-                    Setup: {item.exercise.setupNotes}
-                  </summary>
-                  <p className="mt-1 whitespace-pre-wrap border-t border-sky-900/40 pt-1 text-xs leading-5 text-sky-100/80">{item.exercise.setupNotes}</p>
-                </details>
-              ) : null}
-              <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <span className="rounded-full border border-slate-800 bg-slate-950 px-2 py-1 font-semibold text-slate-300">{formatRepRange(item)}</span>
-                  {item.prescribedPlannedSets !== null && item.basePlannedSets !== null ? (
-                    <span>Base {item.basePlannedSets} sets · Prescribed {item.prescribedPlannedSets}</span>
+        {activeSession.exercises.map((item: LoggerSessionExercise, index: number) => {
+          const movementGroup = slotMovementGroup(item);
+          const movementExerciseOptions = exercises.filter((exercise) => exercise.movementGroupId === movementGroup.id);
+          const exerciseOptions = movementExerciseOptions.length > 0 ? movementExerciseOptions : exercises;
+          const plannedSets = item.prescribedPlannedSets ?? item.basePlannedSets ?? item.sets.length;
+          const completedSets = completedSetRows(item).length;
+          const productiveEquivalent = stimulusContributionPreview(item, setTypes);
+          const setTypeSplit = setTypeSplitLabel(item, setTypes);
+          const repQuality = statusCountLabel(item.sets, "repRangeStatus", formatRepRangeStatus);
+          const effortQuality = statusCountLabel(item.sets, "effortStatus", formatEffortStatus);
+          const painSetCount = item.sets.filter((set) => set.isCompleted && set.painFlag).length;
+
+          return (
+            <ExerciseCollapseCard
+              key={item.id}
+              exerciseId={item.id}
+              title={`${index + 1}. ${movementGroup.name}`}
+              exerciseName={item.exercise.name}
+              plannedSets={plannedSets}
+              initialSets={item.sets.map((set) => ({ id: set.id, isCompleted: set.isCompleted }))}
+            >
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-slate-500">
+                    Primary: {item.exercise.primaryMuscles.map((link: MuscleNameLink) => link.muscle.name).join(", ") || "—"}
+                  </p>
+                  {item.exercise.setupNotes ? (
+                    <details className="mt-2 rounded-lg border border-sky-900/60 bg-sky-950/20 px-2 py-1.5">
+                      <summary className="cursor-pointer truncate text-xs text-sky-200" title={item.exercise.setupNotes}>
+                        Setup: {item.exercise.setupNotes}
+                      </summary>
+                      <p className="mt-1 whitespace-pre-wrap border-t border-sky-900/40 pt-1 text-xs leading-5 text-sky-100/80">{item.exercise.setupNotes}</p>
+                    </details>
+                  ) : null}
+                  <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span className="rounded-full border border-slate-800 bg-slate-950 px-2 py-1 font-semibold text-slate-300">{formatRepRange(item)}</span>
+                      {item.prescribedPlannedSets !== null && item.basePlannedSets !== null ? (
+                        <span>Base {item.basePlannedSets} sets · Prescribed {item.prescribedPlannedSets}</span>
+                      ) : null}
+                    </div>
+                    {item.prescriptionNote ? <p className="mt-1 text-xs text-amber-300">{item.prescriptionNote}</p> : null}
+                    <p className="mt-2 text-xs text-slate-400">
+                      Suggested weight: <span className="font-semibold text-slate-100">{formatSuggestedWeight(weightSuggestions[item.id])}</span>
+                    </p>
+                  </div>
+                  {item.isSubstitution ? (
+                    <p className="mt-1 text-xs text-amber-200">Substituted from {item.substitutedFromExercise?.name ?? "planned exercise"}</p>
                   ) : null}
                 </div>
-                {item.prescriptionNote ? <p className="mt-1 text-xs text-amber-300">{item.prescriptionNote}</p> : null}
-                <p className="mt-2 text-xs text-slate-400">
-                  Suggested weight: <span className="font-semibold text-slate-100">{formatSuggestedWeight(weightSuggestions[item.id])}</span>
-                </p>
-              </div>
-              {item.isSubstitution ? (
-                <p className="mt-1 text-xs text-amber-200">Substituted from {item.substitutedFromExercise?.name ?? "planned exercise"}</p>
-              ) : null}
-            </div>
 
-            {(() => {
-              const movementGroup = slotMovementGroup(item);
-              const movementExerciseOptions = exercises.filter((exercise) => exercise.movementGroupId === movementGroup.id);
-              const exerciseOptions = movementExerciseOptions.length > 0 ? movementExerciseOptions : exercises;
-              const plannedSets = item.prescribedPlannedSets ?? item.basePlannedSets ?? item.sets.length;
-              const completedSets = completedSetRows(item).length;
-              const productiveEquivalent = stimulusContributionPreview(item, setTypes);
-              const setTypeSplit = setTypeSplitLabel(item, setTypes);
-              const repQuality = statusCountLabel(item.sets, "repRangeStatus", formatRepRangeStatus);
-              const effortQuality = statusCountLabel(item.sets, "effortStatus", formatEffortStatus);
-              const painSetCount = item.sets.filter((set) => set.isCompleted && set.painFlag).length;
-
-              return (
-                <div className="mb-3 space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+                <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
                   <form action={updateSessionExercise.bind(null, item.id)} className="space-y-2">
                     <label className="block space-y-2">
                       <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Exercise choice</span>
@@ -604,10 +611,10 @@ function EditableSessionBody({
                     </form>
                   </div>
                 </div>
-              );
-            })()}
-          </div>
-        ))}
+              </div>
+            </ExerciseCollapseCard>
+          );
+        })}
       </div>
 
       <Card className="space-y-3 bg-slate-950">

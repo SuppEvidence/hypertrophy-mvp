@@ -33,6 +33,11 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
   return (
     <form action={action} className="space-y-4">
       <Card className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">Program foundation</p>
+          <h2 className="mt-1 text-lg font-semibold text-slate-100">Reusable training structure</h2>
+          <p className="mt-1 text-sm text-slate-400">These settings remain in place across mesocycles: templates, rotation, calculation window, and contribution rules.</p>
+        </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Program name" name="name" defaultValue={program?.name ?? fallback.name} required />
 
@@ -106,8 +111,9 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
 
       <Card>
         <div className="mb-4">
-          <h2 className="text-base font-semibold text-slate-100">Priority muscles and weekly targets</h2>
-          <p className="mt-1 text-sm text-slate-400">Targets are stored and used by dashboard calculations.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">Program defaults</p>
+          <h2 className="mt-1 text-base font-semibold text-slate-100">Baseline weekly muscle targets</h2>
+          <p className="mt-1 text-sm text-slate-400">These are the normal targets for this program. A mesocycle inherits them automatically; enter a mesocycle target only when that block should differ.</p>
         </div>
         <div className="space-y-2">
           {muscles.map((muscle: any) => (
@@ -133,7 +139,7 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
       </Card>
 
       <div className="sticky bottom-20 z-10 md:static">
-        <Button className="w-full">Save program</Button>
+        <Button className="w-full">Save program foundation</Button>
       </div>
     </form>
   );

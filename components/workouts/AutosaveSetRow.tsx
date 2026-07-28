@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { autosaveWorkoutSet } from "@/lib/server/workouts";
+import { WORKOUT_SET_COMPLETION_EVENT } from "@/components/workouts/ExerciseCollapseCard";
 
 const inputClass =
   "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-orange-400/80";
@@ -60,6 +61,7 @@ export function AutosaveSetRow({ set, setTypes, repRangeStatusOptions, effortSta
   const [isPending, startTransition] = useTransition();
   const didMount = useRef(false);
   const saveVersion = useRef(0);
+  const lastSavedCompletion = useRef(set.isCompleted);
 
   const payload = useMemo(
     () => ({ weight, reps, rir, setTypeId, isCompleted, repRangeStatus, effortStatus, painFlag, painNote }),
@@ -81,6 +83,14 @@ export function AutosaveSetRow({ set, setTypes, repRangeStatusOptions, effortSta
         const result = await autosaveWorkoutSet(set.id, payload);
         if (saveVersion.current !== currentVersion) return;
         setStatus(result.ok ? "saved" : "error");
+        if (result.ok && lastSavedCompletion.current !== payload.isCompleted) {
+          lastSavedCompletion.current = payload.isCompleted;
+          window.dispatchEvent(
+            new CustomEvent(WORKOUT_SET_COMPLETION_EVENT, {
+              detail: { setId: set.id, isCompleted: payload.isCompleted },
+            }),
+          );
+        }
       });
     }, 650);
 
@@ -110,7 +120,12 @@ export function AutosaveSetRow({ set, setTypes, repRangeStatusOptions, effortSta
     <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
       <div className="grid gap-2 lg:grid-cols-[0.7fr_1.25fr_1.1fr_1.1fr_0.7fr]">
         <label className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 text-sm text-slate-300">
-          <input checked={isCompleted} onChange={(event) => setIsCompleted(event.target.checked)} type="checkbox" className="h-5 w-5" />
+          <input
+            checked={isCompleted}
+            onChange={(event) => setIsCompleted(event.target.checked)}
+            type="checkbox"
+            className="h-5 w-5"
+          />
           <span className="font-semibold">Set {set.setNumber}</span>
         </label>
         <select value={setTypeId} onChange={(event) => setSetTypeId(event.target.value)} className={smallSelectClass} aria-label="Set type">

@@ -47,23 +47,39 @@ async function getDashboardMesocycle(programId: string, userId: string) {
   if (mesocycles.length === 0) return null;
 
   const withDates = mesocycles.map((mesocycle) => {
-    const endExclusive = addDays(mesocycle.startDate, mesocycle.lengthWeeks * 7);
+    const plannedEndExclusive = addDays(mesocycle.startDate, mesocycle.lengthWeeks * 7);
+    const effectiveEndExclusive = mesocycle.actualEndDate
+      ? addDays(mesocycle.actualEndDate, 1)
+      : plannedEndExclusive;
     return {
       ...mesocycle,
-      endExclusive,
-      endDate: addDays(endExclusive, -1),
+      plannedEndExclusive,
+      effectiveEndExclusive,
+      plannedEndDate: addDays(plannedEndExclusive, -1),
+      effectiveEndDate: addDays(effectiveEndExclusive, -1),
     };
   });
 
-  const current = withDates.find((mesocycle) => mesocycle.startDate <= now && mesocycle.endExclusive > now);
-  const upcoming = [...withDates].reverse().find((mesocycle) => mesocycle.startDate > now);
+  const current = withDates.find(
+    (mesocycle) => !mesocycle.actualEndDate && mesocycle.startDate <= now && mesocycle.plannedEndExclusive > now,
+  );
+  const upcoming = [...withDates]
+    .reverse()
+    .find((mesocycle) => !mesocycle.actualEndDate && mesocycle.startDate > now);
   const selected = current ?? upcoming ?? withDates[0];
   if (!selected) return null;
 
-  const totalDays = selected.lengthWeeks * 7;
-  const elapsedDays = Math.min(Math.max(daysBetween(selected.startDate, now), 0), totalDays);
-  const currentWeek = selected.startDate <= now ? Math.min(Math.floor(elapsedDays / 7) + 1, selected.lengthWeeks) : 0;
-  const daysRemaining = selected.endExclusive > now ? Math.max(daysBetween(now, selected.endExclusive), 0) : 0;
+  const isCompleted = Boolean(selected.actualEndDate) || selected.plannedEndExclusive <= now;
+  const totalDays = Math.max(daysBetween(selected.startDate, selected.effectiveEndExclusive), 1);
+  const elapsedDays = isCompleted
+    ? totalDays
+    : Math.min(Math.max(daysBetween(selected.startDate, now), 0), totalDays);
+  const currentWeek = selected.startDate <= now
+    ? Math.min(Math.floor(Math.max(elapsedDays - 1, 0) / 7) + 1, selected.lengthWeeks)
+    : 0;
+  const daysRemaining = !isCompleted && selected.effectiveEndExclusive > now
+    ? Math.max(daysBetween(now, selected.effectiveEndExclusive), 0)
+    : 0;
   const status = current ? "Current" : selected.startDate > now ? "Upcoming" : "Completed";
 
   return {
@@ -72,11 +88,13 @@ async function getDashboardMesocycle(programId: string, userId: string) {
     phaseLabel: phaseLabels[selected.phase],
     status,
     startDate: dateOnly(selected.startDate),
-    endDate: dateOnly(selected.endDate),
+    endDate: dateOnly(selected.effectiveEndDate),
+    plannedEndDate: dateOnly(selected.plannedEndDate),
+    endedEarly: Boolean(selected.actualEndDate && selected.actualEndDate < selected.plannedEndDate),
     lengthWeeks: selected.lengthWeeks,
     currentWeek,
     daysRemaining,
-    progressPct: Math.round((elapsedDays / totalDays) * 100),
+    progressPct: isCompleted ? 100 : Math.round((elapsedDays / totalDays) * 100),
     notes: selected.notes ?? "",
   };
 }
