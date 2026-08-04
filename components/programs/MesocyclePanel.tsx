@@ -348,7 +348,7 @@ function ReviewCard({ review }: { review: Review }) {
         <p className="mt-2">BW 7d: {review.metrics.startBodyweight7d ?? "—"} → {review.metrics.endBodyweight7d ?? "—"} kg · Waist 7d: {review.metrics.startWaist7d ?? "—"} → {review.metrics.endWaist7d ?? "—"} mm</p>
         <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-500 md:grid-cols-3">
           {review.metrics.circumferences.map((row) => (
-            <span key={row.field}>{row.field}: {row.start ?? "—"} → {row.end ?? "—"}</span>
+            <span key={row.field}>{row.field.charAt(0).toUpperCase() + row.field.slice(1)}: {row.start ?? "—"} → {row.end ?? "—"}</span>
           ))}
         </div>
       </div>
@@ -385,7 +385,12 @@ function MesocycleItem({ mesocycle, data }: { mesocycle: Mesocycle; data: Props[
               {mesocycle.endedEarly ? `Actual end ${mesocycle.endDate}; planned end ${mesocycle.plannedEndDate}.` : `Completed on ${mesocycle.endDate}.`}
               {" "}The review below uses the effective duration.
             </p>
-            <Link href="/metrics" className="mt-2 inline-flex text-xs font-semibold text-orange-300 hover:text-orange-200">Open Metrics for end check-in</Link>
+            <Link
+              href={`/metrics?logType=MESOCYCLE_END&date=${mesocycle.endDate}`}
+              className="mt-2 inline-flex text-xs font-semibold text-orange-300 hover:text-orange-200"
+            >
+              Open Metrics for end check-in
+            </Link>
           </div>
         ) : null}
 

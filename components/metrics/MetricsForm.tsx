@@ -46,7 +46,25 @@ function dateInputFromIso(value: string | null | undefined) {
   return value.slice(0, 10);
 }
 
-export function MetricsForm({ visibility, draft }: { visibility: MetricVisibility; draft?: MetricDraft }) {
+const allowedInitialLogTypes = new Set(["DAILY", "MESOCYCLE_START", "MESOCYCLE_END", "OPTIONAL_CHECKIN"]);
+
+function safeInitialDate(value: string | undefined) {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : todayInputValue();
+}
+
+export function MetricsForm({
+  visibility,
+  draft,
+  initialLogType,
+  initialDate,
+}: {
+  visibility: MetricVisibility;
+  draft?: MetricDraft;
+  initialLogType?: string;
+  initialDate?: string;
+}) {
+  const defaultLogType = draft?.logType ?? (initialLogType && allowedInitialLogTypes.has(initialLogType) ? initialLogType : "DAILY");
+  const defaultDate = draft ? dateInputFromIso(draft.loggedAt) : safeInitialDate(initialDate);
   return (
     <form action={createMetricLog} className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
       <input type="hidden" name="draftId" value={draft?.id ?? ""} />
@@ -56,10 +74,10 @@ export function MetricsForm({ visibility, draft }: { visibility: MetricVisibilit
       </div>
 
       <div className="grid gap-3 sm:grid-cols-[1fr_1.3fr]">
-        <Field label="Date" name="loggedAt" type="date" defaultValue={dateInputFromIso(draft?.loggedAt)} required />
+        <Field label="Date" name="loggedAt" type="date" defaultValue={defaultDate} required />
         <label className="block space-y-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Log type</span>
-          <select name="logType" defaultValue={draft?.logType ?? "DAILY"} className={selectClass}>
+          <select name="logType" defaultValue={defaultLogType} className={selectClass}>
             <option value="DAILY">Daily: bodyweight / waist</option>
             <option value="MESOCYCLE_START">Mesocycle start check-in</option>
             <option value="MESOCYCLE_END">Mesocycle end check-in</option>
@@ -77,7 +95,7 @@ export function MetricsForm({ visibility, draft }: { visibility: MetricVisibilit
 
       <details className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">Mesocycle circumference check-in</summary>
-        <p className="mt-2 text-xs text-slate-500">Use mainly for mesocycle start/end logs. Leave blank for normal daily logs.</p>
+        <p className="mt-2 text-xs text-slate-500">Mesocycle start/end entries are preferred in reviews. The nearest saved circumference within seven days of each boundary is used as a fallback.</p>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <Field label="Chest" name="chest" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.chest ?? ""} />
           <Field label="Shoulders" name="shoulders" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.shoulders ?? ""} />

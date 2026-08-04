@@ -13,7 +13,11 @@ function valueOrDash(value: number | string | null | undefined, suffix = "") {
   return `${value}${suffix}`;
 }
 
-export default async function MetricsPage({ searchParams }: { searchParams?: Promise<{ saved?: string; draft?: string }> }) {
+export default async function MetricsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ saved?: string; draft?: string; logType?: string; date?: string }>;
+}) {
   const params = await searchParams;
   const [metricsData, metricVisibility] = await Promise.all([getMetricsPageData(), getUserSettingsForMetrics()]);
   const { logs, draft } = metricsData;
@@ -34,7 +38,12 @@ export default async function MetricsPage({ searchParams }: { searchParams?: Pro
         <div className="rounded-2xl border border-amber-900 bg-amber-950/30 p-3 text-sm text-amber-100">You have an active metrics draft. The form below is prefilled from it.</div>
       ) : null}
 
-      <MetricsForm visibility={metricVisibility} draft={draft} />
+      <MetricsForm
+        visibility={metricVisibility}
+        draft={draft}
+        initialLogType={params?.logType}
+        initialDate={params?.date}
+      />
 
       <Card>
         <div className="flex items-center justify-between gap-3">

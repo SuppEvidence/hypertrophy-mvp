@@ -658,8 +658,10 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
     else flat += 1;
   }
 
+  const circumferenceWindowStart = addDays(startDate, -7);
+  const circumferenceWindowEnd = addDays(endDate, 8);
   const metrics = await prisma.metricLog.findMany({
-    where: { userId, isDraft: false, loggedAt: { gte: addDays(startDate, -7), lt: addDays(endExclusive, 1) } },
+    where: { userId, isDraft: false, loggedAt: { gte: circumferenceWindowStart, lt: circumferenceWindowEnd } },
     orderBy: { loggedAt: "asc" },
   });
   const startWindowEnd = addDays(startDate, 7);
@@ -671,9 +673,28 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
   const metricNumber = (value: unknown) => (value === null || value === undefined ? null : toNumber(value));
   const startMetrics = metrics.filter((metric: any) => metric.loggedAt >= startDate && metric.loggedAt < startWindowEnd);
   const endMetrics = metrics.filter((metric: any) => metric.loggedAt >= endWindowStart && metric.loggedAt < endExclusive);
-  const startCheckin = metrics.find((metric: any) => metric.logType === "MESOCYCLE_START") ?? null;
-  const endCheckin = [...metrics].reverse().find((metric: any) => metric.logType === "MESOCYCLE_END") ?? null;
+  const startBoundaryMetrics = metrics.filter(
+    (metric: any) => metric.loggedAt >= circumferenceWindowStart && metric.loggedAt < addDays(startDate, 8),
+  );
+  const endBoundaryMetrics = metrics.filter(
+    (metric: any) => metric.loggedAt >= addDays(endDate, -7) && metric.loggedAt < circumferenceWindowEnd,
+  );
   const circumferenceFields = ["chest", "shoulders", "arms", "thighs", "glutes", "calves"] as const;
+
+  function nearestCircumferenceValue(
+    boundaryMetrics: any[],
+    field: (typeof circumferenceFields)[number],
+    boundaryDate: Date,
+    preferredLogType: "MESOCYCLE_START" | "MESOCYCLE_END",
+  ) {
+    const withValue = boundaryMetrics.filter((metric) => metricNumber(metric[field]) !== null);
+    const preferred = withValue.filter((metric) => metric.logType === preferredLogType);
+    const candidates = preferred.length > 0 ? preferred : withValue;
+    const nearest = [...candidates].sort(
+      (left, right) => Math.abs(left.loggedAt.getTime() - boundaryDate.getTime()) - Math.abs(right.loggedAt.getTime() - boundaryDate.getTime()),
+    )[0];
+    return nearest ? metricNumber(nearest[field]) : null;
+  }
 
   const metricSummary = {
     startBodyweight7d: avg(startMetrics.map((metric: any) => metricNumber(metric.bodyweight))),
@@ -682,8 +703,8 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
     endWaist7d: avg(endMetrics.map((metric: any) => metricNumber(metric.waist))),
     circumferences: circumferenceFields.map((field) => ({
       field,
-      start: startCheckin ? metricNumber(startCheckin[field]) : null,
-      end: endCheckin ? metricNumber(endCheckin[field]) : null,
+      start: nearestCircumferenceValue(startBoundaryMetrics, field, startDate, "MESOCYCLE_START"),
+      end: nearestCircumferenceValue(endBoundaryMetrics, field, endDate, "MESOCYCLE_END"),
     })),
   };
 
