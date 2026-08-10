@@ -188,6 +188,7 @@ export async function buildProgramPrescription(
   const weekly = includeWeeklyPlan
     ? applyWeeklyMissedWorkoutPlan({
         items: generated.items,
+        templates: program.templates.map((template) => ({ id: template.id, name: template.name, sequenceIndex: template.sequenceIndex })),
         weekStart,
         missedTemplateIds: storedWeeklyPlan.missedTemplateIds,
         completedTemplateIds,
@@ -195,6 +196,7 @@ export async function buildProgramPrescription(
       })
     : applyWeeklyMissedWorkoutPlan({
         items: generated.items,
+        templates: program.templates.map((template) => ({ id: template.id, name: template.name, sequenceIndex: template.sequenceIndex })),
         weekStart,
         missedTemplateIds: [],
         completedTemplateIds: [],

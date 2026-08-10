@@ -48,6 +48,46 @@ type WeightSuggestion = {
   sourceSet: string | null;
 };
 
+type PreviousTemplateExerciseChoice = {
+  exerciseId: string;
+  exerciseName: string;
+  movementGroupId: string;
+};
+
+async function getPreviousCompletedTemplateExerciseChoices(
+  userId: string,
+  programId: string,
+  templateId: string,
+): Promise<Map<string, PreviousTemplateExerciseChoice>> {
+  const previousSession = await prisma.workoutSession.findFirst({
+    where: { userId, programId, templateId, status: "COMPLETED" },
+    orderBy: [{ performedAt: "desc" }, { completedAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      exercises: {
+        where: { templateExerciseId: { not: null } },
+        select: {
+          templateExerciseId: true,
+          exerciseId: true,
+          exercise: {
+            select: { name: true, movementGroupId: true, isActive: true, isArchived: true },
+          },
+        },
+      },
+    },
+  });
+
+  const choices = new Map<string, PreviousTemplateExerciseChoice>();
+  for (const item of previousSession?.exercises ?? []) {
+    if (!item.templateExerciseId || !item.exercise.isActive || item.exercise.isArchived) continue;
+    choices.set(item.templateExerciseId, {
+      exerciseId: item.exerciseId,
+      exerciseName: item.exercise.name,
+      movementGroupId: item.exercise.movementGroupId,
+    });
+  }
+  return choices;
+}
+
 async function buildWeightSuggestionsForSession(
   activeSession: Awaited<ReturnType<typeof getSessionForUser>>,
   userId: string,
@@ -183,11 +223,14 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
 
   const activeSession = requestedSession?.status === "DRAFT" || requestedSession?.status === "COMPLETED" ? requestedSession : null;
   const hasUnfinishedSession = draftSessions.length > 0;
-  const [weightSuggestions, selectedTemplatePrescription] = await Promise.all([
+  const [weightSuggestions, selectedTemplatePrescription, previousTemplateChoices] = await Promise.all([
     buildWeightSuggestionsForSession(activeSession, userId),
     selectedProgram && selectedTemplate && !activeSession
       ? getTemplatePrescription(selectedProgram.id, selectedTemplate.id, userId)
       : Promise.resolve(null),
+    selectedProgram && selectedTemplate && !activeSession
+      ? getPreviousCompletedTemplateExerciseChoices(userId, selectedProgram.id, selectedTemplate.id)
+      : Promise.resolve(new Map<string, PreviousTemplateExerciseChoice>()),
   ]);
 
   return {
@@ -206,19 +249,27 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
       ? {
           mesocycleName: selectedTemplatePrescription.activeMesocycle?.name ?? null,
           weekStart: selectedTemplatePrescription.generated.weeklyPlan.weekStart,
-          items: selectedTemplatePrescription.templateItems.map((item) => ({
-            id: item.id,
-            exerciseName: item.exerciseName,
-            movementGroupName: item.movementGroupName,
-            basePlannedSets: item.basePlannedSets,
-            adjustedPlannedSets: item.adjustedPlannedSets,
-            weeklyAdjustedPlannedSets: item.weeklyAdjustedPlannedSets,
-            isMissedThisWeek: item.isMissedThisWeek,
-            prescribedMinReps: item.prescribedMinReps,
-            prescribedMaxReps: item.prescribedMaxReps,
-            adjustmentReason: item.adjustmentReason,
-            weeklyAdjustmentReason: item.weeklyAdjustmentReason,
-          })),
+          items: selectedTemplatePrescription.templateItems.map((item) => {
+            const previousChoice = item.isWeeklyVirtualSlot ? null : previousTemplateChoices.get(item.id) ?? null;
+            const preferredChoice = previousChoice?.movementGroupId === item.movementGroupId ? previousChoice : null;
+            return {
+              id: item.id,
+              exerciseName: preferredChoice?.exerciseName ?? item.exerciseName,
+              exerciseSelectionSource: preferredChoice ? "PREVIOUS_TEMPLATE" : "DEFAULT",
+              movementGroupName: item.movementGroupName,
+              basePlannedSets: item.basePlannedSets,
+              adjustedPlannedSets: item.adjustedPlannedSets,
+              weeklyAdjustedPlannedSets: item.weeklyAdjustedPlannedSets,
+              weeklyEffectiveBase: item.weeklyEffectiveBase,
+              weeklyEffectivePlanned: item.weeklyEffectivePlanned,
+              isMissedThisWeek: item.isMissedThisWeek,
+              isWeeklyVirtualSlot: item.isWeeklyVirtualSlot,
+              prescribedMinReps: item.prescribedMinReps,
+              prescribedMaxReps: item.prescribedMaxReps,
+              adjustmentReason: item.adjustmentReason,
+              weeklyAdjustmentReason: item.weeklyAdjustmentReason,
+            };
+          }),
         }
       : null,
   };
@@ -348,6 +399,8 @@ export async function startWorkout(formData: FormData) {
   const template = prescription?.program.templates.find((item: any) => item.id === input.templateId) ?? null;
   if (!prescription || !template || prescription.program.id !== input.programId) redirect("/log");
 
+  const previousTemplateChoices = await getPreviousCompletedTemplateExerciseChoices(userId, input.programId, input.templateId);
+
   const session = await prisma.$transaction(async (tx) => {
     const created = await tx.workoutSession.create({
       data: {
@@ -363,39 +416,53 @@ export async function startWorkout(formData: FormData) {
           generatedAt: new Date().toISOString(),
           weekStart: prescription.generated.weeklyPlan.weekStart,
           missedTemplateIds: prescription.generated.weeklyPlan.missedTemplateIds,
-          weeklyReallocatedSets: prescription.generated.weeklyPlan.reallocatedSets,
-          weeklyUnallocatedSets: prescription.generated.weeklyPlan.unallocatedSets,
+          weeklyReallocatedSets: prescription.generated.weeklyPlan.reallocatedEffectiveSets,
+          weeklyUnallocatedSets: prescription.generated.weeklyPlan.unallocatedEffectiveSets,
+          weeklyReallocatedPhysicalSets: prescription.generated.weeklyPlan.reallocatedPhysicalSets,
+          weeklyUnallocatedPhysicalSets: prescription.generated.weeklyPlan.unallocatedPhysicalSets,
+          weeklyVirtualSlotsCreated: prescription.generated.weeklyPlan.virtualSlotsCreated,
         },
       },
     });
 
     for (const [index, item] of prescription.templateItems.entries()) {
       const prescribedSets = item.isMissedThisWeek ? item.adjustedPlannedSets : item.weeklyAdjustedPlannedSets;
-      const prescriptionNotes = [item.adjustmentReason, item.isMissedThisWeek ? "Template was marked missed this week; base prescription used because it was started manually" : item.weeklyAdjustmentReason].filter(Boolean);
+      const previousChoice = item.isWeeklyVirtualSlot ? null : previousTemplateChoices.get(item.id) ?? null;
+      const preferredExerciseId =
+        previousChoice?.movementGroupId === item.movementGroupId ? previousChoice.exerciseId : item.exerciseId;
+      const prescriptionNotes = [
+        item.adjustmentReason,
+        item.isMissedThisWeek
+          ? "Template was marked missed this week; base prescription used because it was started manually"
+          : item.weeklyAdjustmentReason,
+        item.isWeeklyVirtualSlot ? "Temporary weekly movement slot created for missed-workout redistribution" : null,
+      ].filter(Boolean);
+
+      const plannedSetRows = Array.from({ length: prescribedSets }, (_, setIndex) => {
+        const setNumber = setIndex + 1;
+        const weeklyAdded = item.isMissedThisWeek ? null : item.weeklyAddedSetPlans.find((plan) => plan.setNumber === setNumber);
+        const planned = item.setPlans.find((plan) => plan.setNumber === setNumber);
+        return { setNumber, setTypeId: weeklyAdded?.setTypeId ?? planned?.setTypeId ?? item.defaultSetTypeId };
+      });
+
       const sessionExercise = await tx.workoutSessionExercise.create({
         data: {
           sessionId: created.id,
-          exerciseId: item.exerciseId,
-          templateExerciseId: item.id,
+          exerciseId: preferredExerciseId,
+          templateExerciseId: item.isWeeklyVirtualSlot ? null : item.id,
           sortOrder: index,
           isSubstitution: false,
-          basePlannedSets: item.basePlannedSets,
+          basePlannedSets: item.isWeeklyVirtualSlot ? 0 : item.basePlannedSets,
           prescribedPlannedSets: prescribedSets,
           prescribedMinReps: item.prescribedMinReps,
           prescribedMaxReps: item.prescribedMaxReps,
           prescribedRepBucket: item.repBucket,
           prescriptionNote: prescriptionNotes.length > 0 ? prescriptionNotes.join("; ") : null,
           completedSets: 0,
-          stimulusSetTypeId: item.defaultSetTypeId,
+          stimulusSetTypeId: plannedSetRows[0]?.setTypeId ?? item.defaultSetTypeId,
           repRangeStatus: "IN_RANGE",
           effortStatus: "PRODUCTIVE",
         },
-      });
-
-      const plannedSetRows = Array.from({ length: prescribedSets }, (_, setIndex) => {
-        const setNumber = setIndex + 1;
-        const planned = item.setPlans.find((plan) => plan.setNumber === setNumber);
-        return { setNumber, setTypeId: planned?.setTypeId ?? item.defaultSetTypeId };
       });
 
       for (const plan of plannedSetRows) {

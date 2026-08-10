@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2
+
+- Made missed-workout redistribution effective-set and set-type multiplier aware.
+- Preserved multiplier set types during redistribution and prevented the allocator from adding more than one multiplier set per exercise slot.
+- Added temporary weekly movement slots when existing matching slots cannot accept missed volume, starting with the least-loaded eligible workout.
+- Added last-used exercise recall for each template movement slot from the previous completed occurrence of the same template.
+
 ## 1.0.1
 
 - Added an explicit actual end date and **End mesocycle** action.

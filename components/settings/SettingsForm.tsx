@@ -103,7 +103,7 @@ export function SettingsForm({ settings, setTypes }: SettingsFormProps) {
             <h2 className="mt-1 font-semibold text-slate-100">Hypertrophy Tracker</h2>
             <p className="mt-1 text-sm text-slate-400">Production release focused on hypertrophy planning, stimulus logging, and mesocycle review.</p>
           </div>
-          <span className="shrink-0 rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1.5 text-xs font-bold text-orange-300">v1.0.1</span>
+          <span className="shrink-0 rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1.5 text-xs font-bold text-orange-300">v1.0.2</span>
         </div>
       </Card>
 

@@ -49,6 +49,9 @@ type GeneratedTemplateItem = Props["generatedTemplateItems"][number] & {
   weeklyAdjustedPlannedSets: number;
   weeklyAdjustmentDelta: number;
   isMissedThisWeek: boolean;
+  isWeeklyVirtualSlot: boolean;
+  weeklyEffectiveBase: number;
+  weeklyEffectivePlanned: number;
   weeklyAdjustmentReason: string | null;
 };
 
@@ -59,6 +62,13 @@ type WeeklyPlanSummary = {
   missedSets: number;
   reallocatedSets: number;
   unallocatedSets: number;
+  missedPhysicalSets: number;
+  reallocatedPhysicalSets: number;
+  unallocatedPhysicalSets: number;
+  missedEffectiveSets: number;
+  reallocatedEffectiveSets: number;
+  unallocatedEffectiveSets: number;
+  virtualSlotsCreated: number;
 };
 type TargetNotice = ReturnType<typeof buildTemplateTargetNotices>[number];
 
@@ -152,7 +162,9 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
       templateId: template.id,
       baseSets: items.reduce((sum, item) => sum + item.adjustedPlannedSets, 0),
       plannedSets: items.reduce((sum, item) => sum + item.weeklyAdjustedPlannedSets, 0),
-      changes: items.filter((item) => item.weeklyAdjustmentDelta !== 0),
+      baseEffective: items.reduce((sum, item) => sum + item.weeklyEffectiveBase, 0),
+      plannedEffective: items.reduce((sum, item) => sum + item.weeklyEffectivePlanned, 0),
+      changes: items.filter((item) => item.weeklyAdjustmentDelta !== 0 || item.isWeeklyVirtualSlot),
     };
   });
 
@@ -282,7 +294,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
         <div>
           <h2 className="text-base font-semibold text-slate-100">This week availability</h2>
           <p className="mt-1 text-sm text-slate-400">
-            Mark a workout that will be missed. Its movement-pattern sets are spread across remaining, not-yet-completed workouts where matching slots have capacity.
+            Mark a workout that will be missed. Its effective-set stimulus is redistributed across remaining, not-yet-completed workouts while preserving set-type multipliers.
           </p>
           {weeklyPlan ? <p className="mt-1 text-xs text-slate-500">Week starting {weeklyPlan.weekStart}</p> : null}
         </div>
@@ -299,11 +311,11 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
                   <p className="text-sm font-semibold text-slate-100">{template.name}</p>
                   <p className="mt-1 text-xs text-slate-500">
                     {completed ? "Completed this week" : missed ? "Marked missed" : "Planned"}
-                    {preview ? ` · ${preview.baseSets} → ${preview.plannedSets} sets` : ""}
+                    {preview ? ` · ${preview.baseSets} → ${preview.plannedSets} physical · ${preview.baseEffective.toFixed(1)} → ${preview.plannedEffective.toFixed(1)} effective` : ""}
                   </p>
                   {preview?.changes.length ? (
                     <p className="mt-1 text-xs text-amber-300">
-                      {preview.changes.slice(0, 3).map((item) => `${item.movementGroupName} ${item.weeklyAdjustmentDelta > 0 ? "+" : ""}${item.weeklyAdjustmentDelta}`).join(" · ")}
+                      {preview.changes.slice(0, 3).map((item) => `${item.isWeeklyVirtualSlot ? "New " : ""}${item.movementGroupName} ${item.weeklyAdjustmentDelta > 0 ? "+" : ""}${item.weeklyAdjustmentDelta}`).join(" · ")}
                     </p>
                   ) : null}
                 </div>
@@ -322,15 +334,16 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
             );
           })}
 
-          {weeklyPlan && weeklyPlan.missedSets > 0 ? (
-            <div className={`rounded-xl border p-3 text-sm ${weeklyPlan.unallocatedSets > 0 ? "border-amber-400/30 bg-amber-400/10 text-amber-100" : "border-slate-800 bg-slate-950 text-slate-300"}`}>
-              Missed {weeklyPlan.missedSets} sets · reallocated {weeklyPlan.reallocatedSets}
-              {weeklyPlan.unallocatedSets > 0 ? ` · ${weeklyPlan.unallocatedSets} could not be placed within matching movement-pattern capacity` : " · all sets placed"}
+          {weeklyPlan && weeklyPlan.missedEffectiveSets > 0 ? (
+            <div className={`rounded-xl border p-3 text-sm ${weeklyPlan.unallocatedEffectiveSets > 0 ? "border-amber-400/30 bg-amber-400/10 text-amber-100" : "border-slate-800 bg-slate-950 text-slate-300"}`}>
+              Missed {weeklyPlan.missedEffectiveSets.toFixed(1)} effective sets · reallocated {weeklyPlan.reallocatedEffectiveSets.toFixed(1)}
+              {weeklyPlan.unallocatedEffectiveSets > 0 ? ` · ${weeklyPlan.unallocatedEffectiveSets.toFixed(1)} could not be placed` : " · all effective volume placed"}
+              {weeklyPlan.virtualSlotsCreated > 0 ? ` · ${weeklyPlan.virtualSlotsCreated} temporary slot${weeklyPlan.virtualSlotsCreated === 1 ? "" : "s"} added` : ""}
             </div>
           ) : null}
 
           <p className="text-xs text-slate-500">
-            Redistribution is week-specific and does not alter the base template. If no explicit max is set, a remaining slot can receive at most one recovery set.
+            Redistribution is week-specific and never changes the base template. Multiplier sets retain their effective value, the allocator will not add a second multiplier set to the same slot, and a temporary movement slot can be created when existing matching slots cannot accept the work.
           </p>
           <Button className="w-full sm:w-auto">Save weekly availability</Button>
         </form>

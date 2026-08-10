@@ -141,11 +141,15 @@ type SelectedTemplatePrescription = {
   items: Array<{
     id: string;
     exerciseName: string;
+    exerciseSelectionSource: "PREVIOUS_TEMPLATE" | "DEFAULT";
     movementGroupName: string;
     basePlannedSets: number;
     adjustedPlannedSets: number;
     weeklyAdjustedPlannedSets: number;
+    weeklyEffectiveBase: number;
+    weeklyEffectivePlanned: number;
     isMissedThisWeek: boolean;
+    isWeeklyVirtualSlot: boolean;
     prescribedMinReps: number | null;
     prescribedMaxReps: number | null;
     adjustmentReason: string | null;
@@ -458,10 +462,16 @@ function PrescriptionPreview({ prescription }: { prescription: SelectedTemplateP
           const planned = finalSets(item);
           return (
             <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-slate-800 p-2 text-sm">
-              <span className="text-slate-200">{item.movementGroupName}</span>
-              <span className={planned !== item.basePlannedSets ? "text-amber-300" : "text-slate-400"}>
-                {item.basePlannedSets} → {planned} sets
-                {item.prescribedMinReps && item.prescribedMaxReps ? ` · ${item.prescribedMinReps}-${item.prescribedMaxReps}` : ""}
+              <span className="text-slate-200">
+                {item.isWeeklyVirtualSlot ? "Added · " : ""}{item.movementGroupName}
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  {item.exerciseName}{item.exerciseSelectionSource === "PREVIOUS_TEMPLATE" ? " · last used in this slot" : ""}
+                </span>
+              </span>
+              <span className={planned !== item.basePlannedSets || item.weeklyEffectivePlanned !== item.weeklyEffectiveBase ? "text-amber-300" : "text-slate-400"}>
+                {item.basePlannedSets} → {planned} physical
+                <span className="block text-right text-xs">{item.weeklyEffectiveBase.toFixed(1)} → {item.weeklyEffectivePlanned.toFixed(1)} effective</span>
+                {item.prescribedMinReps && item.prescribedMaxReps ? <span className="block text-right text-xs">{item.prescribedMinReps}-{item.prescribedMaxReps} reps</span> : null}
               </span>
               {item.adjustmentReason ? <span className="col-span-2 text-xs text-slate-500">{item.adjustmentReason}</span> : null}
               {item.weeklyAdjustmentReason ? <span className="col-span-2 text-xs text-amber-300">{item.weeklyAdjustmentReason}</span> : null}
