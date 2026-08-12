@@ -1,11 +1,12 @@
 "use server";
 
-import type { ProgramPhase } from "@prisma/client";
+import { Prisma, type ProgramPhase } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { estimateE1RM } from "@/lib/calculations/performance";
+import { parseMesocycleStructureOverrides } from "@/lib/planning/mesocycleStructure";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
 import { mesocycleSchema } from "@/lib/validations/mesocycle";
@@ -285,6 +286,61 @@ export async function updateMesocycleMovementVolumeTargets(mesocycleId: string, 
   redirect(`/programs/${mesocycle.programId}?saved=1`);
 }
 
+export async function approveMesocycleStructureProposal(mesocycleId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const proposalId = String(formData.get("proposalId") ?? "");
+  const mesocycle = await prisma.programMesocycle.findFirst({
+    where: { id: mesocycleId, userId, isArchived: false },
+  });
+  if (!mesocycle || !proposalId) redirect("/programs");
+
+  const today = parseDateOnly(toDateInputValue(new Date()));
+  const plannedEndDate = plannedMesocycleEndDate(mesocycle.startDate, mesocycle.lengthWeeks);
+  if (mesocycle.actualEndDate || plannedEndDate < today) redirect(`/programs/${mesocycle.programId}`);
+
+  const prescription = await buildProgramPrescription(mesocycle.programId, userId, {
+    mesocycleId: mesocycle.id,
+    includeWeeklyPlan: false,
+  });
+  const proposal = prescription?.generated.structureProposals.find((row) => row.id === proposalId);
+  if (!proposal) redirect(`/programs/${mesocycle.programId}?structureProposalStale=1`);
+
+  const current = parseMesocycleStructureOverrides(mesocycle.structureOverrides);
+  const actions = [...current.actions.filter((action) => action.id !== proposal.action.id), proposal.action];
+  await prisma.programMesocycle.update({
+    where: { id: mesocycle.id },
+    data: { structureOverrides: { version: 1, actions } as Prisma.InputJsonValue },
+  });
+
+  revalidatePath(`/programs/${mesocycle.programId}`);
+  revalidatePath("/templates");
+  revalidatePath("/log");
+  revalidatePath("/dashboard");
+  redirect(`/programs/${mesocycle.programId}?structureApproved=1`);
+}
+
+export async function removeMesocycleStructureOverride(mesocycleId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const actionId = String(formData.get("actionId") ?? "");
+  const mesocycle = await prisma.programMesocycle.findFirst({
+    where: { id: mesocycleId, userId, isArchived: false },
+  });
+  if (!mesocycle || !actionId) redirect("/programs");
+
+  const current = parseMesocycleStructureOverrides(mesocycle.structureOverrides);
+  const actions = current.actions.filter((action) => action.id !== actionId);
+  await prisma.programMesocycle.update({
+    where: { id: mesocycle.id },
+    data: { structureOverrides: { version: 1, actions } as Prisma.InputJsonValue },
+  });
+
+  revalidatePath(`/programs/${mesocycle.programId}`);
+  revalidatePath("/templates");
+  revalidatePath("/log");
+  revalidatePath("/dashboard");
+  redirect(`/programs/${mesocycle.programId}?structureUpdated=1`);
+}
+
 export async function getMesocyclePanelData(programId: string) {
   const userId = await requireUserId();
   const program = await prisma.program.findFirst({
@@ -292,6 +348,10 @@ export async function getMesocyclePanelData(programId: string) {
     include: {
       volumeTargets: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
       priorityMuscles: true,
+      templates: {
+        where: { isActive: true, isArchived: false },
+        select: { id: true, name: true },
+      },
     },
   });
   if (!program) return null;
@@ -307,16 +367,84 @@ export async function getMesocyclePanelData(programId: string) {
     },
   });
 
-  const reviews = await Promise.all(
-    mesocycles.slice(0, 4).map(async (mesocycle) => buildMesocycleReview(userId, program, mesocycle)),
-  );
   const today = parseDateOnly(toDateInputValue(new Date()));
+  const statusFor = (mesocycle: (typeof mesocycles)[number]): "ACTIVE" | "UPCOMING" | "COMPLETED" => {
+    const plannedEndDate = plannedMesocycleEndDate(mesocycle.startDate, mesocycle.lengthWeeks);
+    if (mesocycle.actualEndDate || plannedEndDate < today) return "COMPLETED";
+    if (mesocycle.startDate > today) return "UPCOMING";
+    return "ACTIVE";
+  };
+
+  const structureCandidates = mesocycles.filter(
+    (mesocycle) => statusFor(mesocycle) !== "COMPLETED" && mesocycle.movementVolumeTargets.length > 0,
+  );
+
+  const prescriptionMesocycleIds = Array.from(
+    new Set([
+      ...mesocycles.slice(0, 4).map((mesocycle) => mesocycle.id),
+      ...structureCandidates.map((mesocycle) => mesocycle.id),
+    ]),
+  );
+
+  const [prescriptionEntries, muscles, movementGroups] = await Promise.all([
+    Promise.all(
+      prescriptionMesocycleIds.map(async (mesocycleId) => ({
+        mesocycleId,
+        prescription: await buildProgramPrescription(program.id, userId, { mesocycleId, includeWeeklyPlan: false }),
+      })),
+    ),
+    prisma.muscle.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.movementGroup.findMany({ orderBy: { sortOrder: "asc" } }),
+  ]);
+  const prescriptionByMesocycle = new Map(
+    prescriptionEntries.map(({ mesocycleId, prescription }) => [mesocycleId, prescription]),
+  );
+  const reviews = await Promise.all(
+    mesocycles.slice(0, 4).map(async (mesocycle) =>
+      buildMesocycleReview(userId, program, mesocycle, prescriptionByMesocycle.get(mesocycle.id) ?? null),
+    ),
+  );
+
+  const structureDisplayScale = 7 / volumeWindowDays(program.volumeWindowType, program.customWindowDays ?? null);
+
+  const structureByMesocycle = new Map(
+    structureCandidates.map((mesocycle) => [
+      mesocycle.id,
+      prescriptionByMesocycle.get(mesocycle.id)
+        ? {
+            approved: prescriptionByMesocycle.get(mesocycle.id)!.generated.approvedStructureActions,
+            proposals: prescriptionByMesocycle.get(mesocycle.id)!.generated.structureProposals.map((proposal) => ({
+              id: proposal.id,
+              type: proposal.type,
+              movementGroupId: proposal.movementGroupId,
+              movementGroupName: proposal.movementGroupName,
+              templateId: proposal.templateId,
+              templateName: proposal.templateName,
+              targetEffectiveSets: round(proposal.targetEffectiveSets * structureDisplayScale),
+              currentEffectiveSets: round(proposal.currentEffectiveSets * structureDisplayScale),
+              projectedEffectiveSets: round(proposal.projectedEffectiveSets * structureDisplayScale),
+              physicalSets: proposal.physicalSets,
+              setTypeSummary: proposal.setTypeSummary,
+              reason: proposal.reason,
+            })),
+            movementRows: prescriptionByMesocycle.get(mesocycle.id)!.generated.movementVolumeRows.map((row) => ({
+              movementGroupId: row.movementGroupId,
+              movementGroupName: row.movementGroupName,
+              target: row.target === null ? null : round(row.target * structureDisplayScale),
+              base: round(row.base * structureDisplayScale),
+              planned: round(row.planned * structureDisplayScale),
+            })),
+          }
+        : null,
+    ]),
+  );
+
 
   return {
     programId,
     activePhase: program.activePhase,
-    muscles: await prisma.muscle.findMany({ orderBy: { sortOrder: "asc" } }),
-    movementGroups: await prisma.movementGroup.findMany({ orderBy: { sortOrder: "asc" } }),
+    muscles,
+    movementGroups,
     programTargets: program.volumeTargets.map((target: any) => ({
       muscleId: target.muscleId,
       weeklyTargetSets: toNumber(target.weeklyTargetSets),
@@ -324,52 +452,67 @@ export async function getMesocyclePanelData(programId: string) {
     mesocycles: mesocycles.map((mesocycle) => {
       const plannedEndDate = plannedMesocycleEndDate(mesocycle.startDate, mesocycle.lengthWeeks);
       const effectiveEndDate = effectiveMesocycleEndDate(mesocycle.startDate, mesocycle.lengthWeeks, mesocycle.actualEndDate);
-      const status: "ACTIVE" | "UPCOMING" | "COMPLETED" = mesocycle.actualEndDate || plannedEndDate < today
-        ? "COMPLETED"
-        : mesocycle.startDate > today
-          ? "UPCOMING"
-          : "ACTIVE";
+      const status = statusFor(mesocycle);
+      const structurePlan = structureByMesocycle.get(mesocycle.id) ?? {
+        approved: parseMesocycleStructureOverrides(mesocycle.structureOverrides).actions.map((action) => ({
+          id: action.id,
+          type: action.type,
+          movementGroupId: action.movementGroupId,
+          movementGroupName: movementGroups.find((group) => group.id === action.movementGroupId)?.name ?? "Movement slot",
+          templateId: action.templateId,
+          templateName: program.templates.find((template) => template.id === action.templateId)?.name ?? "Template",
+          description: action.type === "ADD_SLOT" ? "Mesocycle-only slot added" : "Base slot hidden for this mesocycle",
+        })),
+        proposals: [],
+        movementRows: [],
+      };
 
       return {
-      id: mesocycle.id,
-      name: mesocycle.name,
-      phase: mesocycle.phase,
-      status,
-      startDate: toDateInputValue(mesocycle.startDate),
-      endDate: toDateInputValue(effectiveEndDate),
-      plannedEndDate: toDateInputValue(plannedEndDate),
-      actualEndDate: mesocycle.actualEndDate ? toDateInputValue(mesocycle.actualEndDate) : null,
-      endedEarly: Boolean(mesocycle.actualEndDate && mesocycle.actualEndDate < plannedEndDate),
-      lengthWeeks: mesocycle.lengthWeeks,
-      notes: mesocycle.notes ?? "",
-      volumeTargets: mesocycle.volumeTargets.map((target: any) => ({
-        muscleId: target.muscleId,
-        targetSets: toNumber(target.targetSets),
-        minimumSets: target.minimumSets === null ? null : toNumber(target.minimumSets),
-        maximumSets: target.maximumSets === null ? null : toNumber(target.maximumSets),
-        priorityLevel: target.priorityLevel,
-      })),
-      repPolicies: mesocycle.repPolicies.map((policy: any) => ({
-        repBucket: policy.repBucket,
-        minReps: policy.minReps,
-        maxReps: policy.maxReps,
-      })),
-      movementRepPolicies: mesocycle.movementRepPolicies.map((policy: any) => ({
-        movementGroupId: policy.movementGroupId,
-        minReps: policy.minReps,
-        maxReps: policy.maxReps,
-      })),
-      movementVolumeTargets: mesocycle.movementVolumeTargets.map((target: any) => ({
-        movementGroupId: target.movementGroupId,
-        targetSets: toNumber(target.targetSets),
-      })),
+        id: mesocycle.id,
+        name: mesocycle.name,
+        phase: mesocycle.phase,
+        status,
+        startDate: toDateInputValue(mesocycle.startDate),
+        endDate: toDateInputValue(effectiveEndDate),
+        plannedEndDate: toDateInputValue(plannedEndDate),
+        actualEndDate: mesocycle.actualEndDate ? toDateInputValue(mesocycle.actualEndDate) : null,
+        endedEarly: Boolean(mesocycle.actualEndDate && mesocycle.actualEndDate < plannedEndDate),
+        lengthWeeks: mesocycle.lengthWeeks,
+        notes: mesocycle.notes ?? "",
+        volumeTargets: mesocycle.volumeTargets.map((target: any) => ({
+          muscleId: target.muscleId,
+          targetSets: toNumber(target.targetSets),
+          minimumSets: target.minimumSets === null ? null : toNumber(target.minimumSets),
+          maximumSets: target.maximumSets === null ? null : toNumber(target.maximumSets),
+          priorityLevel: target.priorityLevel,
+        })),
+        repPolicies: mesocycle.repPolicies.map((policy: any) => ({
+          repBucket: policy.repBucket,
+          minReps: policy.minReps,
+          maxReps: policy.maxReps,
+        })),
+        movementRepPolicies: mesocycle.movementRepPolicies.map((policy: any) => ({
+          movementGroupId: policy.movementGroupId,
+          minReps: policy.minReps,
+          maxReps: policy.maxReps,
+        })),
+        movementVolumeTargets: mesocycle.movementVolumeTargets.map((target: any) => ({
+          movementGroupId: target.movementGroupId,
+          targetSets: toNumber(target.targetSets),
+        })),
+        structurePlan,
       };
     }),
     reviews,
   };
 }
 
-async function buildMesocycleReview(userId: string, program: any, mesocycle: any) {
+async function buildMesocycleReview(
+  userId: string,
+  program: any,
+  mesocycle: any,
+  prescriptionOverride?: Awaited<ReturnType<typeof buildProgramPrescription>> | null,
+) {
   const startDate = mesocycle.startDate;
   const plannedEndDate = plannedMesocycleEndDate(startDate, mesocycle.lengthWeeks);
   const endDate = effectiveMesocycleEndDate(startDate, mesocycle.lengthWeeks, mesocycle.actualEndDate);
@@ -377,7 +520,7 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
   const days = durationDaysInclusive(startDate, endDate);
   const durationWeeks = days / 7;
   const priorityIds = new Set(program.priorityMuscles.map((link: any) => link.muscleId));
-  const prescription = await buildProgramPrescription(program.id, userId, { mesocycleId: mesocycle.id, includeWeeklyPlan: false });
+  const prescription = prescriptionOverride ?? await buildProgramPrescription(program.id, userId, { mesocycleId: mesocycle.id, includeWeeklyPlan: false });
   const windowDays = volumeWindowDays(program.volumeWindowType, program.customWindowDays ?? null);
   const planMultiplier = days / windowDays;
   const secondaryContribution = toNumber(program.secondaryContribution, 0.5);
@@ -466,20 +609,19 @@ async function buildMesocycleReview(userId: string, program: any, mesocycle: any
     });
   }
 
-  for (const item of prescription?.generated.items ?? []) {
-    const plannedSets = toNumber(item.adjustedPlannedSets) * toNumber(item.expectedOccurrences, 1) * planMultiplier;
-    const row = movementRows.get(item.movementGroupId) ?? {
-      movementGroupId: item.movementGroupId,
-      movementGroupName: item.movementGroupName,
-      sortOrder: item.movementGroupSortOrder,
+  for (const generatedRow of prescription?.generated.movementVolumeRows ?? []) {
+    const row = movementRows.get(generatedRow.movementGroupId) ?? {
+      movementGroupId: generatedRow.movementGroupId,
+      movementGroupName: generatedRow.movementGroupName,
+      sortOrder: generatedRow.sortOrder,
       target: 0,
       planned: 0,
       completed: 0,
       productive: 0,
       status: "on",
     };
-    row.planned += plannedSets;
-    movementRows.set(item.movementGroupId, row);
+    row.planned = toNumber(generatedRow.planned) * planMultiplier;
+    movementRows.set(generatedRow.movementGroupId, row);
   }
 
   const sessionExercises = await prisma.workoutSessionExercise.findMany({

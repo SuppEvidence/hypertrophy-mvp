@@ -1,8 +1,10 @@
 import Link from "next/link";
 import {
+  approveMesocycleStructureProposal,
   archiveMesocycle,
   createMesocycle,
   endMesocycle,
+  removeMesocycleStructureOverride,
   updateMesocycle,
   updateMesocycleMovementRepPolicies,
   updateMesocycleMovementVolumeTargets,
@@ -37,6 +39,38 @@ type Mesocycle = {
   repPolicies: Array<{ repBucket: string; minReps: number; maxReps: number }>;
   movementRepPolicies: Array<{ movementGroupId: string; minReps: number; maxReps: number }>;
   movementVolumeTargets: Array<{ movementGroupId: string; targetSets: number }>;
+  structurePlan: {
+    approved: Array<{
+      id: string;
+      type: "ADD_SLOT" | "REMOVE_SLOT";
+      movementGroupId: string;
+      movementGroupName: string;
+      templateId: string;
+      templateName: string;
+      description: string;
+    }>;
+    proposals: Array<{
+      id: string;
+      type: "ADD_SLOT" | "REMOVE_SLOT";
+      movementGroupId: string;
+      movementGroupName: string;
+      templateId: string;
+      templateName: string;
+      targetEffectiveSets: number;
+      currentEffectiveSets: number;
+      projectedEffectiveSets: number;
+      physicalSets: number;
+      setTypeSummary: string | null;
+      reason: string;
+    }>;
+    movementRows: Array<{
+      movementGroupId: string;
+      movementGroupName: string;
+      target: number | null;
+      base: number;
+      planned: number;
+    }>;
+  };
 };
 
 type Review = {
@@ -254,20 +288,114 @@ function MesocycleMovementVolumeTargetsForm({ mesocycle, movementGroups }: { mes
   return (
     <form action={updateMesocycleMovementVolumeTargets.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
       <div>
-        <h4 className="font-semibold text-slate-100">Movement-pattern review targets</h4>
-        <p className="mt-1 text-xs text-slate-500">Optional weekly targets for this block’s movement-pattern review. These do not replace the program’s muscle baselines.</p>
+        <h4 className="font-semibold text-slate-100">Movement-pattern prescription targets</h4>
+        <p className="mt-1 text-xs text-slate-500">Optional weekly effective-set targets for this block. They are more specific than muscle baselines, so the generator uses them to adjust matching slots and to suggest temporary structure changes when needed.</p>
       </div>
       {movementGroups.map((movementGroup) => {
         const target = targetMap.get(movementGroup.id);
         return (
           <div key={movementGroup.id} className="grid grid-cols-[1fr_90px] items-end gap-2 rounded-xl border border-slate-800 p-2">
             <p className="text-sm font-semibold text-slate-200">{movementGroup.name}</p>
-            <Field label="Target / wk" name={`target:${movementGroup.id}`} type="number" min="0" max="60" step="0.5" defaultValue={target?.targetSets ?? ""} />
+            <Field label="Effective / wk" name={`target:${movementGroup.id}`} type="number" min="0" max="60" step="0.5" defaultValue={target?.targetSets ?? ""} />
           </div>
         );
       })}
       <Button type="submit" variant="secondary" className="w-full">Save movement targets</Button>
     </form>
+  );
+}
+
+function MesocycleStructurePlan({ mesocycle }: { mesocycle: Mesocycle }) {
+  const plan = mesocycle.structurePlan;
+  const editable = mesocycle.status !== "COMPLETED";
+  const hasMovementTargets = mesocycle.movementVolumeTargets.length > 0;
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-orange-500/20 bg-orange-500/[0.04] p-3">
+      <div>
+        <h4 className="font-semibold text-slate-100">Mesocycle structure plan</h4>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          Existing slots are adjusted automatically inside their min/max set limits. Added sets can use one intensifier per exercise slot.
+          Adding or removing a movement slot is mesocycle-only and happens only after approval; the base templates are never changed.
+        </p>
+      </div>
+
+      {!hasMovementTargets ? (
+        <p className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-500">
+          Set movement-pattern effective-set targets above to enable structural suggestions. Muscle targets remain the program-level volume foundation; movement targets tell the generator where that work should sit.
+        </p>
+      ) : null}
+
+      {plan.movementRows.length > 0 ? (
+        <div className="grid gap-2 md:grid-cols-2">
+          {plan.movementRows.filter((row) => row.target !== null).map((row) => (
+            <div key={row.movementGroupId} className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold text-slate-300">{row.movementGroupName}</span>
+                <span className="text-slate-500">target {row.target ?? "—"}</span>
+              </div>
+              <p className="mt-1 text-slate-500">Base {row.base} → mesocycle {row.planned} effective sets/wk</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {plan.approved.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Approved for this mesocycle</p>
+          {plan.approved.map((action) => (
+            <div key={action.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-200">{action.description}</p>
+                <p className="mt-1 text-xs text-slate-500">Base template remains untouched.</p>
+              </div>
+              {editable ? (
+                <form action={removeMesocycleStructureOverride.bind(null, mesocycle.id)}>
+                  <input type="hidden" name="actionId" value={action.id} />
+                  <Button type="submit" variant="ghost" pendingText="Removing…">Undo</Button>
+                </form>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {editable && plan.proposals.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-orange-300">Suggested structure changes</p>
+          {plan.proposals.map((proposal) => (
+            <div key={proposal.id} className="rounded-xl border border-orange-500/20 bg-slate-950/70 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-100">
+                    {proposal.type === "ADD_SLOT" ? "Add" : "Remove"} {proposal.movementGroupName} {proposal.type === "ADD_SLOT" ? "to" : "from"} {proposal.templateName}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{proposal.reason}</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Target {proposal.targetEffectiveSets} · current {proposal.currentEffectiveSets} · projected {proposal.projectedEffectiveSets} effective sets
+                  </p>
+                  {proposal.type === "ADD_SLOT" ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Suggested prescription: {proposal.physicalSets} physical set{proposal.physicalSets === 1 ? "" : "s"}{proposal.setTypeSummary ? ` · ${proposal.setTypeSummary}` : ""}
+                    </p>
+                  ) : null}
+                </div>
+                <form action={approveMesocycleStructureProposal.bind(null, mesocycle.id)}>
+                  <input type="hidden" name="proposalId" value={proposal.id} />
+                  <Button type="submit" variant="secondary" pendingText="Applying…">Approve</Button>
+                </form>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {editable && hasMovementTargets && plan.proposals.length === 0 ? (
+        <p className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-500">
+          Current approved structure and automatic set adjustments can satisfy the movement targets without another slot change.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -403,6 +531,8 @@ function MesocycleItem({ mesocycle, data }: { mesocycle: Mesocycle; data: Props[
             <MesocycleMovementRepPolicyForm mesocycle={mesocycle} movementGroups={data.movementGroups} />
           </div>
         </details>
+
+        <MesocycleStructurePlan mesocycle={mesocycle} />
       </div>
     </details>
   );

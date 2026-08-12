@@ -150,6 +150,7 @@ type SelectedTemplatePrescription = {
     weeklyEffectivePlanned: number;
     isMissedThisWeek: boolean;
     isWeeklyVirtualSlot: boolean;
+    isMesocycleVirtualSlot: boolean;
     prescribedMinReps: number | null;
     prescribedMaxReps: number | null;
     adjustmentReason: string | null;
@@ -463,7 +464,7 @@ function PrescriptionPreview({ prescription }: { prescription: SelectedTemplateP
           return (
             <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-slate-800 p-2 text-sm">
               <span className="text-slate-200">
-                {item.isWeeklyVirtualSlot ? "Added · " : ""}{item.movementGroupName}
+                {item.isMesocycleVirtualSlot ? "Meso added · " : item.isWeeklyVirtualSlot ? "Weekly added · " : ""}{item.movementGroupName}
                 <span className="mt-0.5 block text-xs text-slate-500">
                   {item.exerciseName}{item.exerciseSelectionSource === "PREVIOUS_TEMPLATE" ? " · last used in this slot" : ""}
                 </span>

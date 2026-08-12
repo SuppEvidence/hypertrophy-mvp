@@ -250,7 +250,7 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
           mesocycleName: selectedTemplatePrescription.activeMesocycle?.name ?? null,
           weekStart: selectedTemplatePrescription.generated.weeklyPlan.weekStart,
           items: selectedTemplatePrescription.templateItems.map((item) => {
-            const previousChoice = item.isWeeklyVirtualSlot ? null : previousTemplateChoices.get(item.id) ?? null;
+            const previousChoice = item.isWeeklyVirtualSlot || item.isMesocycleVirtualSlot ? null : previousTemplateChoices.get(item.id) ?? null;
             const preferredChoice = previousChoice?.movementGroupId === item.movementGroupId ? previousChoice : null;
             return {
               id: item.id,
@@ -264,6 +264,7 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
               weeklyEffectivePlanned: item.weeklyEffectivePlanned,
               isMissedThisWeek: item.isMissedThisWeek,
               isWeeklyVirtualSlot: item.isWeeklyVirtualSlot,
+              isMesocycleVirtualSlot: item.isMesocycleVirtualSlot,
               prescribedMinReps: item.prescribedMinReps,
               prescribedMaxReps: item.prescribedMaxReps,
               adjustmentReason: item.adjustmentReason,
@@ -427,7 +428,7 @@ export async function startWorkout(formData: FormData) {
 
     for (const [index, item] of prescription.templateItems.entries()) {
       const prescribedSets = item.isMissedThisWeek ? item.adjustedPlannedSets : item.weeklyAdjustedPlannedSets;
-      const previousChoice = item.isWeeklyVirtualSlot ? null : previousTemplateChoices.get(item.id) ?? null;
+      const previousChoice = item.isWeeklyVirtualSlot || item.isMesocycleVirtualSlot ? null : previousTemplateChoices.get(item.id) ?? null;
       const preferredExerciseId =
         previousChoice?.movementGroupId === item.movementGroupId ? previousChoice.exerciseId : item.exerciseId;
       const prescriptionNotes = [
@@ -435,24 +436,26 @@ export async function startWorkout(formData: FormData) {
         item.isMissedThisWeek
           ? "Template was marked missed this week; base prescription used because it was started manually"
           : item.weeklyAdjustmentReason,
+        item.isMesocycleVirtualSlot ? "Temporary mesocycle movement slot approved for this block" : null,
         item.isWeeklyVirtualSlot ? "Temporary weekly movement slot created for missed-workout redistribution" : null,
       ].filter(Boolean);
 
       const plannedSetRows = Array.from({ length: prescribedSets }, (_, setIndex) => {
         const setNumber = setIndex + 1;
         const weeklyAdded = item.isMissedThisWeek ? null : item.weeklyAddedSetPlans.find((plan) => plan.setNumber === setNumber);
+        const mesocycleAdded = item.mesocycleAddedSetPlans.find((plan) => plan.setNumber === setNumber);
         const planned = item.setPlans.find((plan) => plan.setNumber === setNumber);
-        return { setNumber, setTypeId: weeklyAdded?.setTypeId ?? planned?.setTypeId ?? item.defaultSetTypeId };
+        return { setNumber, setTypeId: weeklyAdded?.setTypeId ?? mesocycleAdded?.setTypeId ?? planned?.setTypeId ?? item.defaultSetTypeId };
       });
 
       const sessionExercise = await tx.workoutSessionExercise.create({
         data: {
           sessionId: created.id,
           exerciseId: preferredExerciseId,
-          templateExerciseId: item.isWeeklyVirtualSlot ? null : item.id,
+          templateExerciseId: item.isWeeklyVirtualSlot || item.isMesocycleVirtualSlot ? null : item.id,
           sortOrder: index,
           isSubstitution: false,
-          basePlannedSets: item.isWeeklyVirtualSlot ? 0 : item.basePlannedSets,
+          basePlannedSets: item.isWeeklyVirtualSlot || item.isMesocycleVirtualSlot ? 0 : item.basePlannedSets,
           prescribedPlannedSets: prescribedSets,
           prescribedMinReps: item.prescribedMinReps,
           prescribedMaxReps: item.prescribedMaxReps,

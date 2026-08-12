@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.3
+
+- Added approval-based mesocycle structural overrides without changing reusable base templates.
+- Movement-pattern targets now drive multiplier-aware effective-set prescriptions.
+- Existing slots are filled first up to their configured maximum, with no more than one intensifier set per exercise slot.
+- Added mesocycle-only movement slots when existing capacity cannot meet a target, starting with the least-loaded workout.
+- Added mesocycle-only slot-removal proposals when a lower target makes a whole slot unnecessary.
+- Approved structural changes can be undone while keeping the underlying program template intact.
+
 ## 1.0.2
 
 - Made missed-workout redistribution effective-set and set-type multiplier aware.

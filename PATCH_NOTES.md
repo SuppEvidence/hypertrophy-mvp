@@ -1,20 +1,28 @@
-# V1.0.2 missed-workout allocator and exercise recall
+# V1.0.3 mesocycle structure planner
 
-No database migration is required.
+A database migration is required.
 
-## Missed-workout redistribution
+## Mesocycle structural planning
 
-- Redistribution is calculated in effective-set units rather than physical-set counts.
-- Each missed physical set carries its original set type and multiplier into the weekly recovery prescription.
-- The allocator will not add a multiplier set to an exercise slot that already contains a multiplier set.
-- Existing matching movement slots are used first, subject to their physical-set capacity.
-- When no matching slot can accept a missed set, a temporary weekly-only movement slot is created.
-- Temporary slots are placed into the least-loaded eligible workout first and do not modify the base template.
-- Weekly-plan UI now reports both physical sets and effective sets.
+- Movement-pattern targets are interpreted as weekly effective-set prescription targets.
+- The generator first adjusts existing auto-adjustable slots within their configured min/max set limits.
+- Added sets are multiplier-aware and may use an intensifier set type when that improves the target match.
+- An exercise slot may contain at most one intensifier set. Additional generated sets in the same slot use non-intensifier set types.
+- If existing slot capacity cannot satisfy a movement target, the app proposes a mesocycle-only movement slot in the least-loaded suitable workout.
+- If a lower target makes a whole slot unnecessary, the app can propose suppressing that slot for the mesocycle.
+- Structural proposals require explicit approval. Base program templates are never changed.
+- Approved structural overrides can be undone while the block is editable.
+- Mesocycle-only added slots are included in workout prescriptions, set-type multipliers, and weekly missed-workout redistribution.
 
-## Exercise recall
+## Data model
 
-- Starting a template looks at the most recent completed workout using that same template.
-- For each stable template slot, the exercise used in that slot previously is preselected when it is still active and belongs to the same movement group.
-- If there is no matching previous completed slot, the existing template/default exercise fallback is used.
-- Temporary weekly-only slots use their redistribution fallback exercise.
+`ProgramMesocycle.structureOverrides` stores approved mesocycle-only add/remove actions as JSON. Existing mesocycles remain compatible because the field is nullable.
+
+## Apply
+
+```powershell
+npm run db:migrate
+npx prisma generate
+npm run typecheck
+npm run build
+```

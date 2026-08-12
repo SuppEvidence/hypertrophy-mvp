@@ -1,12 +1,12 @@
 # Ripped Fat Dude Hypertrophy Tracker
 
-Version 1.0.2 of a mobile-first hypertrophy planning and tracking application for experienced lifters.
+Version 1.0.3 of a mobile-first hypertrophy planning and tracking application for experienced lifters.
 
 ## Product scope
 
 - Program structure and reusable volume defaults
 - Movement-pattern workout templates and exercise pools
-- Mesocycle targets, movement-specific rep policies, and end-of-block review
+- Mesocycle targets, movement-specific rep policies, approval-based structural overrides, and end-of-block review
 - Set-level stimulus logging with optional load, reps, and RIR
 - Set types and productive-volume multipliers
 - Weekly missed-workout redistribution

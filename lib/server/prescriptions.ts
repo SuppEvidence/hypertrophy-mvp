@@ -49,7 +49,7 @@ export async function buildProgramPrescription(
   const weekStartDate = startOfIsoWeek();
   const weekStart = toDateOnly(weekStartDate);
 
-  const [program, activeMesocycle, completedSessions] = await Promise.all([
+  const [program, activeMesocycle, completedSessions, setTypes, movementDefaults] = await Promise.all([
     prisma.program.findFirst({
       where: { id: programId, userId, isArchived: false },
       include: {
@@ -90,6 +90,25 @@ export async function buildProgramPrescription(
           select: { templateId: true },
         })
       : Promise.resolve([]),
+    prisma.setType.findMany({
+      where: { isActive: true, OR: [{ userId: null }, { userId }] },
+      orderBy: [{ userId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, slug: true, multiplier: true, isIntensifier: true, sortOrder: true },
+    }),
+    prisma.exercise.findMany({
+      where: { isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
+      orderBy: [{ isSeed: "desc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        movementGroupId: true,
+        defaultMinReps: true,
+        defaultMaxReps: true,
+        movementGroup: { select: { id: true, name: true, sortOrder: true } },
+        primaryMuscles: { select: { muscleId: true, muscle: { select: { name: true, sortOrder: true } } } },
+        secondaryMuscles: { select: { muscleId: true, muscle: { select: { name: true, sortOrder: true } } } },
+      },
+    }),
   ]);
 
   if (!program) return null;
@@ -116,10 +135,12 @@ export async function buildProgramPrescription(
       rirTarget: item.rirTarget,
       defaultSetTypeId: item.defaultSetTypeId,
       defaultSetTypeMultiplier: item.defaultSetType.multiplier,
+      defaultSetTypeIsIntensifier: item.defaultSetType.isIntensifier,
       setPlans: item.setPlans.map((plan) => ({
         setNumber: plan.setNumber,
         setTypeId: plan.setTypeId,
         multiplier: plan.setType.multiplier,
+        isIntensifier: plan.setType.isIntensifier,
       })),
       slotPriority: item.slotPriority,
       slotRole: item.slotRole,
@@ -171,9 +192,49 @@ export async function buildProgramPrescription(
             minReps: policy.minReps,
             maxReps: policy.maxReps,
           })),
+          movementVolumeTargets: activeMesocycle.movementVolumeTargets.map((target) => ({
+            movementGroupId: target.movementGroupId,
+            movementGroupName: target.movementGroup.name,
+            sortOrder: target.movementGroup.sortOrder,
+            targetSets: target.targetSets,
+          })),
+          structureOverrides: activeMesocycle.structureOverrides,
         }
       : null,
     templateExercises,
+    templates: program.templates.map((template) => ({
+      id: template.id,
+      name: template.name,
+      sequenceIndex: template.sequenceIndex,
+      expectedOccurrences: template.expectedOccurrences,
+    })),
+    setTypes: setTypes.map((setType) => ({
+      id: setType.id,
+      name: setType.name,
+      slug: setType.slug,
+      multiplier: setType.multiplier,
+      isIntensifier: setType.isIntensifier,
+      sortOrder: setType.sortOrder,
+    })),
+    movementDefaults: movementDefaults.map((exercise) => ({
+      exerciseId: exercise.id,
+      exerciseName: exercise.name,
+      movementGroupId: exercise.movementGroupId,
+      movementGroupName: exercise.movementGroup.name,
+      movementGroupSortOrder: exercise.movementGroup.sortOrder,
+      defaultMinReps: exercise.defaultMinReps,
+      defaultMaxReps: exercise.defaultMaxReps,
+      primaryMuscles: exercise.primaryMuscles.map((link) => ({
+        muscleId: link.muscleId,
+        muscleName: link.muscle.name,
+        sortOrder: link.muscle.sortOrder,
+      })),
+      secondaryMuscles: exercise.secondaryMuscles.map((link) => ({
+        muscleId: link.muscleId,
+        muscleName: link.muscle.name,
+        sortOrder: link.muscle.sortOrder,
+      })),
+    })),
   });
 
   const storedWeeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan, weekStart);
@@ -219,6 +280,8 @@ export async function getTemplatePrescription(programId: string, templateId: str
   if (!prescription) return null;
   return {
     ...prescription,
-    templateItems: prescription.generated.items.filter((item) => item.templateId === templateId).sort((a, b) => a.sortOrder - b.sortOrder),
+    templateItems: prescription.generated.items
+      .filter((item) => item.templateId === templateId && !item.isMesocycleSuppressed && item.adjustedPlannedSets > 0)
+      .sort((a, b) => a.sortOrder - b.sortOrder),
   };
 }

@@ -16,7 +16,8 @@ export type WeeklyPlanSourceItem = {
   maxSets?: number | null;
   defaultSetTypeId: string;
   defaultSetTypeMultiplier: unknown;
-  setPlans: Array<{ setNumber: number; setTypeId: string; multiplier: unknown }>;
+  setPlans: Array<{ setNumber: number; setTypeId: string; multiplier: unknown; isIntensifier?: boolean }>;
+  mesocycleAddedSetPlans?: Array<{ setNumber: number; setTypeId: string; multiplier: unknown; isIntensifier?: boolean }>;
 };
 
 export type WeeklyAddedSetPlan = {
@@ -114,7 +115,8 @@ function roundEffective(value: number) {
 }
 
 function setPlanFor(item: WeeklyPlanSourceItem, setNumber: number) {
-  const plan = item.setPlans.find((row) => row.setNumber === setNumber);
+  const mesocyclePlan = item.mesocycleAddedSetPlans?.find((row) => row.setNumber === setNumber);
+  const plan = mesocyclePlan ?? item.setPlans.find((row) => row.setNumber === setNumber);
   return {
     setTypeId: plan?.setTypeId ?? item.defaultSetTypeId,
     multiplier: Math.max(0, toNumber(plan?.multiplier ?? item.defaultSetTypeMultiplier, 1)),
