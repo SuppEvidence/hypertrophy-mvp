@@ -281,7 +281,12 @@ export async function getTemplatePrescription(programId: string, templateId: str
   return {
     ...prescription,
     templateItems: prescription.generated.items
-      .filter((item) => item.templateId === templateId && !item.isMesocycleSuppressed && item.adjustedPlannedSets > 0)
+      .filter(
+        (item) =>
+          item.templateId === templateId &&
+          !item.isMesocycleSuppressed &&
+          (item.adjustedPlannedSets > 0 || item.weeklyAdjustedPlannedSets > 0),
+      )
       .sort((a, b) => a.sortOrder - b.sortOrder),
   };
 }
