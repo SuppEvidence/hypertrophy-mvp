@@ -84,10 +84,21 @@ export async function buildProgramPrescription(
             userId,
             programId,
             status: "COMPLETED",
-            templateId: { not: null },
             performedAt: { gte: weekStartDate, lt: endOfIsoWeek(weekStartDate) },
           },
-          select: { templateId: true },
+          select: {
+            templateId: true,
+            exercises: {
+              select: {
+                templateExercise: { select: { movementGroupId: true } },
+                exercise: { select: { movementGroupId: true } },
+                sets: {
+                  where: { isCompleted: true },
+                  select: { setType: { select: { multiplier: true } } },
+                },
+              },
+            },
+          },
         })
       : Promise.resolve([]),
     prisma.setType.findMany({
@@ -241,15 +252,42 @@ export async function buildProgramPrescription(
   const completedTemplateIds: string[] = Array.from(
     new Set(
       completedSessions
-        .map((session: { templateId: string | null }) => session.templateId)
-        .filter((templateId: string | null): templateId is string => Boolean(templateId)),
+        .map((session) => session.templateId)
+        .filter((templateId): templateId is string => Boolean(templateId)),
     ),
   );
+
+  const completedMovementVolume = new Map<string, { physicalSets: number; effectiveSets: number }>();
+  for (const session of completedSessions) {
+    for (const sessionExercise of session.exercises) {
+      const movementGroupId = sessionExercise.templateExercise?.movementGroupId ?? sessionExercise.exercise.movementGroupId;
+      const current = completedMovementVolume.get(movementGroupId) ?? { physicalSets: 0, effectiveSets: 0 };
+      for (const set of sessionExercise.sets) {
+        current.physicalSets += 1;
+        current.effectiveSets += Math.max(0, Number(set.setType.multiplier));
+      }
+      completedMovementVolume.set(movementGroupId, current);
+    }
+  }
+
+  const completedMovementRows = Array.from(completedMovementVolume.entries()).map(([movementGroupId, volume]) => ({
+    movementGroupId,
+    physicalSets: volume.physicalSets,
+    effectiveSets: Math.round(volume.effectiveSets * 100) / 100,
+  }));
+
+  const weeklySetTypes = setTypes.map((setType) => ({
+    id: setType.id,
+    multiplier: setType.multiplier,
+    isIntensifier: setType.isIntensifier,
+  }));
 
   const weekly = includeWeeklyPlan
     ? applyWeeklyMissedWorkoutPlan({
         items: generated.items,
         templates: program.templates.map((template) => ({ id: template.id, name: template.name, sequenceIndex: template.sequenceIndex })),
+        setTypes: weeklySetTypes,
+        completedMovementVolume: completedMovementRows,
         weekStart,
         missedTemplateIds: storedWeeklyPlan.missedTemplateIds,
         completedTemplateIds,
@@ -258,6 +296,8 @@ export async function buildProgramPrescription(
     : applyWeeklyMissedWorkoutPlan({
         items: generated.items,
         templates: program.templates.map((template) => ({ id: template.id, name: template.name, sequenceIndex: template.sequenceIndex })),
+        setTypes: weeklySetTypes,
+        completedMovementVolume: [],
         weekStart,
         missedTemplateIds: [],
         completedTemplateIds: [],

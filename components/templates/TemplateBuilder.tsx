@@ -68,6 +68,9 @@ type WeeklyPlanSummary = {
   missedEffectiveSets: number;
   reallocatedEffectiveSets: number;
   unallocatedEffectiveSets: number;
+  plannedEffectiveSets: number;
+  completedEffectiveSets: number;
+  requiredRedistributionEffectiveSets: number;
   virtualSlotsCreated: number;
 };
 type TargetNotice = ReturnType<typeof buildTemplateTargetNotices>[number];
@@ -336,14 +339,19 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
 
           {weeklyPlan && weeklyPlan.missedEffectiveSets > 0 ? (
             <div className={`rounded-xl border p-3 text-sm ${weeklyPlan.unallocatedEffectiveSets > 0 ? "border-amber-400/30 bg-amber-400/10 text-amber-100" : "border-slate-800 bg-slate-950 text-slate-300"}`}>
-              Missed {weeklyPlan.missedEffectiveSets.toFixed(1)} effective sets · reallocated {weeklyPlan.reallocatedEffectiveSets.toFixed(1)}
-              {weeklyPlan.unallocatedEffectiveSets > 0 ? ` · ${weeklyPlan.unallocatedEffectiveSets.toFixed(1)} could not be placed` : " · all effective volume placed"}
-              {weeklyPlan.virtualSlotsCreated > 0 ? ` · ${weeklyPlan.virtualSlotsCreated} temporary slot${weeklyPlan.virtualSlotsCreated === 1 ? "" : "s"} added` : ""}
+              <p>
+                Missed {weeklyPlan.missedEffectiveSets.toFixed(1)} effective · recovery needed {weeklyPlan.requiredRedistributionEffectiveSets.toFixed(1)} · reallocated {weeklyPlan.reallocatedEffectiveSets.toFixed(1)}
+              </p>
+              <p className="mt-1 text-xs opacity-80">
+                Completed this week {weeklyPlan.completedEffectiveSets.toFixed(1)} effective sets are credited before redistribution.
+                {weeklyPlan.unallocatedEffectiveSets > 0 ? ` ${weeklyPlan.unallocatedEffectiveSets.toFixed(1)} effective sets could not be placed sensibly.` : " Required recovery volume is fully placed."}
+                {weeklyPlan.virtualSlotsCreated > 0 ? ` ${weeklyPlan.virtualSlotsCreated} temporary slot${weeklyPlan.virtualSlotsCreated === 1 ? "" : "s"} added.` : ""}
+              </p>
             </div>
           ) : null}
 
           <p className="text-xs text-slate-500">
-            Redistribution is week-specific and never changes the base template. Multiplier sets retain their effective value, the allocator will not add a second multiplier set to the same slot, and a temporary movement slot can be created when existing matching slots cannot accept the work.
+            Redistribution is week-specific and never changes the base template. Actual completed effective volume is credited first. Remaining work is balanced across not-yet-completed workouts, respects slot capacity and the one-multiplier-set-per-slot rule, and creates at most one temporary slot for the same movement pattern in each recipient workout.
           </p>
           <Button className="w-full sm:w-auto">Save weekly availability</Button>
         </form>

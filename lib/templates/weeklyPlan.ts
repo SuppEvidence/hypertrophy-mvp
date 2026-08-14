@@ -28,6 +28,18 @@ export type WeeklyAddedSetPlan = {
   sourceTemplateName: string;
 };
 
+export type WeeklyPlanSetType = {
+  id: string;
+  multiplier: unknown;
+  isIntensifier?: boolean;
+};
+
+export type CompletedMovementVolume = {
+  movementGroupId: string;
+  physicalSets: number;
+  effectiveSets: number;
+};
+
 export type WeeklyAdjustedItem<T extends WeeklyPlanSourceItem> = T & {
   weeklyAdjustedPlannedSets: number;
   weeklyAdjustmentDelta: number;
@@ -54,6 +66,9 @@ export type WeeklyPlanSummary = {
   missedEffectiveSets: number;
   reallocatedEffectiveSets: number;
   unallocatedEffectiveSets: number;
+  plannedEffectiveSets: number;
+  completedEffectiveSets: number;
+  requiredRedistributionEffectiveSets: number;
   virtualSlotsCreated: number;
 };
 
@@ -160,6 +175,8 @@ function appendReason(current: string | null, next: string) {
 export function applyWeeklyMissedWorkoutPlan<T extends WeeklyPlanSourceItem>(args: {
   items: T[];
   templates?: WeeklyPlanTemplate[];
+  setTypes?: WeeklyPlanSetType[];
+  completedMovementVolume?: CompletedMovementVolume[];
   weekStart: string;
   missedTemplateIds: string[];
   completedTemplateIds?: string[];
@@ -220,13 +237,61 @@ export function applyWeeklyMissedWorkoutPlan<T extends WeeklyPlanSourceItem>(arg
     .filter((item) => item.isMissedThisWeek)
     .sort((a, b) => a.templateSequenceIndex - b.templateSequenceIndex || a.sortOrder - b.sortOrder);
 
+  const plannedByMovement = new Map<string, number>();
+  const remainingPlannedByMovement = new Map<string, number>();
+  const missedByMovement = new Map<string, number>();
+  for (const item of items) {
+    const effective = plannedEffective(item, item.adjustedPlannedSets);
+    plannedByMovement.set(item.movementGroupId, (plannedByMovement.get(item.movementGroupId) ?? 0) + effective);
+    if (item.isMissedThisWeek) {
+      missedByMovement.set(item.movementGroupId, (missedByMovement.get(item.movementGroupId) ?? 0) + effective);
+    } else if (!completedSet.has(item.templateId)) {
+      remainingPlannedByMovement.set(item.movementGroupId, (remainingPlannedByMovement.get(item.movementGroupId) ?? 0) + effective);
+    }
+  }
+
+  const completedByMovement = new Map<string, number>();
+  let completedEffectiveSets = 0;
+  for (const row of args.completedMovementVolume ?? []) {
+    const effective = Math.max(0, toNumber(row.effectiveSets));
+    completedByMovement.set(row.movementGroupId, (completedByMovement.get(row.movementGroupId) ?? 0) + effective);
+    completedEffectiveSets += effective;
+  }
+
+  const recoveryBudgetByMovement = new Map<string, number>();
+  for (const [movementGroupId, missedEffective] of missedByMovement) {
+    const planned = plannedByMovement.get(movementGroupId) ?? 0;
+    const completed = completedByMovement.get(movementGroupId) ?? 0;
+    const remainingPlanned = remainingPlannedByMovement.get(movementGroupId) ?? 0;
+    const weeklyDeficit = Math.max(0, planned - completed - remainingPlanned);
+    recoveryBudgetByMovement.set(movementGroupId, roundEffective(Math.min(missedEffective, weeklyDeficit)));
+  }
+
   let missedPhysicalSets = 0;
   let reallocatedPhysicalSets = 0;
   let unallocatedPhysicalSets = 0;
   let missedEffectiveSets = 0;
   let reallocatedEffectiveSets = 0;
-  let unallocatedEffectiveSets = 0;
   let virtualSlotsCreated = 0;
+
+  for (const source of missedItems) {
+    missedPhysicalSets += Math.max(0, source.adjustedPlannedSets);
+    missedEffectiveSets += plannedEffective(source, source.adjustedPlannedSets);
+  }
+
+  const plannedEffectiveSets = roundEffective(Array.from(plannedByMovement.values()).reduce((sum, value) => sum + value, 0));
+  const requiredRedistributionEffectiveSets = roundEffective(
+    Array.from(recoveryBudgetByMovement.values()).reduce((sum, value) => sum + value, 0),
+  );
+
+  const availableSetTypes = (args.setTypes ?? [])
+    .map((setType) => ({
+      id: setType.id,
+      multiplier: Math.max(0, toNumber(setType.multiplier, 1)),
+      isIntensifier: Boolean(setType.isIntensifier),
+    }))
+    .filter((setType) => setType.multiplier > 0)
+    .sort((a, b) => b.multiplier - a.multiplier || Number(a.isIntensifier) - Number(b.isIntensifier));
 
   const eligibleTemplateIds = () =>
     Array.from(templateMeta.values())
@@ -237,8 +302,14 @@ export function applyWeeklyMissedWorkoutPlan<T extends WeeklyPlanSourceItem>(arg
   const currentTemplatePhysicalSets = (templateId: string) =>
     (originalTemplateSets.get(templateId) ?? 0) + (templateAllocatedPhysical.get(templateId) ?? 0);
 
-  const chooseTemplateForVirtualSlot = () =>
+  const chooseTemplateForVirtualSlot = (movementGroupId: string) =>
     eligibleTemplateIds()
+      .filter(
+        (template) =>
+          !items.some(
+            (item) => item.isWeeklyVirtualSlot && item.templateId === template.id && item.movementGroupId === movementGroupId,
+          ),
+      )
       .sort(
         (a, b) =>
           currentTemplatePhysicalSets(a.id) - currentTemplatePhysicalSets(b.id) ||
@@ -247,7 +318,7 @@ export function applyWeeklyMissedWorkoutPlan<T extends WeeklyPlanSourceItem>(arg
       )[0] ?? null;
 
   const createVirtualSlot = (source: WeeklyAdjustedItem<T>) => {
-    const destination = chooseTemplateForVirtualSlot();
+    const destination = chooseTemplateForVirtualSlot(source.movementGroupId);
     if (!destination) return null;
 
     virtualSlotsCreated += 1;
@@ -285,65 +356,79 @@ export function applyWeeklyMissedWorkoutPlan<T extends WeeklyPlanSourceItem>(arg
     return virtual;
   };
 
+  const allocateSet = (source: WeeklyAdjustedItem<T>, setTypeId: string, effectiveValue: number) => {
+    const canReceive = (item: WeeklyAdjustedItem<T>) => {
+      if (item.isMissedThisWeek) return false;
+      if (recipientExcludedSet.has(item.templateId) || completedSet.has(item.templateId)) return false;
+      if (item.templateId === source.templateId) return false;
+      if (item.movementGroupId !== source.movementGroupId) return false;
+      if (item.weeklyAdjustedPlannedSets >= weeklyCapacity(item as WeeklyAdjustedItem<WeeklyPlanSourceItem>)) return false;
+      if (effectiveValue > 1.0001 && hasMultiplierSet(item as WeeklyAdjustedItem<WeeklyPlanSourceItem>)) return false;
+      return true;
+    };
+
+    const candidates = items
+      .filter(canReceive)
+      .sort(
+        (a, b) =>
+          Number(a.isWeeklyVirtualSlot) - Number(b.isWeeklyVirtualSlot) ||
+          currentTemplatePhysicalSets(a.templateId) - currentTemplatePhysicalSets(b.templateId) ||
+          a.weeklyAdjustmentDelta - b.weeklyAdjustmentDelta ||
+          a.templateSequenceIndex - b.templateSequenceIndex ||
+          a.sortOrder - b.sortOrder,
+      );
+
+    let selected: WeeklyAdjustedItem<T> | null = candidates[0] ?? null;
+    if (!selected) selected = createVirtualSlot(source);
+    if (!selected) return false;
+    if (effectiveValue > 1.0001 && hasMultiplierSet(selected as WeeklyAdjustedItem<WeeklyPlanSourceItem>)) return false;
+
+    const addedSetNumber = selected.weeklyAdjustedPlannedSets + 1;
+    selected.weeklyAddedSetPlans.push({
+      setNumber: addedSetNumber,
+      setTypeId,
+      multiplier: effectiveValue,
+      sourceTemplateId: source.templateId,
+      sourceTemplateName: source.templateName,
+    });
+    selected.weeklyAdjustedPlannedSets += 1;
+    selected.weeklyAdjustmentDelta += 1;
+    selected.weeklyAdjustmentReason = appendReason(
+      selected.weeklyAdjustmentReason,
+      `+${roundEffective(effectiveValue)} effective set${Math.abs(effectiveValue - 1) < 0.0001 ? "" : "s"} from missed ${source.templateName}`,
+    );
+    selected.weeklyEffectivePlanned = effectiveWithWeeklyAdds(selected as WeeklyAdjustedItem<WeeklyPlanSourceItem>);
+    templateAllocatedPhysical.set(selected.templateId, (templateAllocatedPhysical.get(selected.templateId) ?? 0) + 1);
+    reallocatedPhysicalSets += 1;
+    reallocatedEffectiveSets += effectiveValue;
+    return true;
+  };
+
   for (const source of missedItems) {
     const sourceSets = Math.max(0, source.adjustedPlannedSets);
-    missedPhysicalSets += sourceSets;
-
     for (let setNumber = 1; setNumber <= sourceSets; setNumber += 1) {
+      let remainingBudget = recoveryBudgetByMovement.get(source.movementGroupId) ?? 0;
+      if (remainingBudget <= 0.0001) continue;
+
       const sourcePlan = setPlanFor(source, setNumber);
-      const effectiveValue = sourcePlan.multiplier;
-      missedEffectiveSets += effectiveValue;
-
-      const canReceive = (item: WeeklyAdjustedItem<T>) => {
-        if (item.isMissedThisWeek) return false;
-        if (recipientExcludedSet.has(item.templateId) || completedSet.has(item.templateId)) return false;
-        if (item.templateId === source.templateId) return false;
-        if (item.movementGroupId !== source.movementGroupId) return false;
-        if (item.weeklyAdjustedPlannedSets >= weeklyCapacity(item as WeeklyAdjustedItem<WeeklyPlanSourceItem>)) return false;
-        if (effectiveValue > 1.0001 && hasMultiplierSet(item as WeeklyAdjustedItem<WeeklyPlanSourceItem>)) return false;
-        return true;
-      };
-
-      const candidates = items
-        .filter(canReceive)
-        .sort(
-          (a, b) =>
-            Number(a.isWeeklyVirtualSlot) - Number(b.isWeeklyVirtualSlot) ||
-            currentTemplatePhysicalSets(a.templateId) - currentTemplatePhysicalSets(b.templateId) ||
-            a.weeklyAdjustmentDelta - b.weeklyAdjustmentDelta ||
-            a.templateSequenceIndex - b.templateSequenceIndex ||
-            a.sortOrder - b.sortOrder,
-        );
-
-      let selected: WeeklyAdjustedItem<T> | null = candidates[0] ?? null;
-      if (!selected) {
-        selected = createVirtualSlot(source);
-      }
-
-      if (!selected) {
-        unallocatedPhysicalSets += 1;
-        unallocatedEffectiveSets += effectiveValue;
+      if (sourcePlan.multiplier <= remainingBudget + 0.0001) {
+        if (allocateSet(source, sourcePlan.setTypeId, sourcePlan.multiplier)) {
+          recoveryBudgetByMovement.set(source.movementGroupId, roundEffective(remainingBudget - sourcePlan.multiplier));
+        }
         continue;
       }
 
-      const addedSetNumber = selected.weeklyAdjustedPlannedSets + 1;
-      selected.weeklyAddedSetPlans.push({
-        setNumber: addedSetNumber,
-        setTypeId: sourcePlan.setTypeId,
-        multiplier: effectiveValue,
-        sourceTemplateId: source.templateId,
-        sourceTemplateName: source.templateName,
-      });
-      selected.weeklyAdjustedPlannedSets += 1;
-      selected.weeklyAdjustmentDelta += 1;
-      selected.weeklyAdjustmentReason = appendReason(
-        selected.weeklyAdjustmentReason,
-        `+${roundEffective(effectiveValue)} effective set${Math.abs(effectiveValue - 1) < 0.0001 ? "" : "s"} from missed ${source.templateName}`,
-      );
-      selected.weeklyEffectivePlanned = effectiveWithWeeklyAdds(selected as WeeklyAdjustedItem<WeeklyPlanSourceItem>);
-      templateAllocatedPhysical.set(selected.templateId, (templateAllocatedPhysical.get(selected.templateId) ?? 0) + 1);
-      reallocatedPhysicalSets += 1;
-      reallocatedEffectiveSets += effectiveValue;
+      // Earlier completed work can reduce the remaining weekly deficit below the
+      // multiplier of the missed set. In that case, recover only the volume still
+      // needed using the best available smaller set type rather than blindly adding
+      // the full intensifier value to the final workout.
+      while (remainingBudget > 0.0001) {
+        const fallback = availableSetTypes.find((setType) => setType.multiplier <= remainingBudget + 0.0001);
+        if (!fallback) break;
+        if (!allocateSet(source, fallback.id, fallback.multiplier)) break;
+        remainingBudget = roundEffective(remainingBudget - fallback.multiplier);
+        recoveryBudgetByMovement.set(source.movementGroupId, remainingBudget);
+      }
     }
   }
 
@@ -353,7 +438,8 @@ export function applyWeeklyMissedWorkoutPlan<T extends WeeklyPlanSourceItem>(arg
 
   missedEffectiveSets = roundEffective(missedEffectiveSets);
   reallocatedEffectiveSets = roundEffective(reallocatedEffectiveSets);
-  unallocatedEffectiveSets = roundEffective(unallocatedEffectiveSets);
+  const unallocatedEffectiveSets = roundEffective(Math.max(0, requiredRedistributionEffectiveSets - reallocatedEffectiveSets));
+  if (unallocatedEffectiveSets > 0.0001) unallocatedPhysicalSets = 1;
 
   return {
     items,
@@ -370,6 +456,9 @@ export function applyWeeklyMissedWorkoutPlan<T extends WeeklyPlanSourceItem>(arg
       missedEffectiveSets,
       reallocatedEffectiveSets,
       unallocatedEffectiveSets,
+      plannedEffectiveSets,
+      completedEffectiveSets: roundEffective(completedEffectiveSets),
+      requiredRedistributionEffectiveSets,
       virtualSlotsCreated,
     } satisfies WeeklyPlanSummary,
   };
