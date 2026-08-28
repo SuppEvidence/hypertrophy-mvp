@@ -524,6 +524,9 @@ model WorkoutSet {
   effortStatus      EffortStatus   @default(PRODUCTIVE) @map("effort_status")
   painFlag          Boolean        @default(false) @map("pain_flag")
   painNote          String?        @map("pain_note")
+  startedAt          DateTime?      @map("started_at")
+  endedAt            DateTime?      @map("ended_at")
+  intensifierDetails Json?          @map("intensifier_details")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
