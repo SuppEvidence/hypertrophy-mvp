@@ -103,15 +103,28 @@ export function AutosaveSetRow({ set, setTypes, prefillWeight, prefillReps, pref
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
-      <div className="grid grid-cols-[0.72fr_1fr_0.82fr_0.72fr_0.72fr] gap-2">
-        <div className="flex min-h-11 items-center px-1 text-sm font-semibold text-slate-300">Set {set.setNumber}</div>
-        <label className="relative">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-[0.72fr_1fr_0.82fr_0.72fr_0.72fr]">
+        <div className="col-span-2 flex min-h-10 items-center gap-2 px-1 text-sm font-semibold text-slate-300 sm:col-span-1 sm:min-h-11">
+          <span>Set {set.setNumber}</span>
+          <span className={`rounded-lg border px-2 py-1 text-[10px] font-semibold ${statusClass}`}>{statusText}</span>
+        </div>
+
+        <label className="col-start-1 row-start-2 relative sm:col-start-2 sm:row-start-1">
           <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase text-slate-600">kg</span>
-          <input value={weight} onChange={(event) => setWeight(event.target.value)} type="number" inputMode="decimal" step="0.5" min="0" className={`${inputClass} pr-8`} aria-label={`Set ${set.setNumber} weight`} placeholder="kg" />
+          <input value={weight} onChange={(event) => setWeight(event.target.value)} type="number" inputMode="decimal" step="0.5" min="0" className={`${inputClass} px-2 pr-7 sm:px-3 sm:pr-8`} aria-label={`Set ${set.setNumber} weight`} placeholder="kg" />
         </label>
-        <input value={reps} onChange={(event) => setReps(event.target.value)} type="number" inputMode="numeric" min="0" className={inputClass} aria-label={`Set ${set.setNumber} reps`} placeholder="reps" />
-        <input value={rir} onChange={(event) => setRir(event.target.value)} type="number" inputMode="decimal" step="0.5" min="0" max="10" className={inputClass} aria-label={`Set ${set.setNumber} RIR`} placeholder="RIR" />
-        <label className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-slate-700 bg-slate-950 px-2 text-xs font-semibold text-slate-300">
+
+        <label className="col-start-2 row-start-2 relative sm:col-start-3 sm:row-start-1">
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-600">reps</span>
+          <input value={reps} onChange={(event) => setReps(event.target.value)} type="number" inputMode="numeric" min="0" className={`${inputClass} px-2 pr-10 sm:px-3`} aria-label={`Set ${set.setNumber} reps`} placeholder="reps" />
+        </label>
+
+        <label className="col-start-3 row-start-2 relative sm:col-start-4 sm:row-start-1">
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold uppercase text-slate-600">RIR</span>
+          <input value={rir} onChange={(event) => setRir(event.target.value)} type="number" inputMode="decimal" step="0.5" min="0" max="10" className={`${inputClass} px-2 pr-8 sm:px-3`} aria-label={`Set ${set.setNumber} RIR`} placeholder="RIR" />
+        </label>
+
+        <label className="col-start-3 row-start-1 flex min-h-10 items-center justify-center gap-1 rounded-xl border border-slate-700 bg-slate-950 px-2 text-xs font-semibold text-slate-300 sm:col-start-5 sm:min-h-11">
           <input checked={isCompleted} onChange={(event) => setIsCompleted(event.target.checked)} type="checkbox" className="h-5 w-5" />
           Done
         </label>
@@ -138,9 +151,6 @@ export function AutosaveSetRow({ set, setTypes, prefillWeight, prefillReps, pref
           />
         ) : null}
       </details>
-      <div className={`mt-2 inline-flex min-h-8 items-center rounded-xl border px-3 text-xs font-semibold ${statusClass}`}>
-        {statusText}
-      </div>
     </div>
   );
 }
