@@ -457,6 +457,9 @@ model WorkoutSession {
   notes       String?
   prescriptionSummary Json?         @map("prescription_summary")
   completedAt DateTime?            @map("completed_at")
+  aiAnalysis      Json?     @map("ai_analysis")
+  aiAnalysisModel String?   @map("ai_analysis_model")
+  aiAnalyzedAt    DateTime? @map("ai_analyzed_at")
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
 
