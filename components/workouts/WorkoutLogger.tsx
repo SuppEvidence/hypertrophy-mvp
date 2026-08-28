@@ -597,7 +597,7 @@ function EditableSessionBody({
 
                   <div className="space-y-2">
                     <div className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Sets · done / type / effort / range / pain
+                      Sets · weight / reps / RIR / done
                     </div>
                     {[...item.sets].sort((a, b) => a.setNumber - b.setNumber).map((set: LoggerSet) => (
                       <div key={set.id} className="grid gap-2 lg:grid-cols-[1fr_auto]">
@@ -606,6 +606,9 @@ function EditableSessionBody({
                           setTypes={autosaveSetTypes}
                           repRangeStatusOptions={repRangeStatusOptions}
                           effortStatusOptions={effortStatusOptions}
+                          prefillWeight={weightSuggestions[item.id]?.suggestedWeight ?? null}
+                          prefillReps={weightSuggestions[item.id]?.targetReps ?? null}
+                          prefillRir={decimalToNumber(item.sets[0]?.rir)}
                         />
                         <form action={removeWorkoutSet} className="flex lg:items-start">
                           <input type="hidden" name="setId" value={set.id} />
