@@ -1,0 +1,22 @@
+Hypertrophy Tracker optimization bundle
+
+Extract this ZIP directly into the project root and allow files to overwrite.
+No Prisma migration is required for this bundle.
+
+Included changes:
+- Visible whole-set timer plus cluster/drop details in the mobile-friendly logger.
+- Timer/detail state is loaded lazily instead of one DB request per set on logger open.
+- Current set autosave no longer parses/writes retired manual effort/rep-range labels.
+- Completed-set effective volume no longer depends on retired manual effort labels.
+- Dashboard no longer queries/scans retired effort/rep-range fields or uses them for coach flags.
+- Dashboard terminology uses effective volume and routes set-level interpretation to AI Analytics.
+- AI workout history is fetched in one batched query instead of per-exercise + per-pattern N+1 queries.
+- AI movement-pattern context avoids duplicating raw histories already present in exercise context.
+- AI Analytics page uses one bounded history query for exercise/pattern readiness display.
+- AI Analytics added to desktop navigation and mobile More menu.
+- Supabase auth refresh-token recovery files included so the working local fix is preserved.
+
+Intentionally retained:
+- Legacy DB columns remain for historical compatibility. Dormant columns do not create meaningful runtime cost.
+- Old server functions can remain in source if no current component imports them; they are not executed.
+- Workout-start set creation was not refactored here: it runs once per workout and is lower-impact than the hot-path changes above.

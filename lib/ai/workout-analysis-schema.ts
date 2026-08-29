@@ -30,6 +30,29 @@ export const PerformanceDecaySchema = z.enum([
   "INSUFFICIENT_HISTORY",
 ]);
 
+export const MovementPatternProgressionSchema = z.enum([
+  "POSITIVE",
+  "STABLE",
+  "MIXED",
+  "NEGATIVE",
+  "INSUFFICIENT_HISTORY",
+]);
+
+export const ExerciseConsistencySchema = z.enum([
+  "CONSISTENT",
+  "MIXED",
+  "DIVERGENT",
+  "INSUFFICIENT_HISTORY",
+]);
+
+export const PatternImplementationSchema = z.enum([
+  "PATTERN_PRODUCTIVE",
+  "EXERCISE_SPECIFIC_LIMITATION",
+  "PATTERN_WIDE_STALL",
+  "MIXED",
+  "INSUFFICIENT_HISTORY",
+]);
+
 export const SetAssessmentSchema = z.object({
   setNumber: z.number().int().positive(),
   stimulus: StimulusLevelSchema,
@@ -51,10 +74,24 @@ export const ExerciseAssessmentSchema = z.object({
   sets: z.array(SetAssessmentSchema),
 });
 
+export const MovementPatternAssessmentSchema = z.object({
+  movementPatternId: z.string(),
+  movementPatternName: z.string(),
+  overallStimulus: StimulusLevelSchema,
+  overallFatigueCost: FatigueLevelSchema,
+  progressionSignal: MovementPatternProgressionSchema,
+  exerciseConsistency: ExerciseConsistencySchema,
+  implementationInterpretation: PatternImplementationSchema,
+  confidence: ConfidenceSchema,
+  notableSignals: z.array(z.string().max(300)).max(6),
+  rationale: z.string().max(1000),
+});
+
 export const WorkoutAnalysisSchema = z.object({
   workoutSummary: z.string().max(1200),
   overallFatigueSignal: FatigueLevelSchema,
   confidence: ConfidenceSchema,
+  movementPatternAssessments: z.array(MovementPatternAssessmentSchema),
   exerciseAssessments: z.array(ExerciseAssessmentSchema),
 });
 

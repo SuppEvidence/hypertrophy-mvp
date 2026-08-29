@@ -6,7 +6,9 @@ export type StimulusSetTypeInput = {
 export type StimulusSetInput = {
   setNumber?: number | null;
   isCompleted?: boolean | null;
+  /** Historical compatibility only; current volume accounting ignores it. */
   repRangeStatus?: string | null;
+  /** Historical compatibility only; current volume accounting ignores it. */
   effortStatus?: string | null;
   painFlag?: boolean | null;
   setType?: StimulusSetTypeInput;
@@ -14,11 +16,18 @@ export type StimulusSetInput = {
 
 export type StimulusExerciseInput = {
   completedSets?: number | null;
+  /** Historical compatibility only; current volume accounting ignores it. */
   effortStatus?: string | null;
   stimulusSetType?: StimulusSetTypeInput;
   sets?: StimulusSetInput[] | null;
 };
 
+/**
+ * Property names are retained for API compatibility with existing UI/calculation
+ * code. `productiveEquivalent` now means completed effective volume after the
+ * configured set-type multiplier; stimulus quality is interpreted by AI from
+ * objective logging rather than the retired manual effort labels.
+ */
 export type StimulusContribution = {
   completed: number;
   productiveEquivalent: number;
@@ -34,15 +43,16 @@ function toNumber(value: unknown, fallback = 0) {
 }
 
 function multiplierOf(setType: StimulusSetTypeInput | undefined) {
-  return toNumber(setType?.multiplier, 1);
+  return Math.max(0, toNumber(setType?.multiplier, 1));
 }
 
 function isIntensifier(setType: StimulusSetTypeInput | undefined) {
   return Boolean(setType?.isIntensifier);
 }
 
-export function isProductiveEffort(status: string | null | undefined) {
-  return status === "PRODUCTIVE" || status === "VERY_HARD" || status === "FAILURE";
+/** @deprecated Manual effort labels are no longer used for current volume. */
+export function isProductiveEffort(_status: string | null | undefined) {
+  return true;
 }
 
 export function usesStimulusEntry(item: StimulusExerciseInput) {
@@ -54,62 +64,77 @@ export function completedStimulusSets(item: StimulusExerciseInput) {
 }
 
 function sortedSets(sets: StimulusSetInput[] | null | undefined) {
-  return [...(sets ?? [])].sort((a, b) => Number(a.setNumber ?? 0) - Number(b.setNumber ?? 0));
+  return [...(sets ?? [])].sort(
+    (a, b) => Number(a.setNumber ?? 0) - Number(b.setNumber ?? 0),
+  );
 }
 
 function completedRows(item: StimulusExerciseInput) {
   return sortedSets(item.sets).filter((set) => Boolean(set.isCompleted));
 }
 
-export function getStimulusContribution(item: StimulusExerciseInput): StimulusContribution {
+export function getStimulusContribution(
+  item: StimulusExerciseInput,
+): StimulusContribution {
   const rows = completedRows(item);
 
   if (rows.length > 0 || (item.sets?.length ?? 0) > 0) {
-    let productiveEquivalent = 0;
-    let productiveSets = 0;
+    let effectiveEquivalent = 0;
     let intensifierSets = 0;
-    let intensifierProductiveEquivalent = 0;
+    let intensifierEffectiveEquivalent = 0;
 
     for (const set of rows) {
-      const multiplier = multiplierOf(set.setType ?? item.stimulusSetType);
-      const intensifier = isIntensifier(set.setType ?? item.stimulusSetType);
-      if (intensifier) intensifierSets += 1;
-      if (isProductiveEffort(set.effortStatus ?? item.effortStatus ?? "PRODUCTIVE")) {
-        productiveSets += 1;
-        productiveEquivalent += multiplier;
-        if (intensifier) intensifierProductiveEquivalent += multiplier;
+      const setType = set.setType ?? item.stimulusSetType;
+      const multiplier = multiplierOf(setType);
+      const intensifier = isIntensifier(setType);
+
+      effectiveEquivalent += multiplier;
+      if (intensifier) {
+        intensifierSets += 1;
+        intensifierEffectiveEquivalent += multiplier;
       }
     }
 
     return {
       completed: rows.length,
-      productiveEquivalent,
-      productiveSets,
+      productiveEquivalent: effectiveEquivalent,
+      productiveSets: rows.length,
       intensifierSets,
-      intensifierProductiveEquivalent,
+      intensifierProductiveEquivalent: intensifierEffectiveEquivalent,
     };
   }
-
-  const productive = isProductiveEffort(item.effortStatus);
 
   if (usesStimulusEntry(item)) {
     const completed = completedStimulusSets(item);
     if (completed === 0) {
-      return { completed: 0, productiveEquivalent: 0, productiveSets: 0, intensifierSets: 0, intensifierProductiveEquivalent: 0 };
+      return {
+        completed: 0,
+        productiveEquivalent: 0,
+        productiveSets: 0,
+        intensifierSets: 0,
+        intensifierProductiveEquivalent: 0,
+      };
     }
 
-    const fallbackMultiplier = multiplierOf(item.stimulusSetType);
-    const intensifierSets = isIntensifier(item.stimulusSetType) ? completed : 0;
-    const intensifierMultiplierSum = isIntensifier(item.stimulusSetType) ? completed * fallbackMultiplier : 0;
+    const multiplier = multiplierOf(item.stimulusSetType);
+    const intensifier = isIntensifier(item.stimulusSetType);
 
     return {
       completed,
-      productiveEquivalent: productive ? completed * fallbackMultiplier : 0,
-      productiveSets: productive ? completed : 0,
-      intensifierSets,
-      intensifierProductiveEquivalent: productive ? intensifierMultiplierSum : 0,
+      productiveEquivalent: completed * multiplier,
+      productiveSets: completed,
+      intensifierSets: intensifier ? completed : 0,
+      intensifierProductiveEquivalent: intensifier
+        ? completed * multiplier
+        : 0,
     };
   }
 
-  return { completed: 0, productiveEquivalent: 0, productiveSets: 0, intensifierSets: 0, intensifierProductiveEquivalent: 0 };
+  return {
+    completed: 0,
+    productiveEquivalent: 0,
+    productiveSets: 0,
+    intensifierSets: 0,
+    intensifierProductiveEquivalent: 0,
+  };
 }

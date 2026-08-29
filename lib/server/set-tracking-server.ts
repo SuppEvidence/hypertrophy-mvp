@@ -79,12 +79,15 @@ function parseStoredDetails(value: Prisma.JsonValue | null): StoredIntensifierDe
   return { clusterCount, dropSets };
 }
 
+/** Loaded only when the details drawer is opened, not once per row on page load. */
 export async function getWorkoutSetTracking(setId: string) {
   const userId = await requireUserId();
   const set = await prisma.workoutSet.findFirst({
     where: {
       id: setId,
-      sessionExercise: { session: { userId, status: editableSessionStatusWhere() } },
+      sessionExercise: {
+        session: { userId, status: editableSessionStatusWhere() },
+      },
     },
     select: {
       startedAt: true,
@@ -98,7 +101,10 @@ export async function getWorkoutSetTracking(setId: string) {
       ok: false as const,
       startedAt: null,
       endedAt: null,
-      intensifierDetails: { clusterCount: null, dropSets: [] } as StoredIntensifierDetails,
+      intensifierDetails: {
+        clusterCount: null,
+        dropSets: [],
+      } as StoredIntensifierDetails,
     };
   }
 
@@ -110,23 +116,49 @@ export async function getWorkoutSetTracking(setId: string) {
   };
 }
 
+/**
+ * Starts a new timer unless one is already running. After a page refresh,
+ * pressing Start Set resumes the existing server-side start time instead of
+ * silently resetting it.
+ */
 export async function startWorkoutSetTimer(setId: string) {
   const userId = await requireUserId();
-  const startedAt = new Date();
-  const result = await prisma.workoutSet.updateMany({
+  const existing = await prisma.workoutSet.findFirst({
     where: {
       id: setId,
-      sessionExercise: { session: { userId, status: editableSessionStatusWhere() } },
+      sessionExercise: {
+        session: { userId, status: editableSessionStatusWhere() },
+      },
     },
-    data: {
-      startedAt,
-      endedAt: null,
-    },
+    select: { startedAt: true, endedAt: true },
   });
 
-  return result.count === 1
-    ? { ok: true as const, startedAt: startedAt.toISOString() }
-    : { ok: false as const, error: "Set not found or session is not editable." };
+  if (!existing) {
+    return {
+      ok: false as const,
+      error: "Set not found or session is not editable.",
+    };
+  }
+
+  if (existing.startedAt && !existing.endedAt) {
+    return {
+      ok: true as const,
+      startedAt: existing.startedAt.toISOString(),
+      resumed: true as const,
+    };
+  }
+
+  const startedAt = new Date();
+  await prisma.workoutSet.update({
+    where: { id: setId },
+    data: { startedAt, endedAt: null },
+  });
+
+  return {
+    ok: true as const,
+    startedAt: startedAt.toISOString(),
+    resumed: false as const,
+  };
 }
 
 export async function endWorkoutSetTimer(setId: string) {
@@ -134,13 +166,18 @@ export async function endWorkoutSetTimer(setId: string) {
   const existing = await prisma.workoutSet.findFirst({
     where: {
       id: setId,
-      sessionExercise: { session: { userId, status: editableSessionStatusWhere() } },
+      sessionExercise: {
+        session: { userId, status: editableSessionStatusWhere() },
+      },
     },
     select: { startedAt: true },
   });
 
   if (!existing) {
-    return { ok: false as const, error: "Set not found or session is not editable." };
+    return {
+      ok: false as const,
+      error: "Set not found or session is not editable.",
+    };
   }
 
   const endedAt = new Date();
@@ -150,7 +187,12 @@ export async function endWorkoutSetTimer(setId: string) {
   });
 
   const durationSeconds = existing.startedAt
-    ? Math.max(0, Math.round((endedAt.getTime() - existing.startedAt.getTime()) / 1000))
+    ? Math.max(
+        0,
+        Math.round(
+          (endedAt.getTime() - existing.startedAt.getTime()) / 1000,
+        ),
+      )
     : null;
 
   return {
@@ -161,24 +203,33 @@ export async function endWorkoutSetTimer(setId: string) {
   };
 }
 
-export async function saveWorkoutSetIntensifierDetails(setId: string, payload: IntensifierPayload) {
+export async function saveWorkoutSetIntensifierDetails(
+  setId: string,
+  payload: IntensifierPayload,
+) {
   const userId = await requireUserId();
   const details = sanitizeDetails(payload);
-  const hasDetails = details.clusterCount !== null || details.dropSets.length > 0;
+  const hasDetails =
+    details.clusterCount !== null || details.dropSets.length > 0;
 
   const result = await prisma.workoutSet.updateMany({
     where: {
       id: setId,
-      sessionExercise: { session: { userId, status: editableSessionStatusWhere() } },
+      sessionExercise: {
+        session: { userId, status: editableSessionStatusWhere() },
+      },
     },
     data: {
       intensifierDetails: hasDetails
-  ? (details as Prisma.InputJsonValue)
-  : Prisma.DbNull,
+        ? (details as Prisma.InputJsonValue)
+        : Prisma.DbNull,
     },
   });
 
   return result.count === 1
     ? { ok: true as const }
-    : { ok: false as const, error: "Set not found or session is not editable." };
+    : {
+        ok: false as const,
+        error: "Set not found or session is not editable.",
+      };
 }

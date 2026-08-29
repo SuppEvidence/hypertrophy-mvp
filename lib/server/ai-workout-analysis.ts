@@ -9,6 +9,8 @@ import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 
 const HISTORY_EXPOSURES = 8;
+const PATTERN_HISTORY_EXPOSURES = 60;
+const MAX_BATCH_HISTORY_EXPOSURES = 500;
 
 type CompletedSet = {
   setNumber: number;
@@ -141,10 +143,60 @@ function historicalDecayBySetNumber(exposures: Array<{ sets: CompletedSet[] }>) 
     }));
 }
 
+function usablePerformanceSets(sets: CompletedSet[]) {
+  return sets.filter((set) => {
+    const weight = finiteNumber(set.weight);
+    return weight !== null && weight > 0 && set.reps !== null && set.reps > 0;
+  });
+}
+
+function firstUsableSet(sets: CompletedSet[]) {
+  return [...sets]
+    .sort((a, b) => a.setNumber - b.setNumber)
+    .find((set) => estimatedPerformanceIndex(set) !== null) ?? null;
+}
+
+function recentVsEarlierPerformancePct(exposures: Array<{ sets: CompletedSet[] }>) {
+  const ordered = exposures
+    .map((exposure) => {
+      const first = firstUsableSet(exposure.sets);
+      return first ? estimatedPerformanceIndex(first) : null;
+    })
+    .filter((value): value is number => value !== null);
+
+  // Avoid manufacturing a "trend" from only one or two exposures.
+  if (ordered.length < 3) return null;
+
+  const recent =
+    ordered.length >= 6
+      ? ordered.slice(0, 3)
+      : ordered.slice(0, 1);
+
+  const earlier =
+    ordered.length >= 6
+      ? ordered.slice(3, 6)
+      : ordered.slice(1);
+
+  const recentMedian = median(recent);
+  const earlierMedian = median(earlier);
+
+  if (recentMedian === null || earlierMedian === null || earlierMedian <= 0) return null;
+  return Math.round((((recentMedian / earlierMedian) - 1) * 100) * 10) / 10;
+}
+
+function medianFirstSetRir(exposures: Array<{ sets: CompletedSet[] }>) {
+  const values = exposures
+    .map((exposure) => firstUsableSet(exposure.sets))
+    .map((set) => (set ? finiteNumber(set.rir) : null))
+    .filter((value): value is number => value !== null);
+
+  return median(values);
+}
+
 const SYSTEM_INSTRUCTIONS = `
 You are the workout-analysis reasoning layer for a hypertrophy training application.
 
-Your job in this version is ONLY to assess set-level and exercise-level stimulus and fatigue from the supplied workout evidence. Do not recommend volume changes, program changes, deloads, exercise replacements, or mesocycle changes.
+Your job in this version is ONLY to assess set-level, exercise-level, and movement-pattern-level stimulus, fatigue, and progression from the supplied workout evidence. Do not recommend volume changes, program changes, deloads, exercise replacements, or mesocycle changes.
 
 Core interpretation rules:
 - Do not use a rigid rule such as "2 RIR is productive". Observed RIR is evidence, not ground truth.
@@ -155,8 +207,16 @@ Core interpretation rules:
 - Primary muscles only means the app classifies the exercise as isolation. Any secondary muscle means compound. Treat this only as context; do not assume every compound is equally fatiguing.
 - Pain is an adverse signal and should raise fatigue/uncertainty where appropriate, but do not diagnose injuries.
 - Use exercise history over generic assumptions whenever enough history exists.
-- If history or logging data is insufficient, say so through INSUFFICIENT_DATA / INSUFFICIENT_HISTORY / LOW confidence rather than inventing precision.
+- Historical logging quality can differ by era. Older exposures may have weight/reps/RIR but no set timer, cluster count, or drop-set detail because those fields were added later. Still use the available weight/reps/RIR evidence rather than discarding the exposure.
+- A historical exposure with at least one usable weight+reps set is valid evidence for performance progression. If RIR is also present, it can inform RIR plausibility/calibration.
+- Within-exercise performance decay requires at least two usable weight+reps sets in the same historical exposure. Do not confuse a lack of decay-comparable exposures with a total lack of exercise history.
+- If history or logging data is insufficient for a specific inference, say so through INSUFFICIENT_DATA / INSUFFICIENT_HISTORY / LOW confidence rather than inventing precision.
 - Do not output pseudo-precise physiological scores or estimated "hypertrophy units".
+- Movement-pattern progression is NOT a direct load comparison across different exercises or machines. Never equate absolute weights between exercises.
+- Infer movement-pattern progression by synthesizing within-exercise normalized performance trends, repeated stimulus/fatigue signals, pain, RIR-supported history, and whether multiple exercise implementations point in the same direction.
+- Distinguish a weak exercise implementation from a weak movement pattern. If one exercise is flat/poor while other exercises in the same pattern are progressing with good stimulus, prefer EXERCISE_SPECIFIC_LIMITATION over PATTERN_WIDE_STALL.
+- A new exercise can improve rapidly from familiarization. Do not treat early performance gains on a newly introduced exercise as strong evidence of movement-pattern progression unless supported by broader pattern history.
+- Return one movementPatternAssessment for every distinct movement pattern present in the current workout, preserving movementPatternId exactly as supplied.
 - Keep rationales concise and tied directly to supplied evidence.
 `;
 
@@ -186,74 +246,272 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
 
   if (!session) throw new Error("Completed workout not found.");
 
-  const recentRecovery = await prisma.metricLog.findMany({
-    where: {
-      userId,
-      isDraft: false,
-      loggedAt: { lte: session.performedAt },
-    },
-    orderBy: { loggedAt: "desc" },
-    take: 3,
-    select: {
-      loggedAt: true,
-      sleepDuration: true,
-      sleepQuality: true,
-      stress: true,
-      readiness: true,
-      manualFatigue: true,
-      sorenessJointIrritation: true,
-    },
+  const currentMovementPatterns = [
+    ...new Map(
+      session.exercises.map((sessionExercise) => [
+        sessionExercise.exercise.movementGroup.id,
+        {
+          movementPatternId: sessionExercise.exercise.movementGroup.id,
+          movementPatternName: sessionExercise.exercise.movementGroup.name,
+          currentExercises: session.exercises
+            .filter(
+              (candidate) =>
+                candidate.exercise.movementGroup.id ===
+                sessionExercise.exercise.movementGroup.id,
+            )
+            .map((candidate) => ({
+              sessionExerciseId: candidate.id,
+              exerciseId: candidate.exerciseId,
+              exerciseName: candidate.exercise.name,
+              derivedExerciseType:
+                candidate.exercise.secondaryMuscles.length > 0
+                  ? "COMPOUND"
+                  : "ISOLATION",
+            })),
+        },
+      ]),
+    ).values(),
+  ];
+
+  const movementPatternIds = currentMovementPatterns.map(
+    (pattern) => pattern.movementPatternId,
+  );
+
+  // One recovery query + one batched history query. The previous implementation
+  // performed separate history queries for every exercise and every movement
+  // pattern in the workout.
+  const [recentRecovery, historicalExposures] = await Promise.all([
+    prisma.metricLog.findMany({
+      where: {
+        userId,
+        isDraft: false,
+        loggedAt: { lte: session.performedAt },
+      },
+      orderBy: { loggedAt: "desc" },
+      take: 3,
+      select: {
+        loggedAt: true,
+        sleepDuration: true,
+        sleepQuality: true,
+        stress: true,
+        readiness: true,
+        manualFatigue: true,
+        sorenessJointIrritation: true,
+      },
+    }),
+    movementPatternIds.length === 0
+      ? Promise.resolve([])
+      : prisma.workoutSessionExercise.findMany({
+          where: {
+            exercise: {
+              movementGroupId: { in: movementPatternIds },
+            },
+            session: {
+              userId,
+              status: "COMPLETED",
+              performedAt: { lt: session.performedAt },
+            },
+            sets: {
+              some: {
+                isCompleted: true,
+                weight: { not: null },
+                reps: { not: null },
+              },
+            },
+          },
+          orderBy: { session: { performedAt: "desc" } },
+          take: MAX_BATCH_HISTORY_EXPOSURES,
+          include: {
+            session: { select: { performedAt: true } },
+            exercise: {
+              include: {
+                movementGroup: true,
+                secondaryMuscles: true,
+              },
+            },
+            sets: {
+              where: { isCompleted: true },
+              orderBy: { setNumber: "asc" },
+              include: { setType: true },
+            },
+          },
+        }),
+  ]);
+
+  const historyByExercise = new Map<string, typeof historicalExposures>();
+  const historyByPattern = new Map<string, typeof historicalExposures>();
+
+  for (const exposure of historicalExposures) {
+    const exerciseRows = historyByExercise.get(exposure.exerciseId) ?? [];
+    exerciseRows.push(exposure);
+    historyByExercise.set(exposure.exerciseId, exerciseRows);
+
+    const patternId = exposure.exercise.movementGroupId;
+    const patternRows = historyByPattern.get(patternId) ?? [];
+    patternRows.push(exposure);
+    historyByPattern.set(patternId, patternRows);
+  }
+
+  const usablePerformanceSetCount = (sets: CompletedSet[]) =>
+    sets.filter((set) => {
+      const weight = finiteNumber(set.weight);
+      return weight !== null && weight > 0 && set.reps !== null && set.reps > 0;
+    }).length;
+
+  const exerciseContexts = session.exercises.map((sessionExercise) => {
+    const previousExposures = (
+      historyByExercise.get(sessionExercise.exerciseId) ?? []
+    )
+      .filter(
+        (exposure) =>
+          usablePerformanceSetCount(exposure.sets as CompletedSet[]) >= 1,
+      )
+      .slice(0, HISTORY_EXPOSURES);
+
+    const decayComparableExposures = previousExposures.filter(
+      (exposure) =>
+        usablePerformanceSetCount(exposure.sets as CompletedSet[]) >= 2,
+    );
+
+    const rirSupportedExposures = previousExposures.filter((exposure) =>
+      (exposure.sets as CompletedSet[]).some((set) => {
+        const weight = finiteNumber(set.weight);
+        const rir = finiteNumber(set.rir);
+        return (
+          weight !== null &&
+          weight > 0 &&
+          set.reps !== null &&
+          set.reps > 0 &&
+          rir !== null
+        );
+      }),
+    );
+
+    return {
+      sessionExerciseId: sessionExercise.id,
+      exerciseId: sessionExercise.exerciseId,
+      exerciseName: sessionExercise.exercise.name,
+      movementPattern: sessionExercise.exercise.movementGroup.name,
+      derivedExerciseType:
+        sessionExercise.exercise.secondaryMuscles.length > 0
+          ? "COMPOUND"
+          : "ISOLATION",
+      primaryMuscles: sessionExercise.exercise.primaryMuscles.map(
+        (link) => link.muscle.name,
+      ),
+      secondaryMuscles: sessionExercise.exercise.secondaryMuscles.map(
+        (link) => link.muscle.name,
+      ),
+      currentExposure: {
+        performedAt: session.performedAt.toISOString(),
+        sets: serializeExposureSets(sessionExercise.sets as CompletedSet[]),
+      },
+      history: {
+        performanceExposureCount: previousExposures.length,
+        decayComparableExposureCount: decayComparableExposures.length,
+        rirSupportedExposureCount: rirSupportedExposures.length,
+        historicalMedianDecayBySetNumber: historicalDecayBySetNumber(
+          decayComparableExposures as Array<{ sets: CompletedSet[] }>,
+        ),
+        previousExposures: previousExposures.map((exposure) => ({
+          performedAt: exposure.session.performedAt.toISOString(),
+          sets: serializeExposureSets(exposure.sets as CompletedSet[]),
+        })),
+      },
+    };
   });
 
-  const exerciseContexts = await Promise.all(
-    session.exercises.map(async (sessionExercise) => {
-      const previousExposures = await prisma.workoutSessionExercise.findMany({
-        where: {
-          exerciseId: sessionExercise.exerciseId,
-          session: {
-            userId,
-            status: "COMPLETED",
-            performedAt: { lt: session.performedAt },
-          },
-        },
-        orderBy: { session: { performedAt: "desc" } },
-        take: HISTORY_EXPOSURES,
-        include: {
-          session: { select: { performedAt: true } },
-          sets: {
-            where: { isCompleted: true },
-            orderBy: { setNumber: "asc" },
-            include: { setType: true },
-          },
-        },
+  const movementPatternContexts = currentMovementPatterns.map((pattern) => {
+    const patternHistory = (
+      historyByPattern.get(pattern.movementPatternId) ?? []
+    ).slice(0, PATTERN_HISTORY_EXPOSURES);
+
+    const byExercise = new Map<
+      string,
+      {
+        exerciseId: string;
+        exerciseName: string;
+        derivedExerciseType: "COMPOUND" | "ISOLATION";
+        exposures: Array<{
+          performedAt: string;
+          sets: CompletedSet[];
+        }>;
+      }
+    >();
+
+    for (const exposure of patternHistory) {
+      const existing = byExercise.get(exposure.exerciseId) ?? {
+        exerciseId: exposure.exerciseId,
+        exerciseName: exposure.exercise.name,
+        derivedExerciseType:
+          exposure.exercise.secondaryMuscles.length > 0
+            ? ("COMPOUND" as const)
+            : ("ISOLATION" as const),
+        exposures: [],
+      };
+
+      existing.exposures.push({
+        performedAt: exposure.session.performedAt.toISOString(),
+        sets: exposure.sets as CompletedSet[],
       });
+      byExercise.set(exposure.exerciseId, existing);
+    }
+
+    const exerciseHistories = [...byExercise.values()].map((exercise) => {
+      const decayComparable = exercise.exposures.filter(
+        (exposure) => usablePerformanceSets(exposure.sets).length >= 2,
+      );
+
+      const rirSupportedExposureCount = exercise.exposures.filter((exposure) =>
+        usablePerformanceSets(exposure.sets).some(
+          (set) => finiteNumber(set.rir) !== null,
+        ),
+      ).length;
+
+      const painExposureCount = exercise.exposures.filter((exposure) =>
+        exposure.sets.some((set) => set.painFlag),
+      ).length;
+
+      const latestExposure = exercise.exposures[0] ?? null;
+      const latestFirstSet = latestExposure
+        ? firstUsableSet(latestExposure.sets)
+        : null;
+      const latestFirstSetPerformance = latestFirstSet
+        ? estimatedPerformanceIndex(latestFirstSet)
+        : null;
 
       return {
-        sessionExerciseId: sessionExercise.id,
-        exerciseId: sessionExercise.exerciseId,
-        exerciseName: sessionExercise.exercise.name,
-        movementPattern: sessionExercise.exercise.movementGroup.name,
-        derivedExerciseType:
-          sessionExercise.exercise.secondaryMuscles.length > 0 ? "COMPOUND" : "ISOLATION",
-        primaryMuscles: sessionExercise.exercise.primaryMuscles.map((link) => link.muscle.name),
-        secondaryMuscles: sessionExercise.exercise.secondaryMuscles.map((link) => link.muscle.name),
-        currentExposure: {
-          performedAt: session.performedAt.toISOString(),
-          sets: serializeExposureSets(sessionExercise.sets as CompletedSet[]),
-        },
-        history: {
-          exposureCount: previousExposures.length,
-          historicalMedianDecayBySetNumber: historicalDecayBySetNumber(
-            previousExposures as Array<{ sets: CompletedSet[] }>,
-          ),
-          previousExposures: previousExposures.map((exposure) => ({
-            performedAt: exposure.session.performedAt.toISOString(),
-            sets: serializeExposureSets(exposure.sets as CompletedSet[]),
-          })),
-        },
+        exerciseId: exercise.exerciseId,
+        exerciseName: exercise.exerciseName,
+        derivedExerciseType: exercise.derivedExerciseType,
+        performanceExposureCount: exercise.exposures.length,
+        decayComparableExposureCount: decayComparable.length,
+        rirSupportedExposureCount,
+        painExposureCount,
+        mostRecentExposureAt: latestExposure?.performedAt ?? null,
+        latestFirstSetPerformanceIndex:
+          latestFirstSetPerformance === null
+            ? null
+            : Math.round(latestFirstSetPerformance * 100) / 100,
+        recentVsEarlierFirstSetPerformancePct:
+          recentVsEarlierPerformancePct(exercise.exposures),
+        recentMedianFirstSetObservedRir: medianFirstSetRir(
+          exercise.exposures.slice(0, 5),
+        ),
+        historicalMedianDecayBySetNumber:
+          historicalDecayBySetNumber(decayComparable),
       };
-    }),
-  );
+    });
+
+    return {
+      ...pattern,
+      history: {
+        totalPerformanceExposures: patternHistory.length,
+        historicalExerciseCount: exerciseHistories.length,
+        exerciseHistories,
+      },
+    };
+  });
 
   return {
     workout: {
@@ -271,6 +529,7 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
       manualFatigue: entry.manualFatigue,
       sorenessJointIrritation: entry.sorenessJointIrritation,
     })),
+    movementPatterns: movementPatternContexts,
     exercises: exerciseContexts,
   };
 }
@@ -303,6 +562,15 @@ export async function analyzeCompletedWorkoutForUser(sessionId: string, userId: 
   for (const assessment of parsed.exerciseAssessments) {
     if (!validSessionExerciseIds.has(assessment.sessionExerciseId)) {
       throw new Error("AI analysis returned an unknown sessionExerciseId.");
+    }
+  }
+
+  const validMovementPatternIds = new Set(
+    context.movementPatterns.map((pattern) => pattern.movementPatternId),
+  );
+  for (const assessment of parsed.movementPatternAssessments) {
+    if (!validMovementPatternIds.has(assessment.movementPatternId)) {
+      throw new Error("AI analysis returned an unknown movementPatternId.");
     }
   }
 

@@ -12,7 +12,15 @@ import { Card } from "@/components/ui/Card";
 type EvidenceReadiness = "NEW" | "EMERGING" | "USEFUL" | "STRONG";
 
 type ExerciseEvidence = {
-  comparableExposures: number;
+  performanceExposures: number;
+  decayComparableExposures: number;
+  rirSupportedExposures: number;
+  readiness: EvidenceReadiness;
+};
+
+type PatternEvidence = {
+  performanceExposures: number;
+  historicalExercises: number;
   readiness: EvidenceReadiness;
 };
 
@@ -25,6 +33,73 @@ function readinessFor(exposures: number): EvidenceReadiness {
   if (exposures <= 2) return "EMERGING";
   if (exposures <= 5) return "USEFUL";
   return "STRONG";
+}
+
+function patternReadinessFor(exposures: number): EvidenceReadiness {
+  if (exposures <= 0) return "NEW";
+  if (exposures <= 3) return "EMERGING";
+  if (exposures <= 9) return "USEFUL";
+  return "STRONG";
+}
+
+function progressionClass(value: string) {
+  if (value === "POSITIVE") {
+    return "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
+  }
+  if (value === "STABLE") {
+    return "border-sky-400/30 bg-sky-400/10 text-sky-200";
+  }
+  if (value === "MIXED") {
+    return "border-amber-400/30 bg-amber-400/10 text-amber-200";
+  }
+  if (value === "NEGATIVE") {
+    return "border-rose-400/30 bg-rose-400/10 text-rose-200";
+  }
+  return "border-slate-700 bg-slate-900 text-slate-400";
+}
+
+function consistencyClass(value: string) {
+  if (value === "CONSISTENT") {
+    return "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
+  }
+  if (value === "MIXED") {
+    return "border-amber-400/30 bg-amber-400/10 text-amber-200";
+  }
+  if (value === "DIVERGENT") {
+    return "border-rose-400/30 bg-rose-400/10 text-rose-200";
+  }
+  return "border-slate-700 bg-slate-900 text-slate-400";
+}
+
+function implementationClass(value: string) {
+  if (value === "PATTERN_PRODUCTIVE") {
+    return "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
+  }
+  if (value === "EXERCISE_SPECIFIC_LIMITATION") {
+    return "border-amber-400/30 bg-amber-400/10 text-amber-200";
+  }
+  if (value === "PATTERN_WIDE_STALL") {
+    return "border-rose-400/30 bg-rose-400/10 text-rose-200";
+  }
+  if (value === "MIXED") {
+    return "border-amber-400/30 bg-amber-400/10 text-amber-200";
+  }
+  return "border-slate-700 bg-slate-900 text-slate-400";
+}
+
+function parseStoredAnalysis(value: unknown): WorkoutAnalysis | null {
+  const current = WorkoutAnalysisSchema.safeParse(value);
+  if (current.success) return current.data;
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const legacy = WorkoutAnalysisSchema.safeParse({
+      ...(value as Record<string, unknown>),
+      movementPatternAssessments: [],
+    });
+    if (legacy.success) return legacy.data;
+  }
+
+  return null;
 }
 
 function readinessClass(value: EvidenceReadiness) {
@@ -153,9 +228,11 @@ function Stage({
 function AnalysisView({
   analysis,
   evidenceBySessionExerciseId,
+  patternEvidenceById,
 }: {
   analysis: WorkoutAnalysis;
   evidenceBySessionExerciseId: Map<string, ExerciseEvidence>;
+  patternEvidenceById: Map<string, PatternEvidence>;
 }) {
   const usefulOrStrong = analysis.exerciseAssessments.filter((exercise) => {
     const evidence = evidenceBySessionExerciseId.get(exercise.sessionExerciseId);
@@ -181,11 +258,153 @@ function AnalysisView({
         </p>
       </div>
 
+      <div className="space-y-2">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-100">
+            Movement-pattern synthesis
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            AI synthesis across exercise variants. Absolute loads are never
+            compared directly between different exercises or machines.
+          </p>
+        </div>
+
+        {analysis.movementPatternAssessments.length === 0 ? (
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-5 text-amber-100/80">
+            This workout was analyzed before movement-pattern synthesis was
+            enabled. Re-analyze it to add this layer.
+          </div>
+        ) : (
+          analysis.movementPatternAssessments.map((pattern) => {
+            const evidence = patternEvidenceById.get(pattern.movementPatternId) ?? {
+              performanceExposures: 0,
+              historicalExercises: 0,
+              readiness: "NEW" as const,
+            };
+
+            return (
+              <div
+                key={pattern.movementPatternId}
+                className="rounded-xl border border-violet-400/20 bg-violet-400/5 p-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h4 className="font-semibold text-slate-100">
+                      {pattern.movementPatternName}
+                    </h4>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {evidence.performanceExposures} prior pattern exposures
+                      {" · "}
+                      {evidence.historicalExercises} historical exercise
+                      {evidence.historicalExercises === 1 ? "" : "s"}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Pill className={readinessClass(evidence.readiness)}>
+                      History: {label(evidence.readiness)}
+                    </Pill>
+                    <Pill className={confidenceClass(pattern.confidence)}>
+                      Confidence: {label(pattern.confidence)}
+                    </Pill>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-2.5">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Stimulus
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-100">
+                      {label(pattern.overallStimulus)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-2.5">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Fatigue
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-100">
+                      {label(pattern.overallFatigueCost)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-2.5">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Progression
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-100">
+                      {label(pattern.progressionSignal)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-2.5">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Exercise agreement
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-100">
+                      {label(pattern.exerciseConsistency)}
+                    </p>
+                  </div>
+                  <div className="col-span-2 rounded-lg border border-slate-800 bg-slate-950/70 p-2.5 sm:col-span-1">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Interpretation
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-100">
+                      {label(pattern.implementationInterpretation)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Pill className={stimulusClass(pattern.overallStimulus)}>
+                    Stimulus: {label(pattern.overallStimulus)}
+                  </Pill>
+                  <Pill className={fatigueClass(pattern.overallFatigueCost)}>
+                    Fatigue: {label(pattern.overallFatigueCost)}
+                  </Pill>
+                  <Pill className={progressionClass(pattern.progressionSignal)}>
+                    Progression: {label(pattern.progressionSignal)}
+                  </Pill>
+                  <Pill className={consistencyClass(pattern.exerciseConsistency)}>
+                    Exercises: {label(pattern.exerciseConsistency)}
+                  </Pill>
+                  <Pill
+                    className={implementationClass(
+                      pattern.implementationInterpretation,
+                    )}
+                  >
+                    {label(pattern.implementationInterpretation)}
+                  </Pill>
+                </div>
+
+                <p className="mt-3 text-xs leading-5 text-slate-300">
+                  {pattern.rationale}
+                </p>
+
+                {pattern.notableSignals.length > 0 ? (
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-slate-500">
+                    {pattern.notableSignals.map((signal, index) => (
+                      <li key={index}>{signal}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="pt-1">
+        <h3 className="text-sm font-semibold text-slate-100">
+          Exercise analysis
+        </h3>
+      </div>
+
       {analysis.exerciseAssessments.map((exercise) => {
         const evidence = evidenceBySessionExerciseId.get(
           exercise.sessionExerciseId,
         ) ?? {
-          comparableExposures: 0,
+          performanceExposures: 0,
+          decayComparableExposures: 0,
+          rirSupportedExposures: 0,
           readiness: "NEW" as const,
         };
 
@@ -200,11 +419,13 @@ function AnalysisView({
                   <h3 className="font-semibold text-slate-100">
                     {exercise.exerciseName}
                   </h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {evidence.comparableExposures} comparable prior{" "}
-                    {evidence.comparableExposures === 1
-                      ? "exposure"
-                      : "exposures"}
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    {evidence.performanceExposures} prior performance{" "}
+                    {evidence.performanceExposures === 1 ? "exposure" : "exposures"}
+                    {" · "}
+                    {evidence.decayComparableExposures} decay-comparable
+                    {" · "}
+                    {evidence.rirSupportedExposures} with RIR
                   </p>
                 </div>
 
@@ -343,6 +564,11 @@ export default async function AiAnalysisPage() {
         select: {
           id: true,
           exerciseId: true,
+          exercise: {
+            select: {
+              movementGroupId: true,
+            },
+          },
         },
       },
     },
@@ -356,19 +582,52 @@ export default async function AiAnalysisPage() {
     ),
   ];
 
-  const historicalExposures =
-    exerciseIds.length === 0
+  const movementGroupIds = [
+    ...new Set(
+      sessions.flatMap((session) =>
+        session.exercises.map(
+          (exercise) => exercise.exercise.movementGroupId,
+        ),
+      ),
+    ),
+  ];
+
+  // One bounded history query supports both exercise- and movement-pattern
+  // readiness badges on this page. We only need recent evidence depth here;
+  // the actual AI analyzer has its own richer historical context.
+  const historicalEvidenceExposures =
+    movementGroupIds.length === 0
       ? []
       : await prisma.workoutSessionExercise.findMany({
           where: {
-            exerciseId: { in: exerciseIds },
+            exercise: {
+              movementGroupId: { in: movementGroupIds },
+            },
             session: {
               userId,
               status: "COMPLETED",
             },
+            sets: {
+              some: {
+                isCompleted: true,
+                weight: { not: null },
+                reps: { not: null },
+              },
+            },
           },
+          orderBy: {
+            session: {
+              performedAt: "desc",
+            },
+          },
+          take: 500,
           select: {
             exerciseId: true,
+            exercise: {
+              select: {
+                movementGroupId: true,
+              },
+            },
             session: {
               select: {
                 performedAt: true,
@@ -381,26 +640,66 @@ export default async function AiAnalysisPage() {
               select: {
                 weight: true,
                 reps: true,
+                rir: true,
               },
             },
           },
         });
 
   function evidenceFor(exerciseId: string, performedAt: Date): ExerciseEvidence {
-    const comparableExposures = historicalExposures.filter((exposure) => {
-      if (exposure.exerciseId !== exerciseId) return false;
-      if (exposure.session.performedAt >= performedAt) return false;
+    const prior = historicalEvidenceExposures.filter(
+      (exposure) =>
+        exposure.exerciseId === exerciseId &&
+        exposure.session.performedAt < performedAt,
+    );
 
-      const comparableSets = exposure.sets.filter(
-        (set) => set.weight !== null && set.reps !== null,
+    const performanceExposures = prior.filter((exposure) =>
+      exposure.sets.some(
+        (set) => set.weight !== null && set.reps !== null && set.reps > 0,
+      ),
+    ).length;
+
+    const decayComparableExposures = prior.filter((exposure) => {
+      const usableSets = exposure.sets.filter(
+        (set) => set.weight !== null && set.reps !== null && set.reps > 0,
       );
-
-      return comparableSets.length >= 2;
+      return usableSets.length >= 2;
     }).length;
 
+    const rirSupportedExposures = prior.filter((exposure) =>
+      exposure.sets.some(
+        (set) =>
+          set.weight !== null &&
+          set.reps !== null &&
+          set.reps > 0 &&
+          set.rir !== null,
+      ),
+    ).length;
+
     return {
-      comparableExposures,
-      readiness: readinessFor(comparableExposures),
+      performanceExposures,
+      decayComparableExposures,
+      rirSupportedExposures,
+      readiness: readinessFor(performanceExposures),
+    };
+  }
+
+  function patternEvidenceFor(
+    movementGroupId: string,
+    performedAt: Date,
+  ): PatternEvidence {
+    const prior = historicalEvidenceExposures.filter(
+      (exposure) =>
+        exposure.exercise.movementGroupId === movementGroupId &&
+        exposure.session.performedAt < performedAt,
+    );
+
+    const uniqueExercises = new Set(prior.map((exposure) => exposure.exerciseId));
+
+    return {
+      performanceExposures: prior.length,
+      historicalExercises: uniqueExercises.size,
+      readiness: patternReadinessFor(prior.length),
     };
   }
 
@@ -411,16 +710,16 @@ export default async function AiAnalysisPage() {
           Training Advisor
         </h1>
         <p className="mt-1 text-sm leading-6 text-slate-400">
-          AI interpretation of workout stimulus, fatigue and exercise-specific
-          performance. Programming changes remain disabled while the evidence
-          layer is being validated.
+          AI interpretation of set, exercise and movement-pattern stimulus,
+          fatigue and progression. Programming changes remain disabled while
+          the evidence layer is being validated.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
         <Stage
           title="Workout understanding"
-          description="Set stimulus, fatigue, RIR plausibility and exercise-specific performance decay."
+          description="Set, exercise and movement-pattern stimulus, fatigue and progression reasoning."
           active
         />
         <Stage
@@ -442,19 +741,19 @@ export default async function AiAnalysisPage() {
         <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
           <div>
             <p className="font-medium text-slate-300">New</p>
-            <p className="mt-0.5 text-slate-500">0 comparable exposures</p>
+            <p className="mt-0.5 text-slate-500">0 performance exposures</p>
           </div>
           <div>
             <p className="font-medium text-amber-200">Emerging</p>
-            <p className="mt-0.5 text-slate-500">1–2 exposures</p>
+            <p className="mt-0.5 text-slate-500">1–2 performance exposures</p>
           </div>
           <div>
             <p className="font-medium text-sky-200">Useful</p>
-            <p className="mt-0.5 text-slate-500">3–5 exposures</p>
+            <p className="mt-0.5 text-slate-500">3–5 performance exposures</p>
           </div>
           <div>
             <p className="font-medium text-emerald-200">Strong</p>
-            <p className="mt-0.5 text-slate-500">6+ exposures</p>
+            <p className="mt-0.5 text-slate-500">6+ performance exposures</p>
           </div>
         </div>
       </div>
@@ -468,12 +767,26 @@ export default async function AiAnalysisPage() {
       ) : null}
 
       {sessions.map((session) => {
-        const parsed = WorkoutAnalysisSchema.safeParse(session.aiAnalysis);
+        const analysis = parseStoredAnalysis(session.aiAnalysis);
 
         const evidenceBySessionExerciseId = new Map<string, ExerciseEvidence>(
           session.exercises.map((sessionExercise) => [
             sessionExercise.id,
             evidenceFor(sessionExercise.exerciseId, session.performedAt),
+          ]),
+        );
+
+        const patternEvidenceById = new Map<string, PatternEvidence>(
+          [
+            ...new Set(
+              session.exercises.map(
+                (sessionExercise) =>
+                  sessionExercise.exercise.movementGroupId,
+              ),
+            ),
+          ].map((movementGroupId) => [
+            movementGroupId,
+            patternEvidenceFor(movementGroupId, session.performedAt),
           ]),
         );
 
@@ -498,15 +811,16 @@ export default async function AiAnalysisPage() {
               <form action={analyzeWorkoutAction}>
                 <input type="hidden" name="sessionId" value={session.id} />
                 <Button variant="secondary">
-                  {parsed.success ? "Re-analyze" : "Analyze workout"}
+                  {analysis ? "Re-analyze" : "Analyze workout"}
                 </Button>
               </form>
             </div>
 
-            {parsed.success ? (
+            {analysis ? (
               <AnalysisView
-                analysis={parsed.data}
+                analysis={analysis}
                 evidenceBySessionExerciseId={evidenceBySessionExerciseId}
+                patternEvidenceById={patternEvidenceById}
               />
             ) : (
               <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-500">

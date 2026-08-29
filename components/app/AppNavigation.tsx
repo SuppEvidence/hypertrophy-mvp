@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   BarChart3,
+  Bot,
   ClipboardList,
   Database,
   Dumbbell,
@@ -23,6 +24,7 @@ const desktopItems = [
   { href: "/log", label: "Log workout", icon: Dumbbell },
   { href: "/metrics", label: "Metrics", icon: Activity },
   { href: "/performance", label: "Performance", icon: TrendingUp },
+  { href: "/ai-analysis", label: "AI Analytics", icon: Bot },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -34,7 +36,15 @@ const mobileItems = [
   { href: "/more", label: "More", icon: MoreHorizontal },
 ];
 
-const moreRoutes = ["/more", "/exercises", "/metrics", "/performance", "/settings", "/log/history"];
+const moreRoutes = [
+  "/more",
+  "/exercises",
+  "/metrics",
+  "/performance",
+  "/ai-analysis",
+  "/settings",
+  "/log/history",
+];
 
 function isDesktopActive(pathname: string, href: string) {
   if (href === "/dashboard") return pathname === href;
@@ -42,7 +52,12 @@ function isDesktopActive(pathname: string, href: string) {
 }
 
 function isMobileActive(pathname: string, href: string) {
-  if (href === "/more") return moreRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+  if (href === "/more") {
+    return moreRoutes.some(
+      (route) =>
+        pathname === route || pathname.startsWith(`${route}/`),
+    );
+  }
   if (href === "/dashboard") return pathname === href;
   if (href === "/log") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -56,6 +71,7 @@ export function DesktopNavigation() {
       {desktopItems.map((item) => {
         const Icon = item.icon;
         const active = isDesktopActive(pathname, item.href);
+
         return (
           <Link
             key={item.href}
@@ -71,7 +87,9 @@ export function DesktopNavigation() {
             <span
               className={clsx(
                 "grid h-8 w-8 place-items-center rounded-lg transition",
-                active ? "bg-orange-500 text-white" : "bg-slate-900 text-slate-500 group-hover:text-slate-300",
+                active
+                  ? "bg-orange-500 text-white"
+                  : "bg-slate-900 text-slate-500 group-hover:text-slate-300",
               )}
             >
               <Icon size={17} />
@@ -91,12 +109,15 @@ export function MobileNavigation() {
     <nav
       aria-label="Mobile primary"
       className="fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.07] bg-slate-950/[0.92] px-2 pt-2 backdrop-blur-xl md:hidden"
-      style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+      style={{
+        paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))",
+      }}
     >
       <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
         {mobileItems.map((item) => {
           const Icon = item.icon;
           const active = isMobileActive(pathname, item.href);
+
           return (
             <Link
               key={item.href}
@@ -104,7 +125,9 @@ export function MobileNavigation() {
               aria-current={active ? "page" : undefined}
               className={clsx(
                 "flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition",
-                active ? "bg-orange-500/12 text-orange-300" : "text-slate-500 hover:bg-slate-900 hover:text-slate-200",
+                active
+                  ? "bg-orange-500/12 text-orange-300"
+                  : "text-slate-500 hover:bg-slate-900 hover:text-slate-200",
               )}
             >
               <Icon size={19} strokeWidth={active ? 2.4 : 2} />
