@@ -1,6 +1,12 @@
 import type { ReactNode } from "react";
 import { analyzeWorkoutAction } from "@/lib/server/ai-workout-analysis";
 import {
+  generateProgrammingRecommendationsAction,
+  selectProgrammingDecisionAction,
+} from "@/lib/server/ai-programming-decisions";
+import { StoredProgrammingOptionsSchema } from "@/lib/ai/programming-decision-schema";
+import { TRAINING_POLICY_VERSION } from "@/lib/ai/training-policy";
+import {
   WorkoutAnalysisSchema,
   type WorkoutAnalysis,
 } from "@/lib/ai/workout-analysis-schema";
@@ -221,6 +227,214 @@ function Stage({
         </span>
       </div>
       <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
+    </div>
+  );
+}
+
+
+type ProgrammingDecisionRow = {
+  id: string;
+  generationId: string;
+  targetMuscleName: string;
+  decisionSummary: string;
+  confidence: string;
+  evidence: unknown;
+  options: unknown;
+  recommendedOptionKey: string;
+  keepAsIsRationale: string;
+  selectedOptionKey: string | null;
+  status: string;
+  context: unknown;
+  policyVersion: string;
+  model: string;
+  createdAt: Date;
+};
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function contextGlobalSummary(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const summary = (value as Record<string, unknown>).globalSummary;
+  return typeof summary === "string" ? summary : null;
+}
+
+function signedSets(value: number) {
+  if (value > 0) return `+${value}`;
+  return String(value);
+}
+
+function ProgrammingDecisionCard({
+  decision,
+}: {
+  decision: ProgrammingDecisionRow;
+}) {
+  const parsedOptions = StoredProgrammingOptionsSchema.safeParse(decision.options);
+  const options = parsedOptions.success ? parsedOptions.data : [];
+  const evidence = stringArray(decision.evidence);
+  const isSelected = decision.status === "SELECTED" && Boolean(decision.selectedOptionKey);
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+            {decision.targetMuscleName}
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-6 text-slate-100">
+            {decision.decisionSummary}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Pill className={confidenceClass(decision.confidence)}>
+            {label(decision.confidence)} confidence
+          </Pill>
+          <Pill className="border-slate-700 bg-slate-900 text-slate-400">
+            Policy {decision.policyVersion}
+          </Pill>
+        </div>
+      </div>
+
+      {evidence.length > 0 ? (
+        <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/40 p-2.5">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+            Decision evidence
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-slate-400">
+            {evidence.map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="mt-3 grid gap-2 lg:grid-cols-2">
+        {options.map((option) => {
+          const preferred = decision.recommendedOptionKey === option.optionKey;
+          const selected = decision.selectedOptionKey === option.optionKey;
+
+          return (
+            <div
+              key={option.optionKey}
+              className={`rounded-xl border p-3 ${
+                selected
+                  ? "border-emerald-400/30 bg-emerald-400/5"
+                  : preferred
+                    ? "border-orange-400/30 bg-orange-400/5"
+                    : "border-slate-800 bg-slate-900/50"
+              }`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-slate-100">
+                  {option.title}
+                </p>
+                {preferred ? (
+                  <span className="rounded-full border border-orange-400/30 bg-orange-400/10 px-2 py-0.5 text-[10px] font-semibold text-orange-200">
+                    AI preferred
+                  </span>
+                ) : null}
+                {selected ? (
+                  <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+                    Selected
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                <Pill className="border-slate-700 bg-slate-950 text-slate-300">
+                  {label(option.action)} · {signedSets(option.deltaWeeklySets)} sets/wk
+                </Pill>
+                <Pill className="border-slate-700 bg-slate-950 text-slate-300">
+                  {label(option.preferredExerciseType)}
+                </Pill>
+                <Pill className="border-slate-700 bg-slate-950 text-slate-300">
+                  {label(option.placementPreference)}
+                </Pill>
+              </div>
+
+              {option.movementChanges.length > 0 ? (
+                <div className="mt-2 space-y-1 text-xs text-slate-300">
+                  {option.movementChanges.map((movement) => (
+                    <p key={`${option.optionKey}-${movement.movementPatternId}`}>
+                      {signedSets(movement.deltaSets)} · {movement.movementPatternName}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                {option.rationale}
+              </p>
+              <p className="mt-2 text-[11px] leading-4 text-slate-500">
+                Expected: {option.expectedBenefit}
+              </p>
+              <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                Main risk: {option.mainRisk}
+              </p>
+
+              {!isSelected ? (
+                <form action={selectProgrammingDecisionAction} className="mt-3">
+                  <input type="hidden" name="decisionId" value={decision.id} />
+                  <input type="hidden" name="selectionKey" value={option.optionKey} />
+                  <button
+                    type="submit"
+                    className="min-h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs font-semibold text-slate-200 hover:border-orange-400/40 hover:text-orange-200"
+                  >
+                    Choose this option
+                  </button>
+                </form>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        className={`mt-2 rounded-xl border p-3 ${
+          decision.selectedOptionKey === "KEEP_AS_IS"
+            ? "border-emerald-400/30 bg-emerald-400/5"
+            : decision.recommendedOptionKey === "KEEP_AS_IS"
+              ? "border-orange-400/30 bg-orange-400/5"
+              : "border-slate-800 bg-slate-900/40"
+        }`}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-semibold text-slate-100">Keep as is</p>
+          {decision.recommendedOptionKey === "KEEP_AS_IS" ? (
+            <span className="rounded-full border border-orange-400/30 bg-orange-400/10 px-2 py-0.5 text-[10px] font-semibold text-orange-200">
+              AI preferred
+            </span>
+          ) : null}
+          {decision.selectedOptionKey === "KEEP_AS_IS" ? (
+            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+              Selected
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-1 text-xs leading-5 text-slate-400">
+          {decision.keepAsIsRationale}
+        </p>
+        {!isSelected ? (
+          <form action={selectProgrammingDecisionAction} className="mt-3">
+            <input type="hidden" name="decisionId" value={decision.id} />
+            <input type="hidden" name="selectionKey" value="KEEP_AS_IS" />
+            <button
+              type="submit"
+              className="min-h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs font-semibold text-slate-200 hover:border-emerald-400/40 hover:text-emerald-200"
+            >
+              Keep current setup
+            </button>
+          </form>
+        ) : null}
+      </div>
+
+      {isSelected ? (
+        <p className="mt-3 text-xs leading-5 text-emerald-300">
+          Selection recorded as AI learning memory. No program/template change has been applied automatically yet.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -549,30 +763,72 @@ function AnalysisView({
 export default async function AiAnalysisPage() {
   const userId = await requireUserId();
 
-  const sessions = await prisma.workoutSession.findMany({
-    where: { userId, status: "COMPLETED" },
-    orderBy: { performedAt: "desc" },
-    take: 8,
-    select: {
-      id: true,
-      name: true,
-      performedAt: true,
-      aiAnalysis: true,
-      aiAnalysisModel: true,
-      aiAnalyzedAt: true,
-      exercises: {
+  const [sessions, recentProgrammingDecisions, selectedDecisionCount] =
+    await Promise.all([
+      prisma.workoutSession.findMany({
+        where: { userId, status: "COMPLETED" },
+        orderBy: { performedAt: "desc" },
+        take: 8,
         select: {
           id: true,
-          exerciseId: true,
-          exercise: {
+          name: true,
+          performedAt: true,
+          aiAnalysis: true,
+          aiAnalysisModel: true,
+          aiAnalyzedAt: true,
+          exercises: {
             select: {
-              movementGroupId: true,
+              id: true,
+              exerciseId: true,
+              exercise: {
+                select: {
+                  movementGroupId: true,
+                },
+              },
             },
           },
         },
-      },
-    },
-  });
+      }),
+      prisma.aiProgrammingDecision.findMany({
+        where: {
+          userId,
+          status: { in: ["PENDING", "SELECTED"] },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        select: {
+          id: true,
+          generationId: true,
+          targetMuscleName: true,
+          decisionSummary: true,
+          confidence: true,
+          evidence: true,
+          options: true,
+          recommendedOptionKey: true,
+          keepAsIsRationale: true,
+          selectedOptionKey: true,
+          status: true,
+          context: true,
+          policyVersion: true,
+          model: true,
+          createdAt: true,
+        },
+      }),
+      prisma.aiProgrammingDecision.count({
+        where: { userId, status: "SELECTED" },
+      }),
+    ]);
+
+  const latestGenerationId = recentProgrammingDecisions[0]?.generationId ?? null;
+  const latestProgrammingDecisions = latestGenerationId
+    ? recentProgrammingDecisions.filter(
+        (decision) => decision.generationId === latestGenerationId,
+      )
+    : [];
+  const programmingGlobalSummary =
+    latestProgrammingDecisions.length > 0
+      ? contextGlobalSummary(latestProgrammingDecisions[0]?.context)
+      : null;
 
   const exerciseIds = [
     ...new Set(
@@ -711,8 +967,7 @@ export default async function AiAnalysisPage() {
         </h1>
         <p className="mt-1 text-sm leading-6 text-slate-400">
           AI interpretation of set, exercise and movement-pattern stimulus,
-          fatigue and progression. Programming changes remain disabled while
-          the evidence layer is being validated.
+          fatigue and progression, plus advisory muscle-volume and movement-allocation decisions.
         </p>
       </div>
 
@@ -724,8 +979,8 @@ export default async function AiAnalysisPage() {
         />
         <Stage
           title="Volume decisions"
-          description="Muscle-level increase, hold or decrease decisions using recovery, priorities and dose-response history."
-          active={false}
+          description="Muscle-level increase, hold, decrease or reallocation decisions using recovery, priorities, history and learned selections."
+          active
         />
         <Stage
           title="Mesocycle priorities"
@@ -733,6 +988,48 @@ export default async function AiAnalysisPage() {
           active={false}
         />
       </div>
+
+      <Card className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-slate-100">
+              Programming recommendations
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Policy {TRAINING_POLICY_VERSION} · {selectedDecisionCount} prior selections available as learning memory.
+              Recommendations are advisory only; selecting an option does not yet modify the program.
+            </p>
+          </div>
+          <form action={generateProgrammingRecommendationsAction}>
+            <Button variant="secondary">
+              {latestProgrammingDecisions.length > 0
+                ? "Refresh recommendations"
+                : "Generate recommendations"}
+            </Button>
+          </form>
+        </div>
+
+        {programmingGlobalSummary ? (
+          <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm leading-6 text-slate-300">
+            {programmingGlobalSummary}
+          </p>
+        ) : null}
+
+        {latestProgrammingDecisions.length > 0 ? (
+          <div className="space-y-3">
+            {latestProgrammingDecisions.map((decision) => (
+              <ProgrammingDecisionCard
+                key={decision.id}
+                decision={decision as ProgrammingDecisionRow}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm leading-6 text-slate-500">
+            No programming decision set has been generated yet. Generate recommendations after you have at least some recent AI-analyzed workouts and recovery data.
+          </p>
+        )}
+      </Card>
 
       <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">

@@ -1,0 +1,46 @@
+HYpertrophy Tracker - AI Programming Policy + Selection Learning
+
+This bundle is consolidated on top of the latest optimization/timer/navigation/AI-analysis bundle.
+Extract the ZIP directly into the project root and allow overwrites.
+There is NO wrapper folder inside the ZIP.
+
+NEW IN THIS BUNDLE
+- Training Programming Policy v1.0 (stable core principles + anti-patterns).
+- AI muscle-volume / movement-allocation recommendation layer.
+- Maximum two active options per decision + always-available Keep as is.
+- Persistent selection memory: AI recommendation, evidence, options, AI preference, and user choice are stored.
+- Future recommendation calls automatically receive selected historical decisions as contextual preference evidence.
+- Outcome fields are reserved for later response-learning once selections are connected to actual planner changes.
+- Recommendations remain advisory only in this version; choosing an option records learning memory but does not modify templates/volume targets yet.
+
+DATABASE MODEL
+This bundle intentionally does not overwrite prisma/schema.prisma because your local schema already contains recent AI-analysis and set-timing additions.
+Instead it includes an idempotent schema updater:
+
+  node scripts/add-ai-programming-decision-schema.mjs
+
+Then create/apply the Prisma migration:
+
+  npm run db:migrate -- --name add_ai_programming_decisions
+  npm run db:generate
+
+VALIDATE
+  npm run typecheck
+  npm run lint
+  npm run build
+  npm run dev
+
+TEST
+1. Open /ai-analysis.
+2. Confirm existing workout/movement analysis still renders.
+3. Under Programming recommendations, press Generate recommendations.
+4. Confirm each decision has no more than two active options plus Keep as is.
+5. Select an option or Keep as is.
+6. Confirm the card says the selection was recorded as AI learning memory.
+7. Refresh recommendations later and confirm the page reports prior selected decisions available as learning memory.
+
+IMPORTANT
+- No automatic program/template changes happen yet.
+- No global deload recommendations are allowed by policy.
+- Current min/max volume bounds and valid target-muscle/movement-pattern IDs are validated server-side.
+- Movement allocations are limited to movement patterns actually represented by active exercises in the exercise database for that target muscle.
