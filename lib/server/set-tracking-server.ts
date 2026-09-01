@@ -12,6 +12,7 @@ type DropSetPayload = {
 type IntensifierPayload = {
   clusterCount?: string | number | null;
   dropSets?: DropSetPayload[];
+  filmed?: boolean;
 };
 
 type StoredDropSet = {
@@ -22,6 +23,7 @@ type StoredDropSet = {
 type StoredIntensifierDetails = {
   clusterCount: number | null;
   dropSets: StoredDropSet[];
+  filmed: boolean;
 };
 
 function editableSessionStatusWhere() {
@@ -51,12 +53,12 @@ function sanitizeDetails(payload: IntensifierPayload): StoredIntensifierDetails 
     }))
     .filter((drop) => drop.weight !== null || drop.reps !== null);
 
-  return { clusterCount, dropSets };
+  return { clusterCount, dropSets, filmed: payload.filmed === true };
 }
 
 function parseStoredDetails(value: Prisma.JsonValue | null): StoredIntensifierDetails {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { clusterCount: null, dropSets: [] };
+    return { clusterCount: null, dropSets: [], filmed: false };
   }
 
   const raw = value as Record<string, unknown>;
@@ -76,7 +78,7 @@ function parseStoredDetails(value: Prisma.JsonValue | null): StoredIntensifierDe
     })
     .filter((drop) => drop.weight !== null || drop.reps !== null);
 
-  return { clusterCount, dropSets };
+  return { clusterCount, dropSets, filmed: raw.filmed === true };
 }
 
 /** Loaded only when the details drawer is opened, not once per row on page load. */
@@ -104,6 +106,7 @@ export async function getWorkoutSetTracking(setId: string) {
       intensifierDetails: {
         clusterCount: null,
         dropSets: [],
+        filmed: false,
       } as StoredIntensifierDetails,
     };
   }
@@ -203,6 +206,44 @@ export async function endWorkoutSetTimer(setId: string) {
   };
 }
 
+export async function saveWorkoutSetFilmed(setId: string, filmed: boolean) {
+  const userId = await requireUserId();
+  const existing = await prisma.workoutSet.findFirst({
+    where: {
+      id: setId,
+      sessionExercise: {
+        session: { userId, status: editableSessionStatusWhere() },
+      },
+    },
+    select: { intensifierDetails: true },
+  });
+
+  if (!existing) {
+    return {
+      ok: false as const,
+      error: "Set not found or session is not editable.",
+    };
+  }
+
+  const current = parseStoredDetails(existing.intensifierDetails);
+  const details: StoredIntensifierDetails = { ...current, filmed };
+  const hasDetails =
+    details.clusterCount !== null ||
+    details.dropSets.length > 0 ||
+    details.filmed;
+
+  await prisma.workoutSet.update({
+    where: { id: setId },
+    data: {
+      intensifierDetails: hasDetails
+        ? (details as Prisma.InputJsonValue)
+        : Prisma.DbNull,
+    },
+  });
+
+  return { ok: true as const };
+}
+
 export async function saveWorkoutSetIntensifierDetails(
   setId: string,
   payload: IntensifierPayload,
@@ -210,7 +251,9 @@ export async function saveWorkoutSetIntensifierDetails(
   const userId = await requireUserId();
   const details = sanitizeDetails(payload);
   const hasDetails =
-    details.clusterCount !== null || details.dropSets.length > 0;
+    details.clusterCount !== null ||
+    details.dropSets.length > 0 ||
+    details.filmed;
 
   const result = await prisma.workoutSet.updateMany({
     where: {

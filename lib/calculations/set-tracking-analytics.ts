@@ -6,10 +6,13 @@ export type DropSetDetail = {
 export type NormalizedIntensifierDetails = {
   clusterCount: number | null;
   dropSets: DropSetDetail[];
+  filmed: boolean;
 };
 
 export type SetTrackingSignals = {
   durationSeconds: number | null;
+  durationReliable: boolean;
+  filmed: boolean;
   clusterCount: number | null;
   dropSetCount: number;
   dropSetReps: number;
@@ -30,7 +33,7 @@ function finiteInteger(value: unknown): number | null {
 
 export function normalizeIntensifierDetails(value: unknown): NormalizedIntensifierDetails {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { clusterCount: null, dropSets: [] };
+    return { clusterCount: null, dropSets: [], filmed: false };
   }
 
   const raw = value as Record<string, unknown>;
@@ -51,6 +54,7 @@ export function normalizeIntensifierDetails(value: unknown): NormalizedIntensifi
   return {
     clusterCount: finiteInteger(raw.clusterCount),
     dropSets,
+    filmed: raw.filmed === true,
   };
 }
 
@@ -78,6 +82,8 @@ export function buildSetTrackingSignals(input: {
 
   return {
     durationSeconds: setDurationSeconds(input.startedAt, input.endedAt),
+    durationReliable: !details.filmed,
+    filmed: details.filmed,
     clusterCount: details.clusterCount,
     dropSetCount: details.dropSets.length,
     dropSetReps,

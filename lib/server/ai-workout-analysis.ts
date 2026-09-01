@@ -65,7 +65,11 @@ function median(values: number[]) {
 
 function normalizeIntensifierDetails(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { clusterCount: null, dropSets: [] as Array<{ weight: number | null; reps: number | null }> };
+    return {
+      clusterCount: null,
+      dropSets: [] as Array<{ weight: number | null; reps: number | null }>,
+      filmed: false,
+    };
   }
 
   const raw = value as Record<string, unknown>;
@@ -86,6 +90,7 @@ function normalizeIntensifierDetails(value: unknown) {
   return {
     clusterCount: clusterCount === null ? null : Math.round(clusterCount),
     dropSets,
+    filmed: raw.filmed === true,
   };
 }
 
@@ -96,6 +101,10 @@ function serializeExposureSets(sets: CompletedSet[]) {
   return ordered.map((set, index) => {
     const performanceIndex = estimatedPerformanceIndex(set);
     const previous = index > 0 ? ordered[index - 1] : null;
+    const intensifier = normalizeIntensifierDetails(set.intensifierDetails);
+    const previousIntensifier = previous
+      ? normalizeIntensifierDetails(previous.intensifierDetails)
+      : null;
     const relativeToFirstPct =
       performanceIndex !== null && firstIndex !== null && firstIndex > 0
         ? Math.round(((performanceIndex / firstIndex) - 1) * 1000) / 10
@@ -112,11 +121,17 @@ function serializeExposureSets(sets: CompletedSet[]) {
       isIntensifier: set.setType.isIntensifier,
       painFlag: set.painFlag,
       painNote: set.painNote,
-      wholeSetDurationSeconds: secondsBetween(set.startedAt, set.endedAt),
-      restAfterPreviousSetSeconds: previous ? secondsBetween(previous.endedAt, set.startedAt) : null,
+      filmed: intensifier.filmed,
+      wholeSetDurationSeconds: intensifier.filmed
+        ? null
+        : secondsBetween(set.startedAt, set.endedAt),
+      restAfterPreviousSetSeconds:
+        previous && !intensifier.filmed && !previousIntensifier?.filmed
+          ? secondsBetween(previous.endedAt, set.startedAt)
+          : null,
       performanceIndex: performanceIndex === null ? null : Math.round(performanceIndex * 100) / 100,
       performanceChangeVsFirstPct: relativeToFirstPct,
-      intensifier: normalizeIntensifierDetails(set.intensifierDetails),
+      intensifier,
     };
   });
 }
@@ -204,6 +219,8 @@ Core interpretation rules:
 - Separate hypertrophic stimulus from fatigue cost. A set may be HIGH stimulus and HIGH fatigue.
 - Compare performance decay primarily with the athlete's own history for the same exercise. Do not assume one universal acceptable decay rate.
 - Whole-set timer duration covers the complete set. For myo-rep/rest-pause/EDT-style work it includes the activation set plus all clusters. Cluster count is post-activation clusters. For drop sets, drop portions are explicitly supplied.
+- When filmed=true, camera handling contaminates set-duration and adjacent-rest timing. Those timing fields are intentionally omitted/null. Do not interpret that missing timing as fatigue or lower evidence quality. Continue to use weight, reps, observed RIR, pain, set type, intensifier details, and performance decay normally.
+- Do not compare absolute set duration across exercises. For unilateral exercises, duration may consistently represent only one side and should be treated as an exercise-specific within-history signal.
 - Primary muscles only means the app classifies the exercise as isolation. Any secondary muscle means compound. Treat this only as context; do not assume every compound is equally fatiguing.
 - Pain is an adverse signal and should raise fatigue/uncertainty where appropriate, but do not diagnose injuries.
 - Use exercise history over generic assumptions whenever enough history exists.

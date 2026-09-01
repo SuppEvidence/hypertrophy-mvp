@@ -1,0 +1,27 @@
+FILMED SET UPDATE
+
+What it does
+- Adds a visible Filmed toggle beside each set timer.
+- Stores the flag inside the existing intensifierDetails JSON; no Prisma migration is required.
+- AI ignores whole-set duration and adjacent-rest timing for filmed sets because camera handling contaminates those timestamps.
+- Weight, reps, observed RIR, pain, set type, cluster/drop details, performance decay, and chronology remain usable.
+- Keeps unilateral timing as an exercise-specific historical signal; no unilateral toggle is added.
+
+Install
+1. Stop npm run dev.
+2. Extract this ZIP directly into the project root and overwrite files.
+3. Run:
+   npm run typecheck
+   npm run lint
+   npm run build
+   npm run dev
+4. Test one normal set and one filmed set locally.
+5. Stop dev and push:
+   git add components/workouts/AutosaveSetRow.tsx
+   git add lib/server/set-tracking-server.ts
+   git add lib/calculations/set-tracking-analytics.ts
+   git add lib/server/ai-workout-analysis.ts
+   git commit -m "Add filmed set timing flag"
+   git push origin main
+
+No database migration is required.

@@ -6,6 +6,7 @@ import { WORKOUT_SET_COMPLETION_EVENT } from "@/components/workouts/ExerciseColl
 import {
   endWorkoutSetTimer,
   getWorkoutSetTracking,
+  saveWorkoutSetFilmed,
   saveWorkoutSetIntensifierDetails,
   startWorkoutSetTimer,
 } from "@/lib/server/set-tracking-server";
@@ -124,6 +125,7 @@ export function AutosaveSetRow({
 
   const [clusterCount, setClusterCount] = useState("");
   const [dropSets, setDropSets] = useState<DropSetDraft[]>([]);
+  const [filmed, setFilmed] = useState(false);
   const [detailsStatus, setDetailsStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
@@ -254,6 +256,7 @@ export function AutosaveSetRow({
         reps: drop.reps === null ? "" : String(drop.reps),
       })),
     );
+    setFilmed(result.intensifierDetails.filmed);
 
     if (result.startedAt && result.endedAt) {
       setElapsedSeconds(
@@ -321,6 +324,7 @@ export function AutosaveSetRow({
   async function persistIntensifierDetails(
     nextClusterCount = clusterCount,
     nextDropSets = dropSets,
+    nextFilmed = filmed,
   ) {
     setDetailsStatus("saving");
 
@@ -331,6 +335,7 @@ export function AutosaveSetRow({
         weight: drop.weight.trim() === "" ? null : drop.weight,
         reps: drop.reps.trim() === "" ? null : drop.reps,
       })),
+      filmed: nextFilmed,
     });
 
     setDetailsStatus(result.ok ? "saved" : "error");
@@ -347,13 +352,13 @@ export function AutosaveSetRow({
     if (nextKind === "none") {
       setClusterCount("");
       setDropSets([]);
-      await persistIntensifierDetails("", []);
+      await persistIntensifierDetails("", [], filmed);
     } else if (nextKind === "clusters") {
       setDropSets([]);
-      await persistIntensifierDetails(clusterCount, []);
+      await persistIntensifierDetails(clusterCount, [], filmed);
     } else {
       setClusterCount("");
-      await persistIntensifierDetails("", dropSets);
+      await persistIntensifierDetails("", dropSets, filmed);
     }
   }
 
@@ -379,7 +384,7 @@ export function AutosaveSetRow({
   async function removeDropSet(index: number) {
     const next = dropSets.filter((_, dropIndex) => dropIndex !== index);
     setDropSets(next);
-    await persistIntensifierDetails(clusterCount, next);
+    await persistIntensifierDetails(clusterCount, next, filmed);
   }
 
   return (
@@ -456,7 +461,7 @@ export function AutosaveSetRow({
         </label>
       </div>
 
-      <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 p-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 p-2">
         <button
           type="button"
           onClick={() => void handleTimer()}
@@ -480,9 +485,36 @@ export function AutosaveSetRow({
           {formatDuration(elapsedSeconds)}
         </div>
 
-        <p className="min-w-0 flex-1 text-[11px] leading-4 text-slate-500">
-          {timerRunning
-            ? currentIntensifierKind === "none"
+        <label
+          className={`flex min-h-9 items-center gap-1.5 rounded-lg border px-2 text-xs font-semibold transition ${
+            filmed
+              ? "border-sky-400/30 bg-sky-400/10 text-sky-200"
+              : "border-slate-700 text-slate-400"
+          }`}
+        >
+          <input
+            checked={filmed}
+            onChange={(event) => {
+              const nextFilmed = event.target.checked;
+              setFilmed(nextFilmed);
+              void saveWorkoutSetFilmed(set.id, nextFilmed).then((result) => {
+                if (!result.ok) {
+                  setFilmed(!nextFilmed);
+                  setTrackingError(result.error);
+                }
+              });
+            }}
+            type="checkbox"
+            className="h-4 w-4"
+          />
+          Filmed
+        </label>
+
+        <p className="basis-full text-[11px] leading-4 text-slate-500 sm:min-w-0 sm:flex-1 sm:basis-auto">
+          {filmed
+            ? "Filmed set: timing is stored but excluded from AI duration/rest interpretation."
+            : timerRunning
+              ? currentIntensifierKind === "none"
               ? "Timer running for this set."
               : "Keep running through the full intensifier. End only after all clusters/drops."
             : currentIntensifierKind === "none"
@@ -502,7 +534,7 @@ export function AutosaveSetRow({
         }}
       >
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Set type / pain
+          Set details
         </summary>
 
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -530,6 +562,7 @@ export function AutosaveSetRow({
             />
             Pain / discomfort
           </label>
+
         </div>
 
         {currentIntensifierKind === "clusters" ? (
