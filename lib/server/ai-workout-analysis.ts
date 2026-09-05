@@ -2,9 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { zodTextFormat } from "openai/helpers/zod";
+import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { getOpenAIClient, getOpenAIModel } from "@/lib/ai/openai";
-import { WorkoutAnalysisSchema, type WorkoutAnalysis } from "@/lib/ai/workout-analysis-schema";
+import {
+  ExerciseAssessmentSchema,
+  MovementPatternAssessmentSchema,
+  WorkoutAnalysisSchema,
+  type WorkoutAnalysis,
+} from "@/lib/ai/workout-analysis-schema";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 
@@ -551,10 +557,52 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
   };
 }
 
+function createRuntimeWorkoutAnalysisSchema(
+  context: Awaited<ReturnType<typeof buildWorkoutContext>>,
+) {
+  const sessionExerciseIds = context.exercises.map(
+    (exercise) => exercise.sessionExerciseId,
+  );
+  const movementPatternIds = context.movementPatterns.map(
+    (pattern) => pattern.movementPatternId,
+  );
+
+  if (sessionExerciseIds.length === 0) {
+    throw new Error("Completed workout has no exercises available for AI analysis.");
+  }
+
+  if (movementPatternIds.length === 0) {
+    throw new Error(
+      "Completed workout has no movement patterns available for AI analysis.",
+    );
+  }
+
+  const sessionExerciseIdSchema = z.enum(
+    sessionExerciseIds as [string, ...string[]],
+  );
+  const movementPatternIdSchema = z.enum(
+    movementPatternIds as [string, ...string[]],
+  );
+
+  return WorkoutAnalysisSchema.extend({
+    exerciseAssessments: z.array(
+      ExerciseAssessmentSchema.extend({
+        sessionExerciseId: sessionExerciseIdSchema,
+      }),
+    ),
+    movementPatternAssessments: z.array(
+      MovementPatternAssessmentSchema.extend({
+        movementPatternId: movementPatternIdSchema,
+      }),
+    ),
+  });
+}
+
 export async function analyzeCompletedWorkoutForUser(sessionId: string, userId: string): Promise<WorkoutAnalysis> {
   const context = await buildWorkoutContext(sessionId, userId);
   const client = getOpenAIClient();
   const model = getOpenAIModel();
+  const runtimeAnalysisSchema = createRuntimeWorkoutAnalysisSchema(context);
 
   const response = await client.responses.parse({
     model,
@@ -562,11 +610,11 @@ export async function analyzeCompletedWorkoutForUser(sessionId: string, userId: 
       { role: "system", content: SYSTEM_INSTRUCTIONS },
       {
         role: "user",
-        content: `Analyze this completed workout. Return one exerciseAssessment for every exercise and one set assessment for every completed set. Preserve each sessionExerciseId exactly as supplied.\n\n${JSON.stringify(context)}`,
+        content: `Analyze this completed workout. Return one exerciseAssessment for every exercise and one set assessment for every completed set. Copy every sessionExerciseId and movementPatternId exactly from the supplied context; never invent, shorten, reformat, or substitute an identifier.\n\n${JSON.stringify(context)}`,
       },
     ],
     text: {
-      format: zodTextFormat(WorkoutAnalysisSchema, "hypertrophy_workout_analysis"),
+      format: zodTextFormat(runtimeAnalysisSchema, "hypertrophy_workout_analysis"),
     },
   });
 
