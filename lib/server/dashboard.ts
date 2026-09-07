@@ -199,6 +199,8 @@ type CurrentDecisionFlag = {
 function buildCurrentDecisionFlags(args: {
   volumeRows: Array<{
     muscleName: string;
+    effective: number;
+    target: number | null;
     status: string;
     isPriority: boolean;
   }>;
@@ -218,22 +220,35 @@ function buildCurrentDecisionFlags(args: {
   missedTemplateNames: string[];
 }): CurrentDecisionFlag[] {
   const flags: CurrentDecisionFlag[] = [];
+
+  // Coach Signals deliberately use wider tolerance than the factual volume table.
+  // The table remains a precise selected-window report; coaching should only react
+  // when the deviation is large enough to be programmatically meaningful.
+  const ratioFor = (row: (typeof args.volumeRows)[number]) =>
+    row.target !== null && row.target > 0 ? row.effective / row.target : null;
+  const materiallyLow = (row: (typeof args.volumeRows)[number]) => {
+    const ratio = ratioFor(row);
+    return ratio !== null && ratio < 0.75;
+  };
+  const materiallyHigh = (row: (typeof args.volumeRows)[number]) => {
+    const ratio = ratioFor(row);
+    return ratio !== null && ratio > 1.3;
+  };
+  const severelyHigh = (row: (typeof args.volumeRows)[number]) => {
+    const ratio = ratioFor(row);
+    return ratio !== null && ratio > 1.5;
+  };
+
   const priorityRows = args.volumeRows.filter((row) => row.isPriority);
-  const underPriority = priorityRows.filter(
-    (row) => row.status === "Below target",
-  );
-  const abovePriority = priorityRows.filter(
-    (row) => row.status === "Above target" || row.status === "Excessive",
-  );
-  const anyBelowTarget = args.volumeRows.some(
-    (row) => row.status === "Below target",
-  );
+  const underPriority = priorityRows.filter(materiallyLow);
+  const abovePriority = priorityRows.filter(materiallyHigh);
+  const anyMateriallyLow = args.volumeRows.some(materiallyLow);
 
   if (underPriority.length > 0) {
     flags.push({
       type: "PRIORITY_EFFECTIVE_VOLUME_LOW",
-      title: "Priority volume below target",
-      detail: `${underPriority.map((row) => row.muscleName).join(", ")} below the selected-window effective-volume target.`,
+      title: "Priority volume materially low",
+      detail: `${underPriority.map((row) => row.muscleName).join(", ")} remain below the Coach tolerance after nearby template shifts are considered.`,
       severity: "watch",
     });
   }
@@ -241,11 +256,9 @@ function buildCurrentDecisionFlags(args: {
   if (abovePriority.length > 0) {
     flags.push({
       type: "PRIORITY_EFFECTIVE_VOLUME_HIGH",
-      title: "Priority volume above target",
-      detail: `${abovePriority.map((row) => row.muscleName).join(", ")} above the selected-window target. Check recovery before adding more work.`,
-      severity: abovePriority.some((row) => row.status === "Excessive")
-        ? "high"
-        : "watch",
+      title: "Priority volume materially high",
+      detail: `${abovePriority.map((row) => row.muscleName).join(", ")} remain meaningfully above target after schedule-shift tolerance. Check recovery before adding more work.`,
+      severity: abovePriority.some(severelyHigh) ? "high" : "watch",
     });
   }
 
@@ -258,12 +271,18 @@ function buildCurrentDecisionFlags(args: {
     });
   }
 
-  if (anyBelowTarget && args.fatigueTrend.latest?.category === "Low") {
+  // Do not infer "missed exposure" from volume arithmetic alone. Only make this
+  // connection when a genuinely uncovered template remains after reconciliation.
+  if (
+    anyMateriallyLow &&
+    args.missedTemplateNames.length > 0 &&
+    args.fatigueTrend.latest?.category === "Low"
+  ) {
     flags.push({
       type: "LOW_VOLUME_WITH_LOW_FATIGUE",
-      title: "Volume below target while fatigue is low",
+      title: "Uncovered volume while fatigue is low",
       detail:
-        "At least one muscle is below target and latest fatigue context is low. This usually points to missed exposure rather than recovery limitation.",
+        "A meaningful volume deficit remains together with an uncovered planned template. Nearby schedule shifts have already been allowed for.",
       severity: "neutral",
     });
   }
@@ -280,8 +299,8 @@ function buildCurrentDecisionFlags(args: {
   if (args.missedTemplateNames.length > 0 && underPriority.length > 0) {
     flags.push({
       type: "MISSED_TEMPLATE_UNDEREXPOSURE",
-      title: "Missed template underexposure",
-      detail: `${args.missedTemplateNames.slice(0, 3).join(", ")} has no completed session in the selected window while priority muscles are below target.`,
+      title: "Uncovered template underexposure",
+      detail: `${args.missedTemplateNames.slice(0, 3).join(", ")} remain uncovered after allowing nearby schedule shifts, while priority volume is materially low.`,
       severity: "watch",
     });
   }
@@ -303,7 +322,7 @@ function buildCurrentDecisionFlags(args: {
       type: "HOLD_CURRENT_SETUP",
       title: "Hold current setup",
       detail:
-        "Effective volume, fatigue context, performance, intensifier use and body metrics do not show a clear issue requiring an automatic flag.",
+        "Template-aware volume, fatigue context, performance, intensifier use and body metrics do not show a clear issue requiring an automatic flag.",
       severity: "neutral",
     });
   }
@@ -377,6 +396,10 @@ export async function getDashboardData(userId: string) {
 
   const windowDays = selectedWindowDays(activeProgram);
   const windowStart = selectedWindowStart(new Date(), windowDays);
+  // Coach Signals can treat a workout performed shortly before the strict
+  // reporting boundary as an early performance of the next planned template.
+  // The factual dashboard table still uses the exact selected window below.
+  const coachLookbackStart = addDays(windowStart, -2);
 
   const [templates, sessions, metrics, mesocycle] = await Promise.all([
     ensureProgramTemplates(activeProgram.id, userId, activeProgram),
@@ -385,7 +408,7 @@ export async function getDashboardData(userId: string) {
         userId,
         programId: activeProgram.id,
         status: "COMPLETED",
-        performedAt: { gte: windowStart },
+        performedAt: { gte: coachLookbackStart },
       },
       orderBy: { performedAt: "asc" },
       select: {
@@ -462,21 +485,67 @@ export async function getDashboardData(userId: string) {
     userId,
     templates,
   );
-  const volumeRows = buildMuscleVolumeRows(activeProgram, sessions);
+
+  // Keep the dashboard's factual analytics strict.
+  const strictSessions = sessions.filter(
+    (session) => session.performedAt >= windowStart,
+  );
+
+  // Coach Signals are intentionally more schedule-aware. A single completed
+  // template from up to two days before the rolling boundary can be carried
+  // into the coaching interpretation as an early-shifted workout. This is
+  // especially useful for "Monday workout done Sunday" situations.
+  //
+  // Only one boundary session is carried in, and it must belong to a template
+  // that is currently available (not explicitly marked missed). This prevents
+  // the coach window from simply becoming a 9-day volume window.
+  const weeklyPlan = parseStoredWeeklyPlan(activeProgram.weeklyPlan);
+  const expectedTemplates = templates.filter(
+    (template) => !weeklyPlan.missedTemplateIds.includes(template.id),
+  );
+  const expectedTemplateIds = new Set(
+    expectedTemplates.map((template) => template.id),
+  );
+  const boundaryCarryIn = [...sessions]
+    .filter(
+      (session) =>
+        session.performedAt < windowStart &&
+        Boolean(
+          session.templateId &&
+            expectedTemplateIds.has(session.templateId),
+        ),
+    )
+    .sort(
+      (a, b) => b.performedAt.getTime() - a.performedAt.getTime(),
+    )[0] ?? null;
+
+  const coachSessions = boundaryCarryIn
+    ? [boundaryCarryIn, ...strictSessions]
+    : strictSessions;
+
+  const volumeRows = buildMuscleVolumeRows(activeProgram, strictSessions);
+  const coachVolumeRows = buildMuscleVolumeRows(
+    activeProgram,
+    coachSessions,
+  );
   const priorityRows = volumeRows.filter((row) => row.isPriority);
   const fatigueTrend = buildFatigueTrend(metrics);
-  const performanceTrend = buildPerformanceTrend(sessions);
-  const intensifiers = buildIntensifierSummary(sessions);
-  const movementCoverage = buildMovementCoverage(sessions);
+  const performanceTrend = buildPerformanceTrend(strictSessions);
+  const intensifiers = buildIntensifierSummary(strictSessions);
+  const movementCoverage = buildMovementCoverage(strictSessions);
   const bodyMetrics = buildBodyMetricContext(metrics);
-  const templateIdsWithSessions = new Set(
-    sessions.map((session) => session.templateId).filter(Boolean),
+
+  const coachTemplateIdsWithSessions = new Set(
+    coachSessions
+      .map((session) => session.templateId)
+      .filter((templateId): templateId is string => Boolean(templateId)),
   );
-  const missedTemplateNames = templates
-    .filter((template) => !templateIdsWithSessions.has(template.id))
+  const missedTemplateNames = expectedTemplates
+    .filter((template) => !coachTemplateIdsWithSessions.has(template.id))
     .map((template) => template.name);
+
   const flags = buildCurrentDecisionFlags({
-    volumeRows,
+    volumeRows: coachVolumeRows,
     fatigueTrend,
     intensifiers,
     bodyMetrics,
@@ -510,7 +579,7 @@ export async function getDashboardData(userId: string) {
     movementCoverage,
     bodyMetrics,
     flags,
-    completedSessionsCount: sessions.length,
+    completedSessionsCount: strictSessions.length,
     mesocycle,
   };
 }
