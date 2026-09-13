@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { volumeWindowDays } from "@/lib/programs/options";
-import { generateMesocyclePrescription } from "@/lib/planning/mesocycleGenerator";
+import { generateMesocyclePrescriptionWithQuickOverrides as generateMesocyclePrescription } from "@/lib/planning/mesocycleQuickOverrides";
 import { applyWeeklyMissedWorkoutPlan, endOfIsoWeek, parseStoredWeeklyPlan, startOfIsoWeek, toDateOnly } from "@/lib/templates/weeklyPlan";
 
 function addDays(date: Date, days: number) {
@@ -10,7 +10,6 @@ function addDays(date: Date, days: number) {
   next.setDate(next.getDate() + days);
   return next;
 }
-
 async function getActiveMesocycle(programId: string, userId: string, now = new Date()) {
   const mesocycles = await prisma.programMesocycle.findMany({
     where: { programId, userId, isArchived: false, actualEndDate: null, startDate: { lte: now } },
@@ -23,10 +22,8 @@ async function getActiveMesocycle(programId: string, userId: string, now = new D
       movementVolumeTargets: { include: { movementGroup: true } },
     },
   });
-
   return mesocycles.find((mesocycle) => addDays(mesocycle.startDate, mesocycle.lengthWeeks * 7) > now) ?? null;
 }
-
 async function getMesocycleForPrescription(programId: string, userId: string, mesocycleId?: string | null) {
   if (!mesocycleId) return getActiveMesocycle(programId, userId);
   return prisma.programMesocycle.findFirst({
@@ -39,7 +36,6 @@ async function getMesocycleForPrescription(programId: string, userId: string, me
     },
   });
 }
-
 export async function buildProgramPrescription(
   programId: string,
   userId: string,
@@ -48,7 +44,6 @@ export async function buildProgramPrescription(
   const includeWeeklyPlan = options?.includeWeeklyPlan !== false;
   const weekStartDate = startOfIsoWeek();
   const weekStart = toDateOnly(weekStartDate);
-
   const [program, activeMesocycle, completedSessions, setTypes, movementDefaults] = await Promise.all([
     prisma.program.findFirst({
       where: { id: programId, userId, isArchived: false },
@@ -121,7 +116,6 @@ export async function buildProgramPrescription(
       },
     }),
   ]);
-
   if (!program) return null;
   const templateExercises = program.templates.flatMap((template) =>
     template.exercises.map((item) => ({
@@ -169,7 +163,6 @@ export async function buildProgramPrescription(
       })),
     })),
   );
-
   const generated = generateMesocyclePrescription({
     program: {
       secondaryContribution: program.secondaryContribution,
@@ -247,7 +240,6 @@ export async function buildProgramPrescription(
       })),
     })),
   });
-
   const storedWeeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan, weekStart);
   const completedTemplateIds: string[] = Array.from(
     new Set(
@@ -256,7 +248,6 @@ export async function buildProgramPrescription(
         .filter((templateId): templateId is string => Boolean(templateId)),
     ),
   );
-
   const completedMovementVolume = new Map<string, { physicalSets: number; effectiveSets: number }>();
   for (const session of completedSessions) {
     for (const sessionExercise of session.exercises) {
@@ -269,7 +260,6 @@ export async function buildProgramPrescription(
       completedMovementVolume.set(movementGroupId, current);
     }
   }
-
   const completedMovementRows = Array.from(completedMovementVolume.entries()).map(([movementGroupId, volume]) => ({
     movementGroupId,
     physicalSets: volume.physicalSets,
@@ -281,7 +271,6 @@ export async function buildProgramPrescription(
     multiplier: setType.multiplier,
     isIntensifier: setType.isIntensifier,
   }));
-
   const weekly = includeWeeklyPlan
     ? applyWeeklyMissedWorkoutPlan({
         items: generated.items,
@@ -303,7 +292,6 @@ export async function buildProgramPrescription(
         completedTemplateIds: [],
         recipientExcludedTemplateIds: [],
       });
-
   return {
     program,
     activeMesocycle,
@@ -314,7 +302,6 @@ export async function buildProgramPrescription(
     },
   };
 }
-
 export async function getTemplatePrescription(programId: string, templateId: string, userId: string) {
   const prescription = await buildProgramPrescription(programId, userId);
   if (!prescription) return null;

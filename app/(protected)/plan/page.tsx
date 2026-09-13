@@ -1,23 +1,37 @@
 import Link from "next/link";
-import { ClipboardList, LayoutTemplate } from "lucide-react";
+import {
+  ClipboardList,
+  LayoutTemplate,
+  SlidersHorizontal,
+} from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 const planItems = [
   {
+    href: "/plan/mesocycle",
+    title: "Adjust current mesocycle",
+    description:
+      "Change movement patterns or set counts for future workouts in the current block without touching the base templates.",
+    icon: SlidersHorizontal,
+    primary: true,
+  },
+  {
     href: "/programs",
     title: "Programs & mesocycles",
     description:
-      "Current program, priorities, volume targets, weekly planning, and mesocycle management.",
+      "Priorities, volume targets, weekly planning, mesocycle dates, and deeper programming controls.",
     icon: ClipboardList,
+    primary: false,
   },
   {
     href: "/templates",
     title: "Base templates",
     description:
-      "Workout structures, movement slots, set limits, rep ranges, and exercise pools.",
+      "Permanent workout structure, slot limits, rep ranges, set plans, and exercise pools.",
     icon: LayoutTemplate,
+    primary: false,
   },
 ];
 
@@ -26,17 +40,33 @@ export default function PlanPage() {
     <div className="space-y-5">
       <PageHeader
         title="Plan"
-        description="Manage the current training block or open the deeper base-template setup when you actually need it."
+        description="Make ordinary in-block adjustments quickly; open the deeper programming tools only when you need them."
       />
 
       <div className="grid gap-3 md:grid-cols-2">
         {planItems.map((item) => {
           const Icon = item.icon;
           return (
-            <Link key={item.href} href={item.href}>
-              <Card className="h-full transition hover:border-slate-600 hover:bg-slate-900">
+            <Link
+              key={item.href}
+              href={item.href}
+              className={item.primary ? "md:col-span-2" : ""}
+            >
+              <Card
+                className={`h-full transition hover:border-slate-600 hover:bg-slate-900 ${
+                  item.primary
+                    ? "border-orange-400/15 bg-gradient-to-br from-slate-900 to-orange-950/10"
+                    : ""
+                }`}
+              >
                 <div className="flex items-start gap-3">
-                  <div className="rounded-xl border border-orange-400/10 bg-orange-500/[0.08] p-2.5 text-orange-300">
+                  <div
+                    className={`rounded-xl border p-2.5 ${
+                      item.primary
+                        ? "border-orange-400/15 bg-orange-500/10 text-orange-300"
+                        : "border-slate-700 bg-slate-950 text-slate-400"
+                    }`}
+                  >
                     <Icon size={20} />
                   </div>
                   <div>
@@ -53,17 +83,6 @@ export default function PlanPage() {
           );
         })}
       </div>
-
-      <Card className="border-dashed bg-slate-950/25">
-        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-          Next planning upgrade
-        </p>
-        <p className="mt-2 text-sm leading-6 text-slate-400">
-          A dedicated current-mesocycle adjustment view will sit here later,
-          so ordinary set/slot changes do not require opening the full base
-          template editor.
-        </p>
-      </Card>
     </div>
   );
 }
