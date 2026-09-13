@@ -1,12 +1,5 @@
 import Link from "next/link";
-import {
-  Activity,
-  Bot,
-  Database,
-  History,
-  Settings,
-  TrendingUp,
-} from "lucide-react";
+import { Database, History, Settings } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -14,42 +7,22 @@ import { PageHeader } from "@/components/ui/PageHeader";
 const moreItems = [
   {
     href: "/exercises",
-    label: "Exercise Database",
+    label: "Exercise database",
     description:
-      "Searchable exercise catalog and custom exercise editor.",
+      "Exercise catalog, movement classifications, muscle mappings, and custom exercises.",
     icon: Database,
   },
   {
     href: "/log/history",
-    label: "Training Log History",
+    label: "Training history",
     description: "View, edit, or delete persisted workout sessions.",
     icon: History,
-  },
-  {
-    href: "/metrics",
-    label: "Metrics",
-    description: "Optional recovery and body metric logging.",
-    icon: Activity,
-  },
-  {
-    href: "/performance",
-    label: "Exercise Performance",
-    description:
-      "Exercise-level exposure, e1RM, volume-load, and PR context.",
-    icon: TrendingUp,
-  },
-  {
-    href: "/ai-analysis",
-    label: "AI Analytics",
-    description:
-      "AI stimulus, fatigue, exercise, and movement-pattern analysis.",
-    icon: Bot,
   },
   {
     href: "/settings",
     label: "Settings",
     description:
-      "Units, metric visibility, and custom set-type configuration.",
+      "Units, metric visibility, custom set types, and application preferences.",
     icon: Settings,
   },
 ];
@@ -61,21 +34,19 @@ export default function MorePage() {
     <div className="space-y-5">
       <PageHeader
         title="More"
-        description="Exercise management, history, metrics, performance, AI analytics, and app settings."
+        description="Library, workout history, and settings. Analytics now live under Progress; programming lives under Plan."
       />
 
       <div className="space-y-3">
         {moreItems.map((item: MoreItem) => {
           const Icon = item.icon;
-
           return (
             <Link key={item.href} href={item.href}>
               <Card className="transition hover:border-slate-600 hover:bg-slate-900">
                 <div className="flex items-start gap-3">
-                  <div className="rounded-xl border border-slate-700 bg-slate-950 p-2 text-slate-300">
+                  <div className="rounded-xl border border-slate-700 bg-slate-950 p-2.5 text-slate-300">
                     <Icon size={20} />
                   </div>
-
                   <div>
                     <h2 className="font-semibold text-slate-100">
                       {item.label}

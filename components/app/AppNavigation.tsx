@@ -3,64 +3,58 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity,
-  BarChart3,
-  Bot,
-  ClipboardList,
-  Database,
   Dumbbell,
+  Gauge,
   Home,
   MoreHorizontal,
-  Settings,
   TrendingUp,
 } from "lucide-react";
 import { clsx } from "clsx";
 
-const desktopItems = [
-  { href: "/dashboard", label: "Dashboard", icon: Home },
-  { href: "/programs", label: "Programs", icon: ClipboardList },
-  { href: "/exercises", label: "Exercises", icon: Database },
-  { href: "/templates", label: "Templates", icon: BarChart3 },
-  { href: "/log", label: "Log workout", icon: Dumbbell },
-  { href: "/metrics", label: "Metrics", icon: Activity },
-  { href: "/performance", label: "Performance", icon: TrendingUp },
-  { href: "/ai-analysis", label: "AI Analytics", icon: Bot },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
-
-const mobileItems = [
+const primaryItems = [
   { href: "/dashboard", label: "Home", icon: Home },
-  { href: "/programs", label: "Programs", icon: ClipboardList },
-  { href: "/templates", label: "Templates", icon: BarChart3 },
-  { href: "/log", label: "Log", icon: Dumbbell },
+  { href: "/log", label: "Train", icon: Dumbbell },
+  { href: "/plan", label: "Plan", icon: Gauge },
+  { href: "/progress", label: "Progress", icon: TrendingUp },
   { href: "/more", label: "More", icon: MoreHorizontal },
 ];
 
-const moreRoutes = [
-  "/more",
-  "/exercises",
+const planRoutes = ["/plan", "/programs", "/templates"];
+const progressRoutes = [
+  "/progress",
   "/metrics",
   "/performance",
   "/ai-analysis",
-  "/settings",
-  "/log/history",
 ];
+const moreRoutes = ["/more", "/exercises", "/settings", "/log/history"];
 
-function isDesktopActive(pathname: string, href: string) {
-  if (href === "/dashboard") return pathname === href;
-  return pathname === href || pathname.startsWith(`${href}/`);
+function matchesRoute(pathname: string, route: string) {
+  return pathname === route || pathname.startsWith(`${route}/`);
 }
 
-function isMobileActive(pathname: string, href: string) {
-  if (href === "/more") {
-    return moreRoutes.some(
-      (route) =>
-        pathname === route || pathname.startsWith(`${route}/`),
+function isActive(pathname: string, href: string) {
+  if (href === "/dashboard") return pathname === "/dashboard";
+
+  if (href === "/log") {
+    return (
+      (pathname === "/log" || pathname.startsWith("/log/")) &&
+      !matchesRoute(pathname, "/log/history")
     );
   }
-  if (href === "/dashboard") return pathname === href;
-  if (href === "/log") return pathname === href;
-  return pathname === href || pathname.startsWith(`${href}/`);
+
+  if (href === "/plan") {
+    return planRoutes.some((route) => matchesRoute(pathname, route));
+  }
+
+  if (href === "/progress") {
+    return progressRoutes.some((route) => matchesRoute(pathname, route));
+  }
+
+  if (href === "/more") {
+    return moreRoutes.some((route) => matchesRoute(pathname, route));
+  }
+
+  return matchesRoute(pathname, href);
 }
 
 export function DesktopNavigation() {
@@ -68,9 +62,9 @@ export function DesktopNavigation() {
 
   return (
     <nav aria-label="Primary" className="space-y-1">
-      {desktopItems.map((item) => {
+      {primaryItems.map((item) => {
         const Icon = item.icon;
-        const active = isDesktopActive(pathname, item.href);
+        const active = isActive(pathname, item.href);
 
         return (
           <Link
@@ -114,9 +108,9 @@ export function MobileNavigation() {
       }}
     >
       <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
-        {mobileItems.map((item) => {
+        {primaryItems.map((item) => {
           const Icon = item.icon;
-          const active = isMobileActive(pathname, item.href);
+          const active = isActive(pathname, item.href);
 
           return (
             <Link

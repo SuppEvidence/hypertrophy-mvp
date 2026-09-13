@@ -1,17 +1,9 @@
 import Link from "next/link";
-import { getDashboardData } from "@/lib/server/dashboard";
-import { requireUserId } from "@/lib/auth/user";
+
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-
-function formatDate(value: string | null) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
-}
+import { requireUserId } from "@/lib/auth/user";
+import { getDashboardData } from "@/lib/server/dashboard";
 
 function formatNumber(
   value: number | null | undefined,
@@ -22,63 +14,68 @@ function formatNumber(
   return `${Number(value).toFixed(decimals).replace(/\.0$/, "")}${suffix}`;
 }
 
+function formatDelta(
+  value: number | null | undefined,
+  suffix = "",
+  decimals = 1,
+) {
+  if (value === null || value === undefined) return "No comparison";
+  const rounded = Number(value).toFixed(decimals).replace(/\.0$/, "");
+  return `${Number(value) > 0 ? "+" : ""}${rounded}${suffix} vs previous 7d`;
+}
+
 function progressWidth(value: number | null | undefined) {
   const safeValue = Math.min(Math.max(Number(value ?? 0), 0), 100);
   return `${safeValue}%`;
 }
 
+function volumeProgress(
+  effective: number,
+  target: number | null | undefined,
+) {
+  if (!target || target <= 0) return "0%";
+  return `${Math.min(Math.max((effective / target) * 100, 0), 100)}%`;
+}
+
 function statusClass(status: string) {
   if (status === "Below target")
-    return "border-amber-700/60 bg-amber-950/20 text-amber-100";
+    return "border-amber-400/20 bg-amber-500/10 text-amber-200";
   if (status === "Above target")
-    return "border-sky-700/60 bg-sky-950/20 text-sky-100";
+    return "border-sky-400/20 bg-sky-500/10 text-sky-200";
   if (status === "Excessive")
-    return "border-red-700/60 bg-red-950/20 text-red-100";
+    return "border-red-400/20 bg-red-500/10 text-red-200";
   if (status === "On target")
-    return "border-emerald-700/60 bg-emerald-950/20 text-emerald-100";
-  return "border-slate-700 bg-slate-800/60 text-slate-200";
+    return "border-emerald-400/20 bg-emerald-500/10 text-emerald-200";
+  return "border-slate-700 bg-slate-800/60 text-slate-300";
 }
 
-function flagClass(severity: "neutral" | "watch" | "high") {
-  if (severity === "high") return "border-red-800 bg-red-950/30";
-  if (severity === "watch") return "border-amber-800 bg-amber-950/20";
-  return "border-slate-800 bg-slate-900/80";
+function coachClass(severity: "neutral" | "watch" | "high") {
+  if (severity === "high")
+    return "border-red-400/20 bg-red-500/[0.08]";
+  if (severity === "watch")
+    return "border-amber-400/20 bg-amber-500/[0.08]";
+  return "border-emerald-400/15 bg-emerald-500/[0.06]";
 }
 
-function MetricTile({
+function TrendItem({
   label,
   value,
   hint,
 }: {
   label: string;
-  value: string | number;
-  hint?: string;
+  value: string;
+  hint: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+    <div className="min-w-0">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
         {label}
       </p>
-      <p className="mt-1 text-lg font-semibold text-slate-100">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
+      <p className="mt-1 text-xl font-semibold tracking-tight text-slate-100">
+        {value}
+      </p>
+      <p className="mt-1 truncate text-xs text-slate-500">{hint}</p>
     </div>
-  );
-}
-
-function DetailsCard({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <details className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-sm">
-      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {title}
-      </summary>
-      <div className="mt-3">{children}</div>
-    </details>
   );
 }
 
@@ -86,360 +83,303 @@ export default async function DashboardPage() {
   const userId = await requireUserId();
   const dashboard = await getDashboardData(userId);
 
-  return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Dashboard"
-        description="Decision surface for effective training volume, recovery context, performance, and bodyweight/waist trend. Set-level stimulus interpretation now lives in AI Analytics."
-      />
-
-      {dashboard.activeProgram ? (
-        <Card>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Active setup
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-slate-100">
-                {dashboard.activeProgram.name}
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                {dashboard.activeProgram.volumeWindowLabel} · {dashboard.completedSessionsCount} sessions
-              </p>
-            </div>
-            <Link
-              href="/log"
-              className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-white"
-            >
-              Log
-            </Link>
-          </div>
-          <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Next workout
-            </p>
-            <p className="mt-1 text-sm font-semibold text-slate-100">
-              {dashboard.suggestedTemplate?.name ?? "No template available"}
-            </p>
-          </div>
-          <p className="mt-3 text-sm text-slate-400">
-            <span className="text-slate-500">Priority:</span>{" "}
-            {dashboard.activeProgram.priorityMuscles.join(", ") || "—"}
+  if (!dashboard.activeProgram) {
+    return (
+      <div className="space-y-5">
+        <PageHeader
+          title="Home"
+          description="Your current training block, next session, and the few signals that need attention."
+        />
+        <Card className="overflow-hidden">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+            Training setup
           </p>
-        </Card>
-      ) : (
-        <Card>
-          <h2 className="font-semibold text-slate-100">No active program</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Create or activate a program before dashboard calculations can run.
+          <h2 className="mt-2 text-xl font-semibold text-slate-50">
+            No active program
+          </h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
+            Activate a program to bring your next workout, mesocycle status,
+            priority volume, and Coach signals onto Home.
           </p>
           <Link
             href="/programs"
-            className="mt-4 inline-flex rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-white"
+            className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-400"
           >
-            Open Programs
+            Open Plan
           </Link>
         </Card>
-      )}
+      </div>
+    );
+  }
 
-      {dashboard.activeProgram && dashboard.mesocycle ? (
-        <Card>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Mesocycle
+  const neutralCoach =
+    dashboard.flags.length === 1 &&
+    dashboard.flags[0]?.severity === "neutral";
+
+  return (
+    <div className="space-y-4 sm:space-y-5">
+      <PageHeader
+        title="Home"
+        description="Next session, current block, priority volume, and anything that actually needs attention."
+      />
+
+      <Card className="relative overflow-hidden border-orange-400/15 bg-gradient-to-br from-slate-900 via-slate-900 to-orange-950/20">
+        <div
+          className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-orange-500/[0.08] blur-3xl"
+          aria-hidden="true"
+        />
+
+        <div className="relative">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-orange-300/80">
+                Next workout
               </p>
-              <h2 className="mt-2 text-xl font-semibold text-slate-100">
-                {dashboard.mesocycle.name}
+              <h2 className="mt-2 truncate text-2xl font-bold tracking-tight text-slate-50 sm:text-3xl">
+                {dashboard.suggestedTemplate?.name ?? "Choose workout"}
               </h2>
               <p className="mt-1 text-sm text-slate-400">
-                {dashboard.mesocycle.status} · {dashboard.mesocycle.phaseLabel} · week {dashboard.mesocycle.currentWeek || "—"}/{dashboard.mesocycle.lengthWeeks}
+                {dashboard.activeProgram.name}
               </p>
             </div>
+
             <Link
-              href={`/programs/${dashboard.activeProgram.id}`}
-              className="rounded-xl border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+              href="/log"
+              className="shrink-0 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-orange-950/30 transition hover:bg-orange-400"
             >
-              Review
+              Start
             </Link>
           </div>
-          <div className="mt-4">
-            <div className="h-2 rounded-full bg-slate-800">
-              <div
-                className="h-2 rounded-full bg-slate-200"
-                style={{ width: progressWidth(dashboard.mesocycle.progressPct) }}
-              />
+
+          {dashboard.mesocycle ? (
+            <div className="mt-6 border-t border-white/[0.07] pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-200">
+                    {dashboard.mesocycle.name}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {dashboard.mesocycle.phaseLabel} · Week{" "}
+                    {dashboard.mesocycle.currentWeek || "—"}/
+                    {dashboard.mesocycle.lengthWeeks}
+                  </p>
+                </div>
+                <span className="text-xs font-semibold text-slate-400">
+                  {dashboard.mesocycle.progressPct}%
+                </span>
+              </div>
+
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400"
+                  style={{
+                    width: progressWidth(dashboard.mesocycle.progressPct),
+                  }}
+                />
+              </div>
             </div>
-            <p className="mt-2 text-xs text-slate-500">
-              {dashboard.mesocycle.progressPct}% complete
-              {dashboard.mesocycle.status === "Completed"
-                ? ""
-                : ` · ${dashboard.mesocycle.daysRemaining} days remaining`}
-              {` · ${formatDate(dashboard.mesocycle.startDate)} to ${formatDate(dashboard.mesocycle.endDate)}`}
+          ) : (
+            <div className="mt-6 border-t border-white/[0.07] pt-4">
+              <p className="text-sm text-slate-400">
+                No current mesocycle configured.
+              </p>
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {dashboard.activeProgram.priorityMuscles.length > 0 ? (
+              dashboard.activeProgram.priorityMuscles.map((muscle) => (
+                <span
+                  key={muscle}
+                  className="rounded-full border border-orange-400/15 bg-orange-500/[0.08] px-2.5 py-1 text-xs font-medium text-orange-200"
+                >
+                  {muscle}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-slate-500">
+                No priority muscles set
+              </span>
+            )}
+          </div>
+
+          <div className="mt-5 flex gap-2">
+            <Link
+              href={`/programs/${dashboard.activeProgram.id}`}
+              className="rounded-xl border border-slate-700 bg-slate-950/30 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-slate-600 hover:text-slate-100"
+            >
+              Review plan
+            </Link>
+            <Link
+              href="/ai-analysis"
+              className="rounded-xl border border-slate-700 bg-slate-950/30 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-slate-600 hover:text-slate-100"
+            >
+              AI Advisor
+            </Link>
+          </div>
+        </div>
+      </Card>
+
+      <section
+        className={`rounded-2xl border p-4 ${coachClass(
+          dashboard.flags[0]?.severity ?? "neutral",
+        )}`}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+              neutralCoach
+                ? "bg-emerald-400"
+                : dashboard.flags.some((flag) => flag.severity === "high")
+                  ? "bg-red-400"
+                  : "bg-amber-400"
+            }`}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+              Coach
             </p>
-            {dashboard.mesocycle.endedEarly ? (
-              <p className="mt-1 text-xs text-amber-300">
-                Ended early · original planned end {formatDate(dashboard.mesocycle.plannedEndDate)}
-              </p>
-            ) : null}
-          </div>
-        </Card>
-      ) : dashboard.activeProgram ? (
-        <Card>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Mesocycle
-              </p>
-              <h2 className="mt-2 text-lg font-semibold text-slate-100">
-                No mesocycle set
-              </h2>
+            {dashboard.flags.length > 0 ? (
+              <div className={neutralCoach ? "mt-1" : "mt-2 space-y-3"}>
+                {dashboard.flags.map((flag) => (
+                  <div key={`${flag.type}-${flag.title}`}>
+                    <p className="font-semibold text-slate-100">{flag.title}</p>
+                    <p className="mt-1 text-sm leading-5 text-slate-400">
+                      {flag.detail}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
               <p className="mt-1 text-sm text-slate-400">
-                Add a block to enable mesocycle-level review.
+                No Coach signal available yet.
               </p>
-            </div>
-            <Link
-              href={`/programs/${dashboard.activeProgram.id}`}
-              className="rounded-xl border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
-            >
-              Add
-            </Link>
+            )}
           </div>
-        </Card>
-      ) : null}
+        </div>
+      </section>
 
-      {dashboard.activeProgram ? (
-        <Card>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Bodyweight / waist
+      <Card>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+              Priority volume
+            </p>
+            <p className="mt-1 text-sm text-slate-400">
+              Effective volume in the current reporting window.
+            </p>
+          </div>
+          <Link
+            href="/progress"
+            className="shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-200"
+          >
+            Full progress
+          </Link>
+        </div>
+
+        {dashboard.priorityRows.length > 0 ? (
+          <div className="mt-4 space-y-4">
+            {dashboard.priorityRows.map((row) => (
+              <div key={row.muscleId}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-slate-100">
+                    {row.muscleName}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm tabular-nums text-slate-300">
+                      {formatNumber(row.effective)}{" "}
+                      <span className="text-slate-600">/</span>{" "}
+                      {formatNumber(row.target)}
+                    </p>
+                    <span
+                      className={`hidden rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide sm:inline-flex ${statusClass(
+                        row.status,
+                      )}`}
+                    >
+                      {row.status}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                  <div
+                    className="h-full rounded-full bg-slate-300"
+                    style={{
+                      width: volumeProgress(row.effective, row.target),
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-slate-400">
+            No priority muscles configured.
           </p>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-300 md:grid-cols-4">
-            <MetricTile
-              label="7d BW"
-              value={formatNumber(dashboard.bodyMetrics.latestBodyweight, " kg")}
-              hint={`${formatNumber(dashboard.bodyMetrics.bodyweightChange, " kg")} vs prev`}
+        )}
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+            Current trend
+          </p>
+          <Link
+            href="/metrics"
+            className="text-xs font-semibold text-slate-500 transition hover:text-slate-300"
+          >
+            Metrics
+          </Link>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-4 divide-x divide-white/[0.06]">
+          <TrendItem
+            label="Bodyweight"
+            value={formatNumber(
+              dashboard.bodyMetrics.latestBodyweight,
+              " kg",
+            )}
+            hint={formatDelta(
+              dashboard.bodyMetrics.bodyweightChange,
+              " kg",
+            )}
+          />
+          <div className="pl-4">
+            <TrendItem
+              label="Waist"
+              value={formatNumber(
+                dashboard.bodyMetrics.latestWaist,
+                " mm",
+                0,
+              )}
+              hint={formatDelta(
+                dashboard.bodyMetrics.waistChange,
+                " mm",
+                0,
+              )}
             />
-            <MetricTile
-              label="7d waist"
-              value={formatNumber(dashboard.bodyMetrics.latestWaist, " mm", 0)}
-              hint={`${formatNumber(dashboard.bodyMetrics.waistChange, " mm", 0)} vs prev`}
-            />
-            <MetricTile
+          </div>
+          <div className="pl-4">
+            <TrendItem
               label="Fatigue"
               value={dashboard.fatigueTrend.latest?.category ?? "—"}
               hint={
                 dashboard.fatigueTrend.latest?.score !== null &&
                 dashboard.fatigueTrend.latest?.score !== undefined
                   ? `${dashboard.fatigueTrend.latest.score}/100`
-                  : "No metric log"
+                  : "No recent score"
               }
             />
-            <MetricTile
-              label="Samples"
-              value={`${dashboard.bodyMetrics.bodyweightSampleCount ?? 0}/${dashboard.bodyMetrics.waistSampleCount ?? 0}`}
-              hint="BW / waist in 7d"
-            />
           </div>
-        </Card>
-      ) : null}
-
-      <Card>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Coach signals
-        </p>
-        <div className="mt-3 space-y-2">
-          {dashboard.flags.length > 0 ? (
-            dashboard.flags.map((flag) => (
-              <div
-                key={`${flag.type}-${flag.title}`}
-                className={`rounded-2xl border p-3 ${flagClass(flag.severity)}`}
-              >
-                <p className="font-semibold text-slate-100">{flag.title}</p>
-                <p className="mt-1 text-sm text-slate-400">{flag.detail}</p>
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-slate-400">
-              No flags available until an active program exists.
-            </p>
-          )}
         </div>
       </Card>
 
-      {dashboard.activeProgram ? (
-        <>
-          <Card>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Set-level interpretation
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-400">
-                  Weight, reps, observed RIR, set type, timing, pain and training history are now the source data. Manual productive / hard / rep-quality labels have been retired from current dashboard decisions.
-                </p>
-              </div>
-              <Link
-                href="/ai-analysis"
-                className="shrink-0 rounded-xl border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
-              >
-                AI Analytics
-              </Link>
-            </div>
-          </Card>
-
-          <Card>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Priority muscle status
-            </p>
-            {dashboard.priorityRows.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {dashboard.priorityRows.map((row) => (
-                  <div
-                    key={row.muscleId}
-                    className={`rounded-2xl border p-3 ${statusClass(row.status)}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-semibold">{row.muscleName}</p>
-                      <p className="text-xs font-semibold uppercase tracking-wide">
-                        {row.status}
-                      </p>
-                    </div>
-                    <p className="mt-1 text-sm opacity-90">
-                      Effective volume {formatNumber(row.effective)} / target {formatNumber(row.target)} · Completed {formatNumber(row.direct)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-slate-400">
-                No priority muscles configured for active program.
-              </p>
-            )}
-          </Card>
-
-          <Card>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Actual vs target volume
-            </p>
-            {dashboard.volumeRows.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {dashboard.volumeRows.slice(0, 12).map((row) => (
-                  <div
-                    key={row.muscleId}
-                    className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-semibold text-slate-100">
-                        {row.muscleName}
-                      </p>
-                      <span
-                        className={`rounded-full border px-2 py-1 text-xs ${statusClass(row.status)}`}
-                      >
-                        {row.status}
-                      </span>
-                    </div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-sm text-slate-300">
-                      <p>
-                        <span className="text-slate-500">Completed</span>
-                        <br />
-                        {formatNumber(row.direct)}
-                      </p>
-                      <p>
-                        <span className="text-slate-500">Effective volume</span>
-                        <br />
-                        {formatNumber(row.effective)}
-                      </p>
-                      <p>
-                        <span className="text-slate-500">Target</span>
-                        <br />
-                        {formatNumber(row.target)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-slate-400">
-                No completed workout volume in the selected window yet.
-              </p>
-            )}
-          </Card>
-
-          <DetailsCard title="Movement coverage">
-            {dashboard.movementCoverage.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {dashboard.movementCoverage.slice(0, 16).map((row) => (
-                  <span
-                    key={row.movementGroupId}
-                    className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm text-slate-200"
-                  >
-                    {row.movementGroupName}: {row.completedSets}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400">
-                No completed movement exposure in the selected window yet.
-              </p>
-            )}
-          </DetailsCard>
-
-          <DetailsCard title="Advanced analytics">
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-semibold text-slate-100">
-                  Intensifiers
-                </p>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-slate-300 md:grid-cols-4">
-                  <MetricTile
-                    label="Intensifier sets"
-                    value={dashboard.intensifiers.intensifierSets}
-                  />
-                  <MetricTile
-                    label="Completed sets"
-                    value={dashboard.intensifiers.completedSets}
-                  />
-                  <MetricTile
-                    label="Effective volume"
-                    value={dashboard.intensifiers.effectiveVolume}
-                  />
-                  <MetricTile
-                    label="Share"
-                    value={`${dashboard.intensifiers.share}%`}
-                  />
-                </div>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-100">
-                  Performance trend
-                </p>
-                <p className="mt-1 text-sm text-slate-400">
-                  {dashboard.performanceTrend.status} · compared exercises: {dashboard.performanceTrend.comparedExercises}
-                </p>
-                {dashboard.performanceTrend.declining.length > 0 ? (
-                  <div className="mt-3 space-y-2">
-                    {dashboard.performanceTrend.declining
-                      .slice(0, 3)
-                      .map((item) => (
-                        <div
-                          key={item.exerciseName}
-                          className="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 text-sm text-slate-300"
-                        >
-                          <p className="font-semibold text-slate-100">
-                            {item.exerciseName}
-                          </p>
-                          <p className="mt-1">
-                            {item.changePct}% · {item.previousE1rm} → {item.latestE1rm} e1RM
-                          </p>
-                        </div>
-                      ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </DetailsCard>
-        </>
-      ) : null}
+      <Link
+        href="/progress"
+        className="flex min-h-12 items-center justify-between rounded-2xl border border-white/[0.07] bg-slate-900/[0.45] px-4 text-sm font-semibold text-slate-300 transition hover:border-slate-700 hover:bg-slate-900/70 hover:text-slate-100"
+      >
+        <span>View full training progress</span>
+        <span className="text-slate-600">→</span>
+      </Link>
     </div>
   );
 }
