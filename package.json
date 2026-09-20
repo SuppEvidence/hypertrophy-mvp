@@ -6,6 +6,7 @@
     "dev": "next dev",
     "verify:boundaries": "node scripts/verify-production-boundaries.mjs",
     "typecheck": "npm run verify:boundaries && tsc --noEmit",
+    "pretypecheck": "prisma generate",
     "prebuild": "prisma generate",
     "build": "npm run verify:boundaries && next build",
     "start": "next start",
@@ -14,8 +15,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "format": "prettier --write .",
-    "pretypecheck": "prisma generate"
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",

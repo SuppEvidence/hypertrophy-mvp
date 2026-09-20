@@ -18,7 +18,7 @@ export async function evaluatePendingWorkoutCoachActionsForSet(params: {
   setId: string;
 }) {
   const set = await prisma.workoutSet.findFirst({
-    where: { id: params.setId, isCompleted: true, sessionExercise: { session: { userId: params.userId } } },
+    where: { id: params.setId, sessionExercise: { session: { userId: params.userId } } },
     include: { sessionExercise: true },
   });
   if (!set) return [];
@@ -28,7 +28,7 @@ export async function evaluatePendingWorkoutCoachActionsForSet(params: {
       userId: params.userId,
       sessionExerciseId: set.sessionExerciseId,
       status: "APPLIED",
-      evaluatedAt: null,
+      actionType: { in: ["CHANGE_LOAD", "CHANGE_REP_TARGET", "CHANGE_RIR_TARGET"] },
       triggerSet: { setNumber: { lt: set.setNumber } },
     },
     include: { triggerSet: true },
@@ -47,7 +47,11 @@ export async function evaluatePendingWorkoutCoachActionsForSet(params: {
     const minReps = numberOrNull(prescription.minReps);
     const maxReps = numberOrNull(prescription.maxReps);
     const targetRir = numberOrNull(prescription.targetRir);
+    const suggestedLoad = numberOrNull(prescription.suggestedLoad);
+    const actualLoad = numberOrNull(set.weight);
     const actualRir = numberOrNull(set.rir);
+    const loadTargetMet = suggestedLoad === null ? null : actualLoad !== null && Math.abs(actualLoad - suggestedLoad) < 0.26;
+    const compromised = object(set.intensifierDetails).executionCompromised === true;
     const repTargetMet =
       set.reps !== null &&
       (minReps === null || set.reps >= minReps) &&
@@ -56,19 +60,28 @@ export async function evaluatePendingWorkoutCoachActionsForSet(params: {
       targetRir === null ||
       (actualRir !== null && Math.abs(actualRir - targetRir) <= 1);
 
-    let classification: "POSITIVE" | "NEUTRAL" | "NEGATIVE" | "INCONCLUSIVE";
-    if (set.painFlag) classification = "NEGATIVE";
-    else if (set.reps === null || (targetRir !== null && actualRir === null)) classification = "INCONCLUSIVE";
-    else if (repTargetMet && rirTargetMet) classification = "POSITIVE";
-    else classification = "NEUTRAL";
+    let classification: "TARGETS_MET" | "TARGETS_MISSED" | "PAIN_REPORTED" | "INCONCLUSIVE";
+    if (!set.isCompleted) classification = "INCONCLUSIVE";
+    else if (set.painFlag || set.sessionExercise.painFlag) classification = "PAIN_REPORTED";
+    else if (compromised || set.reps === null || (targetRir !== null && actualRir === null) ||
+      (suggestedLoad !== null && (actualLoad === null || !loadTargetMet))) classification = "INCONCLUSIVE";
+    else if (repTargetMet && rirTargetMet) classification = "TARGETS_MET";
+    else classification = "TARGETS_MISSED";
 
     const outcome = {
       classification,
+      scope: "PRESCRIPTION_ATTAINMENT",
+      setStillCompleted: set.isCompleted,
+      causalBenefitEstablished: false,
+      note: "Target attainment only; does not establish hypertrophy, fatigue recovery, or intervention benefit.",
       evaluatedSetId: set.id,
       evaluatedSetNumber: set.setNumber,
       repTargetMet,
       rirTargetMet,
-      painWorsened: set.painFlag,
+      loadTargetMet,
+      executionCompromised: compromised,
+      painReported: set.painFlag || set.sessionExercise.painFlag,
+      newSetPain: set.painFlag && !action.triggerSet?.painFlag,
       actual: { weight: numberOrNull(set.weight), reps: set.reps, rir: actualRir },
     };
     await prisma.workoutCoachAction.update({
@@ -82,4 +95,3 @@ export async function evaluatePendingWorkoutCoachActionsForSet(params: {
   }
   return results;
 }
-

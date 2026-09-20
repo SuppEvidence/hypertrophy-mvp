@@ -17,6 +17,8 @@ import {
   type ExecutionCompromiseReason,
 } from "@/lib/workouts/execution-quality";
 import { autosaveWorkoutSetCore } from "@/lib/server/workout-set-autosave";
+import { COACH_SET_SAVED_EVENT, COACH_SET_STARTED_EVENT } from "@/components/workouts/LiveWorkoutCoach";
+import { object, readPrescription } from "@/lib/coaching/workout-coach-policy";
 
 const inputClass =
   "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-100 outline-none focus:border-orange-400/80";
@@ -29,6 +31,7 @@ type DropSetDraft = { weight: string; reps: string };
 
 type AutosaveSetRowProps = {
   set: {
+    prescription?: unknown;
     id: string;
     setNumber: number;
     weight: unknown;
@@ -85,6 +88,8 @@ export function AutosaveSetRow({
   prefillReps,
   prefillRir,
 }: AutosaveSetRowProps) {
+  const coachPrescription = readPrescription(set.prescription);
+  const isCoachPrescription = object(object(set.prescription).current).source === "AI_AUTOREGULATION";
   const [weight, setWeight] = useState(
     decimalToInput(set.weight) || decimalToInput(prefillWeight),
   );
@@ -147,6 +152,9 @@ export function AutosaveSetRow({
         const result = await autosaveWorkoutSetCore(set.id, payload);
         if (saveVersion.current !== currentVersion) return;
         setStatus(result.ok ? "saved" : "error");
+        if (result.ok) window.dispatchEvent(new CustomEvent(COACH_SET_SAVED_EVENT, {
+          detail: { setId: set.id, isCompleted: payload.isCompleted },
+        }));
         if (
           result.ok &&
           lastSavedCompletion.current !== payload.isCompleted
@@ -249,6 +257,7 @@ export function AutosaveSetRow({
     setTrackingError(null);
     try {
       if (!timerRunning) {
+        window.dispatchEvent(new CustomEvent(COACH_SET_STARTED_EVENT, { detail: { setId: set.id } }));
         const result = await startWorkoutSetTimer(set.id);
         if (!result.ok) {
           setTrackingError(result.error);
@@ -277,6 +286,9 @@ export function AutosaveSetRow({
       setStartedAt(result.startedAt);
       setEndedAt(result.endedAt);
       setElapsedSeconds(result.durationSeconds ?? 0);
+      if (isCompleted) window.dispatchEvent(new CustomEvent(COACH_SET_SAVED_EVENT, {
+        detail: { setId: set.id, isCompleted: true },
+      }));
     } finally {
       setTimerBusy(false);
     }
@@ -386,6 +398,11 @@ export function AutosaveSetRow({
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+      {isCoachPrescription ? <p className="mb-2 rounded-lg bg-sky-950/40 px-2 py-1.5 text-xs text-sky-200">
+        Coach target: {coachPrescription.suggestedLoad !== null ? `${coachPrescription.suggestedLoad} kg · ` : ""}
+        {coachPrescription.minReps !== null ? `${coachPrescription.minReps}–${coachPrescription.maxReps} reps · ` : ""}
+        {coachPrescription.targetRir !== null ? `${coachPrescription.targetRir} RIR` : ""}
+      </p> : null}
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-[0.72fr_1fr_0.82fr_0.72fr_0.72fr]">
         <div className="col-span-2 flex min-h-10 items-center gap-2 px-1 text-sm font-semibold text-slate-300 sm:col-span-1 sm:min-h-11">
           <span>Set {set.setNumber}</span>

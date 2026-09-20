@@ -91,8 +91,9 @@ export async function autosaveWorkoutSetCore(
     },
   });
 
-  if (result.count === 1 && !previous.isCompleted && Boolean(payload.isCompleted)) {
-    await evaluatePendingWorkoutCoachActionsForSet({ userId, setId });
+  if (result.count === 1 && (previous.isCompleted || Boolean(payload.isCompleted))) {
+    // Evaluation must never make a successfully saved set appear to have failed.
+    await evaluatePendingWorkoutCoachActionsForSet({ userId, setId }).catch(() => undefined);
   }
 
   return result.count === 1

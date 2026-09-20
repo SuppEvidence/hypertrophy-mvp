@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CheckCircle2, History, Plus, Trash2 } from "lucide-react";
 import { AutosaveSetRow } from "@/components/workouts/AutosaveSetRow";
+import { LiveWorkoutCoach } from "@/components/workouts/LiveWorkoutCoach";
 import { DeleteWorkoutButton } from "@/components/workouts/DeleteWorkoutButton";
 import { ExerciseCollapseCard } from "@/components/workouts/ExerciseCollapseCard";
 import { Button } from "@/components/ui/Button";
@@ -72,6 +73,7 @@ type LoggerDraftSession = {
 };
 
 type LoggerSet = {
+  prescription?: unknown;
   id: string;
   setNumber: number;
   weight: unknown;
@@ -250,6 +252,7 @@ function formatSuggestedWeight(suggestion: LoggerWeightSuggestion | undefined) {
 }
 
 function toAutosaveSet(set: {
+  prescription?: unknown;
   id: string;
   setNumber: number;
   weight: unknown;
@@ -263,6 +266,7 @@ function toAutosaveSet(set: {
   painNote: string | null;
 }) {
   return {
+    prescription: set.prescription,
     id: set.id,
     setNumber: set.setNumber,
     weight: decimalToNumber(set.weight),
@@ -595,6 +599,11 @@ function EditableSessionBody({
                     </div>
                   </div>
 
+                  {activeSession.status === "DRAFT" ? <LiveWorkoutCoach
+                    sessionId={activeSession.id}
+                    sessionExerciseId={item.id}
+                    sets={item.sets.map(set => ({ id: set.id, setNumber: set.setNumber, isCompleted: set.isCompleted }))}
+                  /> : null}
                   <div className="space-y-2">
                     <div className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       Sets · weight / reps / RIR / done

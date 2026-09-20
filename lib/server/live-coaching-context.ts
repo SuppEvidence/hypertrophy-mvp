@@ -98,7 +98,7 @@ export async function buildLiveExerciseCoachingContext(params: {
       take: EXERCISE_HISTORY_LIMIT,
       include: {
         session: { select: { performedAt: true } },
-        sets: { where: { isCompleted: true }, orderBy: { setNumber: "asc" } },
+        sets: { where: { isCompleted: true }, orderBy: { setNumber: "asc" }, include: { setType: true } },
       },
     }),
     prisma.workoutSessionExercise.findMany({
@@ -216,6 +216,7 @@ export async function buildLiveExerciseCoachingContext(params: {
     exercise: {
       id: current.exerciseId,
       name: current.exercise.name,
+      pain: current.painFlag,
       movementPatternId: current.exercise.movementGroupId,
       movementPatternName: current.exercise.movementGroup.name,
       exerciseType: current.exercise.secondaryMuscles.length > 0 ? "COMPOUND" : "ISOLATION",
@@ -230,6 +231,10 @@ export async function buildLiveExerciseCoachingContext(params: {
         id: set.id,
         setNumber: set.setNumber,
         isCompleted: set.isCompleted,
+        startedAt: set.startedAt?.toISOString() ?? null,
+        updatedAt: set.updatedAt.toISOString(),
+        setTypeId: set.setTypeId,
+        isIntensifier: set.setType.isIntensifier,
         prescription: set.prescription,
       })),
     },
@@ -239,11 +244,22 @@ export async function buildLiveExerciseCoachingContext(params: {
       weight: numberOrNull(set.weight),
       reps: set.reps,
       observedRir: numberOrNull(set.rir),
+      rir: numberOrNull(set.rir),
+      setTypeId: set.setTypeId,
+      isIntensifier: set.setType.isIntensifier,
       performanceIndex: performanceIndex(set.weight, set.reps, set.rir),
       pain: set.painFlag,
       ...details(set.intensifierDetails),
     })),
     history: {
+      exposures: exerciseHistory.filter(exposure =>
+        current.session.performedAt.getTime() - exposure.session.performedAt.getTime() <= 90 * 86400000,
+      ).map(exposure => exposure.sets.map(set => ({
+        id: set.id, setNumber: set.setNumber, weight: numberOrNull(set.weight),
+        reps: set.reps, rir: numberOrNull(set.rir), setTypeId: set.setTypeId,
+        isIntensifier: set.setType.isIntensifier, pain: set.painFlag || exposure.painFlag,
+        ...details(set.intensifierDetails),
+      }))),
       performanceExposureCount: usableHistory.length,
       decayComparableExposureCount: usableHistory.filter((row) => row.sets.length >= 2).length,
       medianWithinExerciseDecayPct: median(historicalDecay),
@@ -258,4 +274,3 @@ export async function buildLiveExerciseCoachingContext(params: {
     })),
   };
 }
-
