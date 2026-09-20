@@ -17,20 +17,9 @@ const inputClass =
 const smallSelectClass =
   "min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-2 py-2 text-sm text-slate-100 outline-none focus:border-orange-400/80";
 
-type SetTypeOption = {
-  id: string;
-  name: string;
-};
-
-type StatusOption = {
-  value: string;
-  label: string;
-};
-
-type DropSetDraft = {
-  weight: string;
-  reps: string;
-};
+type SetTypeOption = { id: string; name: string };
+type StatusOption = { value: string; label: string };
+type DropSetDraft = { weight: string; reps: string };
 
 type AutosaveSetRowProps = {
   set: {
@@ -70,7 +59,6 @@ function formatDuration(seconds: number) {
 
 function intensifierKind(name: string | undefined) {
   const normalized = (name ?? "").trim().toLowerCase();
-
   if (
     normalized.includes("myo") ||
     normalized.includes("rest-pause") ||
@@ -80,11 +68,7 @@ function intensifierKind(name: string | undefined) {
   ) {
     return "clusters" as const;
   }
-
-  if (normalized.includes("drop")) {
-    return "drops" as const;
-  }
-
+  if (normalized.includes("drop")) return "drops" as const;
   return "none" as const;
 }
 
@@ -110,19 +94,15 @@ export function AutosaveSetRow({
   );
   const [setTypeId, setSetTypeId] = useState(set.setTypeId);
   const [isCompleted, setIsCompleted] = useState(set.isCompleted);
-  const [painFlag, setPainFlag] = useState(Boolean(set.painFlag));
-  const [painNote, setPainNote] = useState(set.painNote ?? "");
-  const [status, setStatus] = useState<
-    "idle" | "saving" | "saved" | "error"
-  >("idle");
-
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
   const [detailsLoaded, setDetailsLoaded] = useState(false);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [endedAt, setEndedAt] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [timerBusy, setTimerBusy] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
-
   const [clusterCount, setClusterCount] = useState("");
   const [dropSets, setDropSets] = useState<DropSetDraft[]>([]);
   const [filmed, setFilmed] = useState(false);
@@ -134,29 +114,12 @@ export function AutosaveSetRow({
   const didMount = useRef(false);
   const saveVersion = useRef(0);
   const lastSavedCompletion = useRef(set.isCompleted);
-
   const selectedSetType = setTypes.find((option) => option.id === setTypeId);
   const currentIntensifierKind = intensifierKind(selectedSetType?.name);
 
   const payload = useMemo(
-    () => ({
-      weight,
-      reps,
-      rir,
-      setTypeId,
-      isCompleted,
-      painFlag,
-      painNote,
-    }),
-    [
-      weight,
-      reps,
-      rir,
-      setTypeId,
-      isCompleted,
-      painFlag,
-      painNote,
-    ],
+    () => ({ weight, reps, rir, setTypeId, isCompleted }),
+    [weight, reps, rir, setTypeId, isCompleted],
   );
 
   useEffect(() => {
@@ -168,14 +131,11 @@ export function AutosaveSetRow({
     setStatus("saving");
     const currentVersion = saveVersion.current + 1;
     saveVersion.current = currentVersion;
-
     const timeout = window.setTimeout(() => {
       startTransition(async () => {
         const result = await autosaveWorkoutSetCore(set.id, payload);
         if (saveVersion.current !== currentVersion) return;
-
         setStatus(result.ok ? "saved" : "error");
-
         if (
           result.ok &&
           lastSavedCompletion.current !== payload.isCompleted
@@ -183,36 +143,26 @@ export function AutosaveSetRow({
           lastSavedCompletion.current = payload.isCompleted;
           window.dispatchEvent(
             new CustomEvent(WORKOUT_SET_COMPLETION_EVENT, {
-              detail: {
-                setId: set.id,
-                isCompleted: payload.isCompleted,
-              },
+              detail: { setId: set.id, isCompleted: payload.isCompleted },
             }),
           );
         }
       });
     }, 650);
-
     return () => window.clearTimeout(timeout);
   }, [payload, set.id]);
 
   useEffect(() => {
     if (!startedAt || endedAt) return;
-
-    const update = () => {
+    const update = () =>
       setElapsedSeconds(
         Math.max(
           0,
-          Math.round(
-            (Date.now() - new Date(startedAt).getTime()) / 1000,
-          ),
+          Math.round((Date.now() - new Date(startedAt).getTime()) / 1000),
         ),
       );
-    };
-
     update();
     const interval = window.setInterval(update, 1000);
-
     return () => window.clearInterval(interval);
   }, [startedAt, endedAt]);
 
@@ -236,13 +186,11 @@ export function AutosaveSetRow({
 
   async function loadTrackingDetails() {
     if (detailsLoaded) return;
-
     const result = await getWorkoutSetTracking(set.id);
     if (!result.ok) {
       setTrackingError("Set tracking unavailable");
       return;
     }
-
     setStartedAt(result.startedAt);
     setEndedAt(result.endedAt);
     setClusterCount(
@@ -257,7 +205,6 @@ export function AutosaveSetRow({
       })),
     );
     setFilmed(result.intensifierDetails.filmed);
-
     if (result.startedAt && result.endedAt) {
       setElapsedSeconds(
         Math.max(
@@ -279,40 +226,39 @@ export function AutosaveSetRow({
         ),
       );
     }
-
     setDetailsLoaded(true);
   }
 
   async function handleTimer() {
     setTimerBusy(true);
     setTrackingError(null);
-
     try {
       if (!timerRunning) {
         const result = await startWorkoutSetTimer(set.id);
-
         if (!result.ok) {
           setTrackingError(result.error);
           return;
         }
-
         setStartedAt(result.startedAt);
         setEndedAt(null);
         setElapsedSeconds(
           result.resumed
-            ? Math.max(0, Math.round((Date.now() - new Date(result.startedAt).getTime()) / 1000))
+            ? Math.max(
+                0,
+                Math.round(
+                  (Date.now() - new Date(result.startedAt).getTime()) / 1000,
+                ),
+              )
             : 0,
         );
         return;
       }
 
       const result = await endWorkoutSetTimer(set.id);
-
       if (!result.ok) {
         setTrackingError(result.error);
         return;
       }
-
       setStartedAt(result.startedAt);
       setEndedAt(result.endedAt);
       setElapsedSeconds(result.durationSeconds ?? 0);
@@ -327,7 +273,6 @@ export function AutosaveSetRow({
     nextFilmed = filmed,
   ) {
     setDetailsStatus("saving");
-
     const result = await saveWorkoutSetIntensifierDetails(set.id, {
       clusterCount:
         nextClusterCount.trim() === "" ? null : nextClusterCount,
@@ -337,18 +282,13 @@ export function AutosaveSetRow({
       })),
       filmed: nextFilmed,
     });
-
     setDetailsStatus(result.ok ? "saved" : "error");
   }
 
   async function handleSetTypeChange(nextSetTypeId: string) {
     setSetTypeId(nextSetTypeId);
-
-    const nextType = setTypes.find(
-      (option) => option.id === nextSetTypeId,
-    );
+    const nextType = setTypes.find((option) => option.id === nextSetTypeId);
     const nextKind = intensifierKind(nextType?.name);
-
     if (nextKind === "none") {
       setClusterCount("");
       setDropSets([]);
@@ -374,11 +314,8 @@ export function AutosaveSetRow({
     );
   }
 
-  async function addDropSet() {
-    setDropSets((current) => [
-      ...current,
-      { weight: "", reps: "" },
-    ]);
+  function addDropSet() {
+    setDropSets((current) => [...current, { weight: "", reps: "" }]);
   }
 
   async function removeDropSet(index: number) {
@@ -480,11 +417,9 @@ export function AutosaveSetRow({
                 ? "Restart Set"
                 : "Start Set"}
         </button>
-
         <div className="min-w-16 text-center font-mono text-lg font-semibold tabular-nums text-slate-100">
           {formatDuration(elapsedSeconds)}
         </div>
-
         <label
           className={`flex min-h-9 items-center gap-1.5 rounded-lg border px-2 text-xs font-semibold transition ${
             filmed
@@ -509,17 +444,16 @@ export function AutosaveSetRow({
           />
           Filmed
         </label>
-
         <p className="basis-full text-[11px] leading-4 text-slate-500 sm:min-w-0 sm:flex-1 sm:basis-auto">
           {filmed
             ? "Filmed set: timing is stored but excluded from AI duration/rest interpretation."
             : timerRunning
               ? currentIntensifierKind === "none"
-              ? "Timer running for this set."
-              : "Keep running through the full intensifier. End only after all clusters/drops."
-            : currentIntensifierKind === "none"
-              ? "Times the complete working set."
-              : "For intensifiers, Start → activation + all clusters/drops → End."}
+                ? "Timer running for this set."
+                : "Keep running through the full intensifier. End only after all clusters/drops."
+              : currentIntensifierKind === "none"
+                ? "Times the complete working set."
+                : "For intensifiers, Start → activation + all clusters/drops → End."}
         </p>
       </div>
 
@@ -537,32 +471,19 @@ export function AutosaveSetRow({
           Set details
         </summary>
 
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <div className="mt-2">
           <select
             value={setTypeId}
-            onChange={(event) =>
-              void handleSetTypeChange(event.target.value)
-            }
+            onChange={(event) => void handleSetTypeChange(event.target.value)}
             className={smallSelectClass}
             aria-label="Set type"
           >
-            {setTypes.map((setType: SetTypeOption) => (
+            {setTypes.map((setType) => (
               <option key={setType.id} value={setType.id}>
                 {setType.name}
               </option>
             ))}
           </select>
-
-          <label className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-300">
-            <input
-              checked={painFlag}
-              onChange={(event) => setPainFlag(event.target.checked)}
-              type="checkbox"
-              className="h-5 w-5"
-            />
-            Pain / discomfort
-          </label>
-
         </div>
 
         {currentIntensifierKind === "clusters" ? (
@@ -581,7 +502,7 @@ export function AutosaveSetRow({
               />
             </label>
             <p className="mt-1 text-[11px] leading-4 text-slate-500">
-              Count only the clusters after the activation set. The timer covers the entire intensifier.
+              Count only clusters after the activation set. The timer covers the entire intensifier.
             </p>
           </div>
         ) : null}
@@ -599,7 +520,7 @@ export function AutosaveSetRow({
               </div>
               <button
                 type="button"
-                onClick={() => void addDropSet()}
+                onClick={addDropSet}
                 className="min-h-9 rounded-lg border border-slate-700 px-3 text-xs font-semibold text-slate-300 hover:bg-slate-800"
               >
                 + Drop
@@ -631,7 +552,6 @@ export function AutosaveSetRow({
                       placeholder="kg"
                     />
                   </label>
-
                   <label className="relative">
                     <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-600">
                       reps
@@ -650,7 +570,6 @@ export function AutosaveSetRow({
                       placeholder="reps"
                     />
                   </label>
-
                   <button
                     type="button"
                     onClick={() => void removeDropSet(index)}
@@ -681,16 +600,6 @@ export function AutosaveSetRow({
               </p>
             ) : null}
           </div>
-        ) : null}
-
-        {painFlag ? (
-          <input
-            value={painNote}
-            onChange={(event) => setPainNote(event.target.value)}
-            className={`${inputClass} mt-2`}
-            placeholder="Pain/discomfort note, optional"
-            aria-label="Pain note"
-          />
         ) : null}
       </details>
     </div>

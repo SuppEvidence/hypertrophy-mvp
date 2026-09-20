@@ -33,7 +33,9 @@ function editableSessionStatusWhere() {
 /**
  * Hot-path autosave for the current logger.
  * Legacy rep-range/effort labels are intentionally not parsed or written.
- * Historical columns remain in the database for backwards compatibility.
+ * Set-level pain fields are retained for backwards compatibility, but are only
+ * updated when an older caller explicitly supplies them. The current logger
+ * stores symptom context at exercise-exposure level instead.
  */
 export async function autosaveWorkoutSetCore(
   setId: string,
@@ -54,6 +56,14 @@ export async function autosaveWorkoutSetCore(
     return { ok: false as const, error: "Invalid set values." };
   }
 
+  const legacyPainUpdate =
+    payload.painFlag !== undefined || payload.painNote !== undefined
+      ? {
+          painFlag: Boolean(payload.painFlag),
+          painNote: payload.painNote?.trim().slice(0, 500) || null,
+        }
+      : {};
+
   const result = await prisma.workoutSet.updateMany({
     where: {
       id: setId,
@@ -67,8 +77,7 @@ export async function autosaveWorkoutSetCore(
       rir,
       setTypeId,
       isCompleted: Boolean(payload.isCompleted),
-      painFlag: Boolean(payload.painFlag),
-      painNote: payload.painNote?.trim().slice(0, 500) || null,
+      ...legacyPainUpdate,
     },
   });
 

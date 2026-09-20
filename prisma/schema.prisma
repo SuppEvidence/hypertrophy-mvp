@@ -254,6 +254,9 @@ model ProgramMesocycle {
   lengthWeeks   Int          @default(4) @map("length_weeks")
   actualEndDate DateTime?     @map("actual_end_date") @db.Date
   structureOverrides Json?     @map("structure_overrides")
+  aiRecommendation      Json?     @map("ai_recommendation")
+  aiRecommendationModel String?   @map("ai_recommendation_model")
+  aiRecommendedAt       DateTime? @map("ai_recommended_at")
   notes         String?
   isArchived  Boolean      @default(false) @map("is_archived")
   createdAt   DateTime     @default(now()) @map("created_at")
@@ -486,6 +489,9 @@ model WorkoutSessionExercise {
   substitutedFromExerciseId  String?  @db.Uuid @map("substituted_from_exercise_id")
   painFlag                  Boolean  @default(false) @map("pain_flag")
   painNote                  String?  @map("pain_note")
+  painLocation              String?  @map("pain_location")
+  painSide                  String?  @map("pain_side")
+  painImpact                String?  @map("pain_impact")
   basePlannedSets           Int?     @map("base_planned_sets")
   prescribedPlannedSets     Int?     @map("prescribed_planned_sets")
   prescribedMinReps         Int?     @map("prescribed_min_reps")
