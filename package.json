@@ -14,7 +14,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "pretypecheck": "prisma generate"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",

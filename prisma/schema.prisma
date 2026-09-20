@@ -69,6 +69,24 @@ enum MetricLogType {
   OPTIONAL_CHECKIN
 }
 
+enum WorkoutCoachActionType {
+  KEEP
+  CHANGE_LOAD
+  CHANGE_REP_TARGET
+  CHANGE_RIR_TARGET
+  CHANGE_REST
+  ADD_SET
+  REMOVE_SET
+  STOP_EXERCISE
+}
+
+enum WorkoutCoachActionStatus {
+  PROPOSED
+  APPLIED
+  DECLINED
+  SUPERSEDED
+}
+
 model Profile {
   id        String   @id @db.Uuid
   email     String?  @unique
@@ -83,6 +101,7 @@ model Profile {
   metrics MetricLog[]
   setTypes SetType[]
   mesocycles ProgramMesocycle[]
+  workoutCoachActions WorkoutCoachAction[]
 
   @@map("profiles")
 }
@@ -471,6 +490,7 @@ model WorkoutSession {
   template  WorkoutTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   mesocycle ProgramMesocycle? @relation(fields: [mesocycleId], references: [id], onDelete: SetNull)
   exercises WorkoutSessionExercise[]
+  coachActions WorkoutCoachAction[]
 
   @@index([userId, status, performedAt])
   @@index([programId, performedAt])
@@ -512,6 +532,7 @@ model WorkoutSessionExercise {
   templateExercise        TemplateExercise? @relation(fields: [templateExerciseId], references: [id], onDelete: SetNull)
   stimulusSetType         SetType?          @relation("StimulusSetType", fields: [stimulusSetTypeId], references: [id], onDelete: Restrict)
   sets                    WorkoutSet[]
+  coachActions            WorkoutCoachAction[]
 
   @@index([sessionId, sortOrder])
   @@index([exerciseId])
@@ -536,15 +557,49 @@ model WorkoutSet {
   startedAt          DateTime?      @map("started_at")
   endedAt            DateTime?      @map("ended_at")
   intensifierDetails Json?          @map("intensifier_details")
+  prescription      Json?
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   sessionExercise WorkoutSessionExercise @relation(fields: [sessionExerciseId], references: [id], onDelete: Cascade)
   setType         SetType                @relation(fields: [setTypeId], references: [id], onDelete: Restrict)
+  triggeredCoachActions WorkoutCoachAction[] @relation("WorkoutCoachActionTriggerSet")
 
   @@unique([sessionExerciseId, setNumber])
   @@index([setTypeId])
   @@map("workout_sets")
+}
+
+model WorkoutCoachAction {
+  id                String                   @id @default(uuid()) @db.Uuid
+  userId            String                   @db.Uuid @map("user_id")
+  sessionId         String                   @db.Uuid @map("session_id")
+  sessionExerciseId String                   @db.Uuid @map("session_exercise_id")
+  triggerSetId      String?                  @unique @db.Uuid @map("trigger_set_id")
+  actionType        WorkoutCoachActionType   @map("action_type")
+  confidence        String
+  reasonCode        String                   @map("reason_code")
+  reason            String
+  evidence          Json
+  beforeState       Json                     @map("before_state")
+  proposedState     Json                     @map("proposed_state")
+  appliedState      Json?                    @map("applied_state")
+  status            WorkoutCoachActionStatus @default(PROPOSED)
+  outcome           Json?
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  appliedAt         DateTime?                @map("applied_at")
+  evaluatedAt       DateTime?                @map("evaluated_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  user            Profile                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session         WorkoutSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionExercise WorkoutSessionExercise @relation(fields: [sessionExerciseId], references: [id], onDelete: Cascade)
+  triggerSet      WorkoutSet?            @relation("WorkoutCoachActionTriggerSet", fields: [triggerSetId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([sessionExerciseId, status, createdAt])
+  @@map("workout_coach_actions")
 }
 
 
@@ -614,4 +669,3 @@ model AiProgrammingDecision {
   @@index([targetMuscleId, createdAt])
   @@map("ai_programming_decisions")
 }
-

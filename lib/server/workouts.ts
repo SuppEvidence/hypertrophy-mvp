@@ -475,6 +475,22 @@ export async function startWorkout(formData: FormData) {
             setNumber: plan.setNumber,
             setTypeId: plan.setTypeId,
             rir: item.rirTarget === null || item.rirTarget === undefined ? null : Number(item.rirTarget),
+            prescription: {
+              original: {
+                source: "TEMPLATE",
+                minReps: item.prescribedMinReps,
+                maxReps: item.prescribedMaxReps,
+                targetRir: item.rirTarget === null || item.rirTarget === undefined ? null : Number(item.rirTarget),
+                setTypeId: plan.setTypeId,
+              },
+              current: {
+                source: "TEMPLATE",
+                minReps: item.prescribedMinReps,
+                maxReps: item.prescribedMaxReps,
+                targetRir: item.rirTarget === null || item.rirTarget === undefined ? null : Number(item.rirTarget),
+                setTypeId: plan.setTypeId,
+              },
+            },
             isCompleted: false,
             repRangeStatus: "IN_RANGE",
             effortStatus: "PRODUCTIVE",

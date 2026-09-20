@@ -2,6 +2,7 @@
 
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
+import { evaluatePendingWorkoutCoachActionsForSet } from "@/lib/server/workout-coach-outcomes";
 
 type AutosavePayload = {
   weight?: string;
@@ -64,6 +65,15 @@ export async function autosaveWorkoutSetCore(
         }
       : {};
 
+  const previous = await prisma.workoutSet.findFirst({
+    where: {
+      id: setId,
+      sessionExercise: { session: { userId, status: editableSessionStatusWhere() } },
+    },
+    select: { isCompleted: true },
+  });
+  if (!previous) return { ok: false as const, error: "Set not found or session is not editable." };
+
   const result = await prisma.workoutSet.updateMany({
     where: {
       id: setId,
@@ -80,6 +90,10 @@ export async function autosaveWorkoutSetCore(
       ...legacyPainUpdate,
     },
   });
+
+  if (result.count === 1 && !previous.isCompleted && Boolean(payload.isCompleted)) {
+    await evaluatePendingWorkoutCoachActionsForSet({ userId, setId });
+  }
 
   return result.count === 1
     ? { ok: true as const }
