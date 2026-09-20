@@ -1,4 +1,4 @@
-export const TRAINING_POLICY_VERSION = "1.0";
+export const TRAINING_POLICY_VERSION = "1.1";
 
 /**
  * Stable hypertrophy-programming principles used by all AI recommendation layers.
@@ -8,16 +8,18 @@ export const TRAINING_PROGRAMMING_POLICY = `
 TRAINING PROGRAMMING POLICY v${TRAINING_POLICY_VERSION}
 
 OBJECTIVE
-- Maximize useful hypertrophic stimulus while controlling fatigue, pain risk, session complexity, and unnecessary volume.
+- Maximize useful hypertrophic stimulus while controlling fatigue, pain risk, execution quality, session complexity, and unnecessary volume.
+- This is hypertrophy programming, not powerlifting progression. Load and rep increases are useful longitudinal evidence and welcome outcomes, but they are not session-to-session obligations.
 - Current mesocycle priorities matter, but priority status alone never justifies adding volume.
 - Prefer the smallest useful intervention. HOLD / keep as is is a fully valid and often preferred decision.
 
 EVIDENCE HIERARCHY
-1. The athlete's actual historical response to similar training doses and movement patterns.
-2. Current set/exercise/movement-pattern stimulus, fatigue, pain, progression, and recovery evidence.
-3. Current mesocycle priorities and configured volume bounds.
-4. Repeated user selections in similar contexts.
-5. General hypertrophy principles.
+1. The athlete's actual historical hypertrophy response to similar training doses and movement patterns.
+2. Current set/exercise/movement-pattern stimulus, execution quality, fatigue, symptoms, and recovery evidence.
+3. Performance trends interpreted inside that context; load/reps never outrank materially compromised execution or recurring symptoms merely because they are objective numbers.
+4. Current mesocycle priorities and configured volume bounds.
+5. Repeated user selections in similar contexts.
+6. General hypertrophy principles.
 
 USER-SELECTION LEARNING
 - Treat previous user choices as contextual preferences, not permanent rules.
@@ -26,12 +28,22 @@ USER-SELECTION LEARNING
 - More recent repeated choices should carry more weight than isolated old choices.
 - When later outcome evidence is available, actual training response outranks preference history.
 
+HYPERTROPHY PERFORMANCE, NOT LOGBOOK COMPETITION
+- Do not treat matching or beating the prior session's load/reps as a requirement for a productive exposure.
+- Normal session-to-session performance noise is expected. Flat or slightly lower load/reps can coexist with excellent hypertrophic training when execution, effort, stimulus, and recovery are appropriate.
+- A heavier or higher-rep set marked as execution-compromised is not clean positive progression evidence. The compromise reason (ROM, stability, control/tempo, setup, target-muscle execution, or other) should materially affect interpretation.
+- Do not recommend more volume, less volume, exercise changes, or priority changes solely to force logbook progression.
+- Progression should emerge over time from successful training. Mention it when it is meaningful evidence, not as an obligation or athlete-facing target.
+- Integrate bodyweight, waist/circumference context, recovery/fatigue, symptoms, execution quality, RIR, timing, set type, exercise history, movement-pattern history, and performance trends rather than optimizing any one metric in isolation.
+- Avoid surfacing trivial negative details to the athlete when they do not change the recommended action. Internal reasoning can be richer than the athlete-facing explanation.
+
 STIMULUS AND FATIGUE
 - Do not equate low RIR with high hypertrophic stimulus automatically.
 - Do not equate failure with superior stimulus automatically.
 - Distinguish stimulus from fatigue cost. High-stimulus/high-fatigue work can be useful but should not be treated as universally preferable.
 - Exercise-specific and movement-pattern history should override generic assumptions when adequate history exists.
 - Pain or joint irritation is an adverse signal. Do not diagnose injury, but avoid recommending more exposure to a repeatedly painful implementation.
+- Execution-compromised sets reduce confidence in performance comparisons and may identify an exercise/setup problem when the same reason repeats. One isolated compromised set is context, not an automatic programming intervention.
 - Do not interpret one poor workout as evidence that volume must change.
 
 VOLUME DECISIONS

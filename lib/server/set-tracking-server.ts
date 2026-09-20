@@ -3,6 +3,10 @@
 import { Prisma } from "@prisma/client";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
+import {
+  EXECUTION_COMPROMISE_REASONS,
+  type ExecutionCompromiseReason,
+} from "@/lib/workouts/execution-quality";
 
 type DropSetPayload = {
   weight?: string | number | null;
@@ -24,6 +28,8 @@ type StoredIntensifierDetails = {
   clusterCount: number | null;
   dropSets: StoredDropSet[];
   filmed: boolean;
+  executionCompromised: boolean;
+  executionReasons: ExecutionCompromiseReason[];
 };
 
 function editableSessionStatusWhere() {
@@ -43,7 +49,18 @@ function nullableInteger(value: unknown): number | null {
   return Math.max(0, Math.min(100, Math.round(parsed)));
 }
 
-function sanitizeDetails(payload: IntensifierPayload): StoredIntensifierDetails {
+function sanitizeExecutionReasons(value: unknown): ExecutionCompromiseReason[] {
+  if (!Array.isArray(value)) return [];
+  const allowed = new Set<string>(EXECUTION_COMPROMISE_REASONS);
+  return [...new Set(value.filter((reason): reason is string => typeof reason === "string"))]
+    .filter((reason): reason is ExecutionCompromiseReason => allowed.has(reason))
+    .slice(0, EXECUTION_COMPROMISE_REASONS.length);
+}
+
+function sanitizeDetails(payload: IntensifierPayload): Pick<
+  StoredIntensifierDetails,
+  "clusterCount" | "dropSets" | "filmed"
+> {
   const clusterCount = nullableInteger(payload.clusterCount);
   const dropSets = (payload.dropSets ?? [])
     .slice(0, 10)
@@ -58,7 +75,13 @@ function sanitizeDetails(payload: IntensifierPayload): StoredIntensifierDetails 
 
 function parseStoredDetails(value: Prisma.JsonValue | null): StoredIntensifierDetails {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { clusterCount: null, dropSets: [], filmed: false };
+    return {
+      clusterCount: null,
+      dropSets: [],
+      filmed: false,
+      executionCompromised: false,
+      executionReasons: [],
+    };
   }
 
   const raw = value as Record<string, unknown>;
@@ -78,7 +101,18 @@ function parseStoredDetails(value: Prisma.JsonValue | null): StoredIntensifierDe
     })
     .filter((drop) => drop.weight !== null || drop.reps !== null);
 
-  return { clusterCount, dropSets, filmed: raw.filmed === true };
+  const executionCompromised = raw.executionCompromised === true;
+  const executionReasons = executionCompromised
+    ? sanitizeExecutionReasons(raw.executionReasons)
+    : [];
+
+  return {
+    clusterCount,
+    dropSets,
+    filmed: raw.filmed === true,
+    executionCompromised,
+    executionReasons,
+  };
 }
 
 /** Loaded only when the details drawer is opened, not once per row on page load. */
@@ -107,6 +141,8 @@ export async function getWorkoutSetTracking(setId: string) {
         clusterCount: null,
         dropSets: [],
         filmed: false,
+        executionCompromised: false,
+        executionReasons: [],
       } as StoredIntensifierDetails,
     };
   }
@@ -230,7 +266,8 @@ export async function saveWorkoutSetFilmed(setId: string, filmed: boolean) {
   const hasDetails =
     details.clusterCount !== null ||
     details.dropSets.length > 0 ||
-    details.filmed;
+    details.filmed ||
+    details.executionCompromised;
 
   await prisma.workoutSet.update({
     where: { id: setId },
@@ -249,19 +286,37 @@ export async function saveWorkoutSetIntensifierDetails(
   payload: IntensifierPayload,
 ) {
   const userId = await requireUserId();
-  const details = sanitizeDetails(payload);
-  const hasDetails =
-    details.clusterCount !== null ||
-    details.dropSets.length > 0 ||
-    details.filmed;
-
-  const result = await prisma.workoutSet.updateMany({
+  const existing = await prisma.workoutSet.findFirst({
     where: {
       id: setId,
       sessionExercise: {
         session: { userId, status: editableSessionStatusWhere() },
       },
     },
+    select: { intensifierDetails: true },
+  });
+
+  if (!existing) {
+    return {
+      ok: false as const,
+      error: "Set not found or session is not editable.",
+    };
+  }
+
+  const current = parseStoredDetails(existing.intensifierDetails);
+  const intensifier = sanitizeDetails(payload);
+  const details: StoredIntensifierDetails = {
+    ...current,
+    ...intensifier,
+  };
+  const hasDetails =
+    details.clusterCount !== null ||
+    details.dropSets.length > 0 ||
+    details.filmed ||
+    details.executionCompromised;
+
+  await prisma.workoutSet.update({
+    where: { id: setId },
     data: {
       intensifierDetails: hasDetails
         ? (details as Prisma.InputJsonValue)
@@ -269,10 +324,55 @@ export async function saveWorkoutSetIntensifierDetails(
     },
   });
 
-  return result.count === 1
-    ? { ok: true as const }
-    : {
-        ok: false as const,
-        error: "Set not found or session is not editable.",
-      };
+  return { ok: true as const };
 }
+
+export async function saveWorkoutSetExecution(
+  setId: string,
+  executionCompromised: boolean,
+  reasons: ExecutionCompromiseReason[],
+) {
+  const userId = await requireUserId();
+  const existing = await prisma.workoutSet.findFirst({
+    where: {
+      id: setId,
+      sessionExercise: {
+        session: { userId, status: editableSessionStatusWhere() },
+      },
+    },
+    select: { intensifierDetails: true },
+  });
+
+  if (!existing) {
+    return {
+      ok: false as const,
+      error: "Set not found or session is not editable.",
+    };
+  }
+
+  const current = parseStoredDetails(existing.intensifierDetails);
+  const details: StoredIntensifierDetails = {
+    ...current,
+    executionCompromised,
+    executionReasons: executionCompromised
+      ? sanitizeExecutionReasons(reasons)
+      : [],
+  };
+  const hasDetails =
+    details.clusterCount !== null ||
+    details.dropSets.length > 0 ||
+    details.filmed ||
+    details.executionCompromised;
+
+  await prisma.workoutSet.update({
+    where: { id: setId },
+    data: {
+      intensifierDetails: hasDetails
+        ? (details as Prisma.InputJsonValue)
+        : Prisma.DbNull,
+    },
+  });
+
+  return { ok: true as const };
+}
+

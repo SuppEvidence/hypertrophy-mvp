@@ -75,6 +75,8 @@ function normalizeIntensifierDetails(value: unknown) {
       clusterCount: null,
       dropSets: [] as Array<{ weight: number | null; reps: number | null }>,
       filmed: false,
+      executionCompromised: false,
+      executionReasons: [] as string[],
     };
   }
 
@@ -93,27 +95,45 @@ function normalizeIntensifierDetails(value: unknown) {
         .filter((entry): entry is { weight: number | null; reps: number | null } => entry !== null)
     : [];
 
+  const executionReasons = Array.isArray(raw.executionReasons)
+    ? raw.executionReasons
+        .filter((reason): reason is string => typeof reason === "string")
+        .slice(0, 6)
+    : [];
+
   return {
     clusterCount: clusterCount === null ? null : Math.round(clusterCount),
     dropSets,
     filmed: raw.filmed === true,
+    executionCompromised: raw.executionCompromised === true,
+    executionReasons,
   };
+}
+
+function isExecutionCompromised(set: CompletedSet) {
+  return normalizeIntensifierDetails(set.intensifierDetails).executionCompromised;
+}
+
+function performanceIndexForTrend(set: CompletedSet) {
+  return isExecutionCompromised(set) ? null : estimatedPerformanceIndex(set);
 }
 
 function serializeExposureSets(sets: CompletedSet[]) {
   const ordered = [...sets].sort((a, b) => a.setNumber - b.setNumber);
-  const firstIndex = ordered.map(estimatedPerformanceIndex).find((value) => value !== null) ?? null;
+  const firstIndex =
+    ordered.map(performanceIndexForTrend).find((value) => value !== null) ?? null;
 
   return ordered.map((set, index) => {
     const performanceIndex = estimatedPerformanceIndex(set);
+    const trendPerformanceIndex = performanceIndexForTrend(set);
     const previous = index > 0 ? ordered[index - 1] : null;
     const intensifier = normalizeIntensifierDetails(set.intensifierDetails);
     const previousIntensifier = previous
       ? normalizeIntensifierDetails(previous.intensifierDetails)
       : null;
     const relativeToFirstPct =
-      performanceIndex !== null && firstIndex !== null && firstIndex > 0
-        ? Math.round(((performanceIndex / firstIndex) - 1) * 1000) / 10
+      trendPerformanceIndex !== null && firstIndex !== null && firstIndex > 0
+        ? Math.round(((trendPerformanceIndex / firstIndex) - 1) * 1000) / 10
         : null;
 
     return {
@@ -128,6 +148,8 @@ function serializeExposureSets(sets: CompletedSet[]) {
       painFlag: set.painFlag,
       painNote: set.painNote,
       filmed: intensifier.filmed,
+      executionCompromised: intensifier.executionCompromised,
+      executionReasons: intensifier.executionReasons,
       wholeSetDurationSeconds: intensifier.filmed
         ? null
         : secondsBetween(set.startedAt, set.endedAt),
@@ -148,7 +170,12 @@ function historicalDecayBySetNumber(exposures: Array<{ sets: CompletedSet[] }>) 
   for (const exposure of exposures) {
     const serialized = serializeExposureSets(exposure.sets);
     for (const set of serialized) {
-      if (set.setNumber <= 1 || set.performanceChangeVsFirstPct === null) continue;
+      if (
+        set.setNumber <= 1 ||
+        set.executionCompromised ||
+        set.performanceChangeVsFirstPct === null
+      )
+        continue;
       const values = bySet.get(set.setNumber) ?? [];
       values.push(set.performanceChangeVsFirstPct);
       bySet.set(set.setNumber, values);
@@ -174,7 +201,10 @@ function usablePerformanceSets(sets: CompletedSet[]) {
 function firstUsableSet(sets: CompletedSet[]) {
   return [...sets]
     .sort((a, b) => a.setNumber - b.setNumber)
-    .find((set) => estimatedPerformanceIndex(set) !== null) ?? null;
+    .find(
+      (set) =>
+        !isExecutionCompromised(set) && estimatedPerformanceIndex(set) !== null,
+    ) ?? null;
 }
 
 function recentVsEarlierPerformancePct(exposures: Array<{ sets: CompletedSet[] }>) {
@@ -219,9 +249,23 @@ You are the workout-analysis reasoning layer for a hypertrophy training applicat
 
 Your job in this version is ONLY to assess set-level, exercise-level, and movement-pattern-level stimulus, fatigue, and progression from the supplied workout evidence. Do not recommend volume changes, program changes, deloads, exercise replacements, or mesocycle changes.
 
+This is HYPERTROPHY analysis, not powerlifting or logbook coaching. Weight and rep performance are supporting longitudinal evidence, not the training objective. The athlete should not be encouraged to match or beat the previous exposure merely because it exists.
+
+ATHLETE-FACING OUTPUT POLICY:
+- workoutSummary is the primary athlete-facing coaching output. Keep it concise, calm, and outcome-oriented: normally 2-4 sentences.
+- Do not narrate every small performance fluctuation. Mention a problem in workoutSummary only when it meaningfully changes the interpretation of stimulus, recovery, execution, safety, or what deserves attention.
+- Do not create "next time beat this" language, rep targets based on the prior logbook, or implied pressure to progress load/reps session to session.
+- A productive session with stable execution and appropriate effort can be summarized positively even if load/reps were flat or lower than a prior exposure.
+- Technical rationales and notableSignals may preserve useful evidence for drill-down, but keep them concise and avoid turning normal biological variation into a coaching problem.
+
 Core interpretation rules:
 - Do not use a rigid rule such as "2 RIR is productive". Observed RIR is evidence, not ground truth.
 - Evaluate RIR plausibility using exercise-specific history, weight/reps progression, within-exercise degradation, rest intervals, and failure exposures when available.
+- Treat weight/reps as one signal among execution quality, intended RIR, set type, timing, symptoms, recent recovery/fatigue, bodyweight context, and the athlete's own exercise history. Do not let load/reps dominate the interpretation merely because they are numeric.
+- executionCompromised=true means the athlete judged that the set quality was materially compromised. Use executionReasons to understand why. A heavier or higher-rep compromised set is NOT clean positive progression evidence.
+- Compromised sets remain valid evidence about stimulus/fatigue and the circumstances of the exposure, but exclude them as clean anchors for performance progression and decay comparisons.
+- A single compromised set is not automatically a programming problem. Look for repetition, clustering within an exercise/pattern, symptoms, fatigue, and recovery context.
+- Stable or slightly variable weight/reps with good execution, suitable RIR, strong stimulus, manageable fatigue, and no adverse signals should generally be interpreted as productive maintenance of training quality, not stagnation.
 - Separate hypertrophic stimulus from fatigue cost. A set may be HIGH stimulus and HIGH fatigue.
 - Compare performance decay primarily with the athlete's own history for the same exercise. Do not assume one universal acceptable decay rate.
 - Whole-set timer duration covers the complete set. For myo-rep/rest-pause/EDT-style work it includes the activation set plus all clusters. Cluster count is post-activation clusters. For drop sets, drop portions are explicitly supplied.
@@ -235,7 +279,7 @@ Core interpretation rules:
 - Within-exercise performance decay requires at least two usable weight+reps sets in the same historical exposure. Do not confuse a lack of decay-comparable exposures with a total lack of exercise history.
 - If history or logging data is insufficient for a specific inference, say so through INSUFFICIENT_DATA / INSUFFICIENT_HISTORY / LOW confidence rather than inventing precision.
 - Do not output pseudo-precise physiological scores or estimated "hypertrophy units".
-- Movement-pattern progression is NOT a direct load comparison across different exercises or machines. Never equate absolute weights between exercises.
+- Movement-pattern progression is NOT a direct load comparison across different exercises or machines. Never equate absolute weights between exercises. Progression is an emergent outcome, not a requirement that each exposure must beat the logbook.
 - Infer movement-pattern progression by synthesizing within-exercise normalized performance trends, repeated stimulus/fatigue signals, pain, RIR-supported history, and whether multiple exercise implementations point in the same direction.
 - Distinguish a weak exercise implementation from a weak movement pattern. If one exercise is flat/poor while other exercises in the same pattern are progressing with good stimulus, prefer EXERCISE_SPECIFIC_LIMITATION over PATTERN_WIDE_STALL.
 - A new exercise can improve rapidly from familiarization. Do not treat early performance gains on a newly introduced exercise as strong evidence of movement-pattern progression unless supported by broader pattern history.

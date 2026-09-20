@@ -101,8 +101,7 @@ export default async function WorkoutAnalysisPage({
             Workout analysis
           </h2>
           <p className="mt-1 text-sm leading-5 text-slate-500">
-            Analyze completed sessions. Detailed movement, exercise, and set
-            reasoning stays collapsed until you need it.
+            Concise hypertrophy coaching first. Performance details stay collapsed unless you deliberately want to inspect them.
           </p>
         </div>
         <span className="shrink-0 text-xs text-slate-600">
@@ -117,7 +116,7 @@ export default async function WorkoutAnalysisPage({
           </p>
         </Card>
       ) : (
-        sessions.map((session, index) => {
+        sessions.map((session) => {
           const analysis = parseStoredAnalysis(session.aiAnalysis);
 
           return (
@@ -146,25 +145,18 @@ export default async function WorkoutAnalysisPage({
 
               {analysis ? (
                 <div className="mt-4">
-                  <div className="flex flex-wrap gap-2">
-                    <Pill
-                      value={analysis.overallFatigueSignal}
-                      prefix="Fatigue"
-                    />
-                    <Pill value={analysis.confidence} prefix="Confidence" />
-                    {session.aiAnalysisModel ? (
-                      <span className="rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-slate-500">
-                        {session.aiAnalysisModel}
-                      </span>
-                    ) : null}
+                  <div className="rounded-xl border border-emerald-400/15 bg-emerald-500/[0.04] p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-300/70">
+                      Coach read
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-slate-200">
+                      {analysis.workoutSummary}
+                    </p>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-300">
-                    {analysis.workoutSummary}
-                  </p>
 
-                  <details open={index === 0} className="mt-4 border-t border-white/[0.06] pt-3">
+                  <details className="mt-4 border-t border-white/[0.06] pt-3">
                     <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                      Movement patterns · {analysis.movementPatternAssessments.length}
+                      Analysis detail · movement patterns · {analysis.movementPatternAssessments.length}
                     </summary>
                     <div className="mt-3 space-y-2">
                       {analysis.movementPatternAssessments.length === 0 ? (
@@ -206,7 +198,7 @@ export default async function WorkoutAnalysisPage({
 
                   <details className="mt-3 border-t border-white/[0.06] pt-3">
                     <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                      Exercises · {analysis.exerciseAssessments.length}
+                      Analysis detail · exercises · {analysis.exerciseAssessments.length}
                     </summary>
                     <div className="mt-3 space-y-2">
                       {analysis.exerciseAssessments.map((exercise) => (

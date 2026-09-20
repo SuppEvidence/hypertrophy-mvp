@@ -744,6 +744,10 @@ CURRENT TASK
 - For priority muscles, use EARLIER_IF_LOGICAL when added work should be protected from overlapping fatigue; otherwise KEEP_CURRENT.
 - Do not recommend exact workout/template edits yet. The deterministic planner will handle legal implementation later.
 - Do not recommend global deloads.
+- This is hypertrophy programming, not logbook progression. Do not create a volume decision merely because load/reps failed to improve or because one session underperformed. Weight/reps are supporting evidence only after execution quality, intended RIR, stimulus, fatigue, symptoms, recovery, bodyweight context, and exercise/movement history are considered together.
+- If recent training is producing good stimulus with stable execution and manageable fatigue, KEEP AS IS can be correct even when load/reps are flat or noisy.
+- Treat execution-compromised evidence as lower-quality performance evidence. Repeated compromise for the same exercise/pattern can support reallocation or implementation review; one isolated compromised set should not drive a programming change.
+- Athlete-facing decisionSummary and option rationales should explain only what materially changes the decision. Do not spotlight trivial rep/load fluctuations or create implied "beat this next time" targets.
 - Keep rationales evidence-based and concise.
 `;
 

@@ -91,6 +91,103 @@ function symptomKey(location: string | null, side: string | null) {
   return `${location ?? "OTHER"}:${side ?? "NA"}`;
 }
 
+function parseExecutionCompromise(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { compromised: false, reasons: [] as string[] };
+  }
+  const raw = value as Record<string, unknown>;
+  return {
+    compromised: raw.executionCompromised === true,
+    reasons: Array.isArray(raw.executionReasons)
+      ? raw.executionReasons
+          .filter((reason): reason is string => typeof reason === "string")
+          .slice(0, 6)
+      : [],
+  };
+}
+
+type ExecutionAccumulator = {
+  exerciseName: string;
+  movementPatternName: string;
+  completedSets: number;
+  compromisedSets: number;
+  affectedExposures: number;
+  reasons: Set<string>;
+};
+
+function summarizeExecutionQuality(
+  sessions: Array<{
+    exercises: Array<{
+      exercise: {
+        name: string;
+        movementGroup: { name: string };
+      };
+      sets: Array<{
+        isCompleted: boolean;
+        intensifierDetails?: unknown;
+      }>;
+    }>;
+  }>,
+) {
+  const byExercise = new Map<string, ExecutionAccumulator>();
+  let completedSets = 0;
+  let compromisedSets = 0;
+  let affectedExerciseExposures = 0;
+
+  for (const session of sessions) {
+    for (const exposure of session.exercises) {
+      const completed = exposure.sets.filter((set) => set.isCompleted);
+      if (completed.length === 0) continue;
+      completedSets += completed.length;
+
+      const compromised = completed.filter(
+        (set) => parseExecutionCompromise(set.intensifierDetails).compromised,
+      );
+      if (compromised.length === 0) continue;
+
+      compromisedSets += compromised.length;
+      affectedExerciseExposures += 1;
+      const key = `${exposure.exercise.name}:${exposure.exercise.movementGroup.name}`;
+      const existing = byExercise.get(key) ?? {
+        exerciseName: exposure.exercise.name,
+        movementPatternName: exposure.exercise.movementGroup.name,
+        completedSets: 0,
+        compromisedSets: 0,
+        affectedExposures: 0,
+        reasons: new Set<string>(),
+      };
+      existing.completedSets += completed.length;
+      existing.compromisedSets += compromised.length;
+      existing.affectedExposures += 1;
+      for (const set of compromised) {
+        for (const reason of parseExecutionCompromise(set.intensifierDetails).reasons) {
+          existing.reasons.add(reason);
+        }
+      }
+      byExercise.set(key, existing);
+    }
+  }
+
+  return {
+    completedSets,
+    compromisedSets,
+    affectedExerciseExposures,
+    compromisedSetPct:
+      completedSets > 0 ? round((compromisedSets / completedSets) * 100, 1) : 0,
+    byExercise: [...byExercise.values()]
+      .sort((a, b) => b.compromisedSets - a.compromisedSets)
+      .slice(0, 12)
+      .map((item) => ({
+        exerciseName: item.exerciseName,
+        movementPatternName: item.movementPatternName,
+        completedSets: item.completedSets,
+        compromisedSets: item.compromisedSets,
+        affectedExposures: item.affectedExposures,
+        reasons: [...item.reasons],
+      })),
+  };
+}
+
 type SymptomAccumulator = {
   location: string;
   side: string | null;
@@ -272,6 +369,7 @@ async function buildMesocycleContext(userId: string) {
               select: {
                 setNumber: true,
                 isCompleted: true,
+                intensifierDetails: true,
                 setType: {
                   select: { multiplier: true, isIntensifier: true },
                 },
@@ -365,6 +463,7 @@ async function buildMesocycleContext(userId: string) {
   const startMetric = metrics.at(0) ?? null;
   const endMetric = metrics.at(-1) ?? null;
   const symptomSummary = summarizeSymptoms(sessions);
+  const executionSummary = summarizeExecutionQuality(sessions);
   const analyzedSessions = sessions
     .map((session) => ({
       session,
@@ -458,6 +557,7 @@ async function buildMesocycleContext(userId: string) {
       })),
     })),
     symptomEvidence: symptomSummary,
+    executionEvidence: executionSummary,
     bodyMetrics: {
       start: metricSnapshot(startMetric),
       latest: metricSnapshot(endMetric),
@@ -543,11 +643,15 @@ Decision rules:
 - A single mild symptom exposure is context, not automatic cause for a reduction.
 - Repeated, persistent, worsening, or function-limiting symptom patterns can justify a precaution and may warrant professional clinical assessment. Do not name or diagnose a pathology.
 - Symptom evidence outranks an otherwise marginal case for increasing the aggravating pattern.
+- Treat repeated execution-compromised sets as context about exercise implementation and evidence quality. A heavier or higher-rep compromised set is not clean positive progression.
+- A single compromised set is not a reason to change the next mesocycle. Repeated compromise across exposures, especially with the same reason or movement pattern, can justify setup/exercise review or reallocation when it aligns with other evidence.
+- Do not interpret flat or noisy load/reps as a mesocycle failure when stimulus, execution, recovery, symptoms, and body-composition context are otherwise productive.
 - Never prescribe a generic/global deload merely because one region or movement is problematic. Use local reductions/reallocation where appropriate.
 - Circumference data are supporting evidence only and must be contextualized by bodyweight and waist.
 - Return practical implications that can later be translated into template changes, but do not assume they have been applied automatically.
 - Use only the exact muscle and movement-pattern names supplied in the context.
 - Keep recommendations concise and specific. Avoid generic coaching filler.
+- The athlete-facing summary should state the few conclusions that materially affect the next block. Do not enumerate every small performance fluctuation or create implied logbook targets. Internal reasoning can be richer than the visible explanation.
 `;
 
 export async function generateMesocycleRecommendationForUser(userId: string) {
@@ -562,7 +666,7 @@ export async function generateMesocycleRecommendationForUser(userId: string) {
       { role: "system", content: MESOCYCLE_SYSTEM_INSTRUCTIONS },
       {
         role: "user",
-        content: `Review the current mesocycle and recommend the next mesocycle using the supplied evidence. Respect the historyMode and symptom evidence.\n\n${JSON.stringify(context)}`,
+        content: `Review the current mesocycle and recommend the next mesocycle using the supplied evidence. Respect the historyMode, symptom evidence, execution-quality evidence, recovery/fatigue, body metrics, and hypertrophy-first policy.\n\n${JSON.stringify(context)}`,
       },
     ],
     text: {

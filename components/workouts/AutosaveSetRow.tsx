@@ -6,10 +6,16 @@ import { WORKOUT_SET_COMPLETION_EVENT } from "@/components/workouts/ExerciseColl
 import {
   endWorkoutSetTimer,
   getWorkoutSetTracking,
+  saveWorkoutSetExecution,
   saveWorkoutSetFilmed,
   saveWorkoutSetIntensifierDetails,
   startWorkoutSetTimer,
 } from "@/lib/server/set-tracking-server";
+import {
+  EXECUTION_COMPROMISE_LABELS,
+  EXECUTION_COMPROMISE_REASONS,
+  type ExecutionCompromiseReason,
+} from "@/lib/workouts/execution-quality";
 import { autosaveWorkoutSetCore } from "@/lib/server/workout-set-autosave";
 
 const inputClass =
@@ -106,6 +112,11 @@ export function AutosaveSetRow({
   const [clusterCount, setClusterCount] = useState("");
   const [dropSets, setDropSets] = useState<DropSetDraft[]>([]);
   const [filmed, setFilmed] = useState(false);
+  const [executionCompromised, setExecutionCompromised] = useState(false);
+  const [executionReasons, setExecutionReasons] = useState<
+    ExecutionCompromiseReason[]
+  >([]);
+  const [executionSaving, setExecutionSaving] = useState(false);
   const [detailsStatus, setDetailsStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
@@ -205,6 +216,10 @@ export function AutosaveSetRow({
       })),
     );
     setFilmed(result.intensifierDetails.filmed);
+    setExecutionCompromised(
+      result.intensifierDetails.executionCompromised,
+    );
+    setExecutionReasons(result.intensifierDetails.executionReasons);
     if (result.startedAt && result.endedAt) {
       setElapsedSeconds(
         Math.max(
@@ -264,6 +279,51 @@ export function AutosaveSetRow({
       setElapsedSeconds(result.durationSeconds ?? 0);
     } finally {
       setTimerBusy(false);
+    }
+  }
+
+  async function persistExecution(
+    nextCompromised: boolean,
+    nextReasons: ExecutionCompromiseReason[],
+  ) {
+    setExecutionSaving(true);
+    setTrackingError(null);
+    const result = await saveWorkoutSetExecution(
+      set.id,
+      nextCompromised,
+      nextReasons,
+    );
+    setExecutionSaving(false);
+    if (!result.ok) {
+      setTrackingError(result.error);
+      return false;
+    }
+    return true;
+  }
+
+  async function toggleExecutionCompromised(nextCompromised: boolean) {
+    if (!detailsLoaded) {
+      await loadTrackingDetails();
+    }
+    const nextReasons = nextCompromised ? executionReasons : [];
+    setExecutionCompromised(nextCompromised);
+    if (!nextCompromised) setExecutionReasons([]);
+    const ok = await persistExecution(nextCompromised, nextReasons);
+    if (!ok) {
+      setExecutionCompromised(!nextCompromised);
+      if (!nextCompromised) setExecutionReasons(executionReasons);
+    }
+  }
+
+  async function toggleExecutionReason(reason: ExecutionCompromiseReason) {
+    const nextReasons = executionReasons.includes(reason)
+      ? executionReasons.filter((item) => item !== reason)
+      : [...executionReasons, reason];
+    setExecutionCompromised(true);
+    setExecutionReasons(nextReasons);
+    const ok = await persistExecution(true, nextReasons);
+    if (!ok) {
+      setExecutionReasons(executionReasons);
     }
   }
 
@@ -398,6 +458,12 @@ export function AutosaveSetRow({
         </label>
       </div>
 
+      {set.setNumber === 1 ? (
+        <p className="mt-2 px-1 text-[11px] leading-4 text-slate-500">
+          Prefilled load/reps are reference data, not a target to beat. Keep the execution and intended effort first.
+        </p>
+      ) : null}
+
       <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 p-2">
         <button
           type="button"
@@ -460,6 +526,74 @@ export function AutosaveSetRow({
       {trackingError ? (
         <p className="mt-1 text-xs text-rose-300">{trackingError}</p>
       ) : null}
+
+      <details
+        className={`mt-2 rounded-xl border p-2 ${
+          executionCompromised
+            ? "border-amber-400/25 bg-amber-500/[0.06]"
+            : "border-slate-800 bg-slate-950"
+        }`}
+        onToggle={(event) => {
+          if (event.currentTarget.open) void loadTrackingDetails();
+        }}
+      >
+        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Execution{executionCompromised ? " · compromised" : ""}
+        </summary>
+
+        <div className="mt-2 space-y-2">
+          <label
+            className={`flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${
+              executionCompromised
+                ? "border-amber-400/30 bg-amber-500/10 text-amber-100"
+                : "border-slate-700 bg-slate-900 text-slate-300"
+            }`}
+          >
+            <input
+              checked={executionCompromised}
+              onChange={(event) =>
+                void toggleExecutionCompromised(event.target.checked)
+              }
+              disabled={executionSaving}
+              type="checkbox"
+              className="h-4 w-4"
+            />
+            Execution was meaningfully compromised
+          </label>
+
+          {executionCompromised ? (
+            <div>
+              <p className="text-[11px] leading-4 text-slate-500">
+                Mark only what materially changed the quality of the set. Select all that apply.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {EXECUTION_COMPROMISE_REASONS.map((reason) => {
+                  const selected = executionReasons.includes(reason);
+                  return (
+                    <button
+                      key={reason}
+                      type="button"
+                      disabled={executionSaving}
+                      onClick={() => void toggleExecutionReason(reason)}
+                      className={`min-h-9 rounded-lg border px-2.5 text-xs font-semibold transition disabled:opacity-50 ${
+                        selected
+                          ? "border-amber-400/30 bg-amber-500/10 text-amber-100"
+                          : "border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      {EXECUTION_COMPROMISE_LABELS[reason]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] leading-4 text-slate-500">
+              Normal is implicit. No rating is needed when the set was executed as intended.
+            </p>
+          )}
+        </div>
+      </details>
 
       <details
         className="mt-2 rounded-xl border border-slate-800 bg-slate-950 p-2"
