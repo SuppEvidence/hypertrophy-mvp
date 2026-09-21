@@ -23,6 +23,9 @@ export type CoachView = {
   targetSetNumbers: number[]; prescription: ReturnType<typeof readPrescription> | null;
 };
 
+export type CoachStatus = "NOT_TRIGGERED" | "CHECKING" | "KEEP" | "CHANGED" | "REVIEW" | "UNAVAILABLE" | "OFF";
+export type CoachSnapshot = { action: CoachView | null; coachStatus: CoachStatus };
+
 function view(action: { id: string; status: string; actionType: string; reason: string; proposedState: unknown }): CoachView {
   const proposal = object(action.proposedState);
   return { id: action.id, status: action.status, actionType: action.actionType, reason: action.reason,
@@ -30,22 +33,42 @@ function view(action: { id: string; status: string; actionType: string; reason: 
     prescription: proposal.prescription ? readPrescription({ current: proposal.prescription }) : null };
 }
 
-export async function getLiveCoachView(userId: string, sessionId: string, sessionExerciseId: string) {
+function statusFor(action: { status: string; actionType: string; reasonCode: string }): CoachStatus {
+  if (action.reasonCode === "CHECK_FAILED") return "UNAVAILABLE";
+  if (action.status === "PROPOSED") {
+    if (action.reasonCode === "CHECKING") return "CHECKING";
+    if (action.actionType === "REMOVE_SET" || action.actionType === "STOP_EXERCISE") return "REVIEW";
+    return "CHECKING";
+  }
+  if (action.status === "APPLIED" && action.actionType !== "KEEP") return "CHANGED";
+  return "KEEP";
+}
+
+export async function getLiveCoachSnapshot(userId: string, sessionId: string, sessionExerciseId: string): Promise<CoachSnapshot> {
+  if (process.env.LIVE_COACH_ENABLED === "false") return { action: null, coachStatus: "OFF" };
   await prisma.workoutCoachAction.updateMany({
     where: { userId, sessionId, sessionExerciseId, status: "PROPOSED", createdAt: { lt: new Date(Date.now() - TTL) } },
     data: { status: "SUPERSEDED" },
   });
   const action = await prisma.workoutCoachAction.findFirst({
-    where: { userId, sessionId, sessionExerciseId, status: { in: ["PROPOSED", "APPLIED"] },
-      actionType: { not: "KEEP" }, session: { status: "DRAFT" } },
+    where: { userId, sessionId, sessionExerciseId, triggerSetId: { not: null }, session: { status: "DRAFT" } },
     orderBy: { createdAt: "desc" },
     include: { sessionExercise: { include: { sets: true } } },
   });
-  if (action) {
-    const ids = object(action.proposedState).targetSetIds;
-    if (!Array.isArray(ids) || !action.sessionExercise.sets.some(s => ids.includes(s.id) && !s.isCompleted && !s.startedAt)) return null;
+  if (!action) return { action: null, coachStatus: "NOT_TRIGGERED" };
+  const trigger = action.sessionExercise.sets.find(s => s.id === action.triggerSetId);
+  if (trigger && action.sessionExercise.sets.some(s => s.setNumber > trigger.setNumber && s.isCompleted)) {
+    return { action: null, coachStatus: "NOT_TRIGGERED" };
   }
-  return action ? view(action) : null;
+  const ids = object(action.proposedState).targetSetIds;
+  const hasLiveTarget = Array.isArray(ids) && action.sessionExercise.sets.some(s => ids.includes(s.id) && !s.isCompleted && !s.startedAt);
+  const showAction = hasLiveTarget && ["PROPOSED", "APPLIED"].includes(action.status) && action.actionType !== "KEEP";
+  const coachStatus = action.status === "PROPOSED" && action.reasonCode !== "CHECKING" && !hasLiveTarget ? "KEEP" : statusFor(action);
+  return { action: showAction ? view(action) : null, coachStatus };
+}
+
+export async function getLiveCoachView(userId: string, sessionId: string, sessionExerciseId: string) {
+  return (await getLiveCoachSnapshot(userId, sessionId, sessionExerciseId)).action;
 }
 
 /** Snapshot plus serializable transaction protects edited/started sets from late answers. */
@@ -122,7 +145,7 @@ export async function applyCoachActionForUser(userId: string, actionId: string, 
 }
 
 export async function runLiveWorkoutCoach(userId: string, input: { sessionId: string; sessionExerciseId: string; triggerSetId: string }) {
-  if (process.env.LIVE_COACH_ENABLED === "false") return { action: null };
+  if (process.env.LIVE_COACH_ENABLED === "false") return { action: null, coachStatus: "OFF" as const };
   // Cheap database gate runs before historical queries or model access.
   const exercise = await prisma.workoutSessionExercise.findFirst({
     where: { id: input.sessionExerciseId, sessionId: input.sessionId, session: { userId, status: "DRAFT" } },
@@ -131,22 +154,22 @@ export async function runLiveWorkoutCoach(userId: string, input: { sessionId: st
       sets: { orderBy: { setNumber: "asc" }, include: { setType: true } },
     },
   });
-  if (!exercise || exercise.sets.length <= 1) return { action: null };
+  if (!exercise || exercise.sets.length <= 1) return { action: null, coachStatus: "NOT_TRIGGERED" as const };
   const trigger = exercise.sets.find(s => s.id === input.triggerSetId);
-  if (!trigger?.isCompleted || (trigger.startedAt && !trigger.endedAt)) return { action: null };
+  if (!trigger?.isCompleted || (trigger.startedAt && !trigger.endedAt)) return { action: null, coachStatus: "NOT_TRIGGERED" as const };
   const remaining = exercise.sets.filter(s => s.setNumber > trigger.setNumber);
-  if (!remaining.length || remaining.some(s => s.isCompleted || s.startedAt !== null)) return { action: null };
+  if (!remaining.length || remaining.some(s => s.isCompleted || s.startedAt !== null)) return { action: null, coachStatus: "NOT_TRIGGERED" as const };
   const existing = await prisma.workoutCoachAction.findUnique({ where: { triggerSetId: trigger.id } });
-  if (existing) return { action: await getLiveCoachView(userId, input.sessionId, input.sessionExerciseId) };
+  if (existing) return getLiveCoachSnapshot(userId, input.sessionId, input.sessionExerciseId);
   const context = await buildLiveExerciseCoachingContext({ userId, ...input });
-  if (!context.eligibility.shouldCheck) return { action: null };
+  if (!context.eligibility.shouldCheck) return { action: null, coachStatus: "NOT_TRIGGERED" as const };
   const currentTrigger = context.currentSets.find(s => s.id === trigger.id)!;
   const triggerPrescription = readPrescription(trigger.prescription);
   triggerPrescription.minReps ??= exercise.prescribedMinReps;
   triggerPrescription.maxReps ??= exercise.prescribedMaxReps;
   const signal = detectCoachSignal({ trigger: currentTrigger, current: context.currentSets,
     history: context.history.exposures, prescription: triggerPrescription, exercisePain: context.exercise.pain });
-  if (!signal.shouldCheck) return { action: null };
+  if (!signal.shouldCheck) return { action: null, coachStatus: "NOT_TRIGGERED" as const };
   const target = remaining[0];
   const current = readPrescription(target.prescription);
   current.minReps ??= exercise.prescribedMinReps;
@@ -168,7 +191,9 @@ export async function runLiveWorkoutCoach(userId: string, input: { sessionId: st
       evidence: json({ signal }), beforeState: json(beforeState), proposedState: {},
     } });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return { action: null };
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return getLiveCoachSnapshot(userId, input.sessionId, input.sessionExerciseId);
+    }
     throw error;
   }
   try {
@@ -223,15 +248,15 @@ The numeric signal is a noisy within-exercise proxy, not a measure of stimulus o
       proposedState: json({ targetSetIds: targets.map(s => s.id), targetSetNumbers: targets.map(s => s.setNumber),
         ...(decision.action === "ADJUST" ? { prescription } : {}) }),
     } });
-    if (keep) return { action: null };
+    if (keep) return { action: null, coachStatus: "KEEP" as const };
     if (decision.action === "ADJUST") {
       const applied = await applyCoachActionForUser(userId, updated.id, false);
-      return { action: applied.ok ? applied.action : null };
+      return { action: applied.ok ? applied.action : null, coachStatus: applied.ok ? "CHANGED" as const : "KEEP" as const };
     }
-    return { action: view(updated) };
+    return { action: view(updated), coachStatus: "REVIEW" as const };
   } catch {
     await prisma.workoutCoachAction.updateMany({ where: { id: claim.id, status: "PROPOSED" },
       data: { status: "SUPERSEDED", reasonCode: "CHECK_FAILED", reason: "Coach unavailable; prescription unchanged." } });
-    return { action: null, unavailable: true };
+    return { action: null, coachStatus: "UNAVAILABLE" as const, unavailable: true };
   }
 }

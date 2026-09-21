@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/user";
-import { getLiveCoachView, runLiveWorkoutCoach } from "@/lib/server/workout-coach-engine";
+import { getLiveCoachSnapshot, runLiveWorkoutCoach } from "@/lib/server/workout-coach-engine";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -23,10 +23,10 @@ export async function POST(request: Request) {
     const { sessionId, sessionExerciseId, triggerSetId } = input.data;
     const result = triggerSetId
       ? await runLiveWorkoutCoach(user.id, { sessionId, sessionExerciseId, triggerSetId })
-      : { action: await getLiveCoachView(user.id, sessionId, sessionExerciseId) };
+      : await getLiveCoachSnapshot(user.id, sessionId, sessionExerciseId);
     return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch {
     // Training remains usable; never expose credentials or raw provider/database errors.
-    return NextResponse.json({ action: null, unavailable: true }, { status: 503 });
+    return NextResponse.json({ action: null, coachStatus: "UNAVAILABLE", unavailable: true }, { status: 503 });
   }
 }
