@@ -190,6 +190,7 @@ model Exercise {
   defaultMaxReps  Int?     @map("default_max_reps")
   tags            String[] @default([])
   setupNotes      String?  @map("setup_notes")
+  minimumWeightIncrement Decimal? @map("minimum_weight_increment") @db.Decimal(7, 2)
   isSeed          Boolean  @default(false) @map("is_seed")
   isActive        Boolean  @default(true) @map("is_active")
   isArchived      Boolean  @default(false) @map("is_archived")

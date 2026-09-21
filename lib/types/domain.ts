@@ -51,6 +51,7 @@ export type ExerciseFormExercise = {
   movementGroupId: string;
   tags: string[];
   setupNotes: string | null;
+  minimumWeightIncrement: unknown;
   isSeed: boolean;
   isActive: boolean;
   isArchived: boolean;

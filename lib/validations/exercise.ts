@@ -5,6 +5,10 @@ export const exerciseSchema = z.object({
   movementGroupId: z.string().uuid("Movement group is required"),
   tags: z.string().trim().max(240).optional(),
   setupNotes: z.string().trim().max(500).optional(),
+  minimumWeightIncrement: z.preprocess(
+    (value) => value === "" || value === null || value === undefined ? null : value,
+    z.coerce.number().positive("Minimum load increment must be greater than zero").max(1000).multipleOf(0.01).nullable(),
+  ),
   isActive: z.coerce.boolean().default(true),
   isArchived: z.coerce.boolean().default(false),
 });

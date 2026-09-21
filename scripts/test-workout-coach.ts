@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { evaluateLiveCoachEligibility } from "../lib/coaching/live-coaching";
-import { detectCoachSignal, validateCoachDecision, type CoachSet, type CoachDecision } from "../lib/coaching/workout-coach-policy";
+import { buildAllowedLoadOptions, detectCoachSignal, validateCoachDecision, type CoachSet, type CoachDecision } from "../lib/coaching/workout-coach-policy";
 
 let checks = 0;
 function check(name: string, fn: () => void) { fn(); checks++; console.log(`PASS ${name}`); }
@@ -34,7 +34,8 @@ check("abnormal second-set decay qualifies", () => {
 
 const decision: CoachDecision = { action: "ADJUST", confidence: "MODERATE", reason: "Reduce load.",
   suggestedLoad: 77.5, minReps: null, maxReps: null, targetRir: null };
-const input = { current: prescription, referenceLoad: 80, trigger: set(), signal: "EXCESSIVE_DECAY", targetIsIntensifier: false };
+const input = { current: prescription, referenceLoad: 80, trigger: set(), signal: "EXCESSIVE_DECAY", targetIsIntensifier: false,
+  allowedLoadOptions: buildAllowedLoadOptions(80, 2.5) };
 check("small load reduction accepted", () => assert.equal(validateCoachDecision(decision, input), null));
 check("large load reduction rejected", () => assert.equal(validateCoachDecision({ ...decision, suggestedLoad: 60 }, input), "LOAD_BOUND"));
 check("load increase after decay rejected", () => assert.equal(validateCoachDecision({ ...decision, suggestedLoad: 82 }, input), "NO_LOAD_INCREASE"));
@@ -46,6 +47,9 @@ check("harder RIR after decay rejected", () => assert.equal(validateCoachDecisio
 check("missing RIR target not invented", () => assert.equal(validateCoachDecision({ ...decision, targetRir: 1 }, { ...input, current: { ...prescription, targetRir: null } }), "RIR_BOUND"));
 check("KEEP needs no mutation", () => assert.equal(validateCoachDecision({ ...decision, action: "KEEP" }, input), null));
 check("load increase after a too-hard target miss rejected", () => assert.equal(validateCoachDecision({ ...decision, suggestedLoad: 82 }, { ...input, signal: "TARGET_MISS", trigger: set({ reps: 6, rir: 0 }) }), "NO_LOAD_INCREASE"));
-check("load increase after clearly too-easy set allowed", () => assert.equal(validateCoachDecision({ ...decision, suggestedLoad: 82 }, { ...input, signal: "TARGET_MISS", trigger: set({ reps: 12, rir: 3 }) }), null));
+check("load increase after clearly too-easy set allowed", () => assert.equal(validateCoachDecision({ ...decision, suggestedLoad: 82.5 }, { ...input, signal: "TARGET_MISS", trigger: set({ reps: 12, rir: 3 }) }), null));
 check("unchanged targets do not produce a coaching action", () => assert.equal(validateCoachDecision({ ...decision, suggestedLoad: 80 }, input), "NO_CHANGE"));
+check("allowed loads follow the configured equipment increment", () => assert.deepEqual(buildAllowedLoadOptions(80, 5), [75]));
+check("missing increment disables automatic load changes", () => assert.equal(validateCoachDecision(decision, { ...input, allowedLoadOptions: [] }), "LOAD_INCREMENT_UNCONFIGURED"));
+check("non-selectable load is rejected", () => assert.equal(validateCoachDecision({ ...decision, suggestedLoad: 76 }, input), "LOAD_INCREMENT"));
 console.log(`${checks} live coach policy checks passed.`);

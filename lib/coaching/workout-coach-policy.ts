@@ -39,6 +39,21 @@ export function median(values: number[]): number | null {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+export function buildAllowedLoadOptions(
+  referenceLoad: number | null,
+  minimumWeightIncrement: number | null,
+): number[] {
+  if (!referenceLoad || referenceLoad <= 0 || !minimumWeightIncrement || minimumWeightIncrement <= 0) return [];
+  const options: number[] = [];
+  for (let step = -20; step <= 20; step += 1) {
+    if (step === 0) continue;
+    const candidate = Number((referenceLoad + step * minimumWeightIncrement).toFixed(2));
+    if (candidate <= 0 || candidate < referenceLoad * 0.9 - 0.001 || candidate > referenceLoad * 1.05 + 0.001) continue;
+    options.push(candidate);
+  }
+  return [...new Set(options)].sort((a, b) => a - b);
+}
+
 function index(set: CoachSet): number | null {
   if (set.isIntensifier || set.pain || set.executionCompromised ||
       set.weight === null || set.weight <= 0 || set.reps === null || set.reps < 1 ||
@@ -104,7 +119,7 @@ export type CoachDecision = {
 /** Reject invalid recommendations; never silently turn a large change into a different intervention. */
 export function validateCoachDecision(decision: CoachDecision, input: {
   current: CoachPrescription; referenceLoad: number | null; trigger: CoachSet;
-  signal: string; targetIsIntensifier: boolean;
+  signal: string; targetIsIntensifier: boolean; allowedLoadOptions: number[];
 }): string | null {
   if (decision.action === "KEEP") return null;
   if (decision.confidence === "LOW") return "LOW_CONFIDENCE";
@@ -115,13 +130,17 @@ export function validateCoachDecision(decision: CoachDecision, input: {
   const clearlyTooEasy = input.signal === "TARGET_MISS" && current.targetRir !== null &&
     input.trigger.rir !== null && input.trigger.rir >= current.targetRir + 2 &&
     current.minReps !== null && input.trigger.reps !== null && input.trigger.reps >= current.minReps;
+  if ((decision.suggestedLoad === null || decision.suggestedLoad === (current.suggestedLoad ?? input.referenceLoad)) &&
+    (decision.minReps === null || decision.minReps === current.minReps) &&
+    (decision.maxReps === null || decision.maxReps === current.maxReps) &&
+    (decision.targetRir === null || decision.targetRir === current.targetRir)) return "NO_CHANGE";
   if (decision.suggestedLoad !== null) {
     const reference = input.referenceLoad;
     if (!reference || decision.suggestedLoad <= 0 || decision.suggestedLoad > 99999 ||
         decision.suggestedLoad < reference * 0.9 || decision.suggestedLoad > reference * 1.05) return "LOAD_BOUND";
     if (!clearlyTooEasy && decision.suggestedLoad > reference) return "NO_LOAD_INCREASE";
-    // kg logger accepts half-kilogram steps. Athlete may manually choose the nearest available load.
-    if (Math.abs(decision.suggestedLoad * 2 - Math.round(decision.suggestedLoad * 2)) > 0.001) return "LOAD_INCREMENT";
+    if (input.allowedLoadOptions.length === 0) return "LOAD_INCREMENT_UNCONFIGURED";
+    if (!input.allowedLoadOptions.some(load => Math.abs(load - decision.suggestedLoad!) < 0.001)) return "LOAD_INCREMENT";
   }
   if (decision.minReps !== null || decision.maxReps !== null) {
     if (decision.minReps === null || decision.maxReps === null || current.minReps === null || current.maxReps === null ||
@@ -136,9 +155,5 @@ export function validateCoachDecision(decision: CoachDecision, input: {
     if (!clearlyTooEasy && decision.targetRir < current.targetRir) return "NO_EFFORT_INCREASE";
   }
   if (decision.suggestedLoad === null && decision.minReps === null && decision.maxReps === null && decision.targetRir === null) return "EMPTY_ADJUSTMENT";
-  if ((decision.suggestedLoad === null || decision.suggestedLoad === (current.suggestedLoad ?? input.referenceLoad)) &&
-    (decision.minReps === null || decision.minReps === current.minReps) &&
-    (decision.maxReps === null || decision.maxReps === current.maxReps) &&
-    (decision.targetRir === null || decision.targetRir === current.targetRir)) return "NO_CHANGE";
   return null;
 }

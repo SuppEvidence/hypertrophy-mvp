@@ -37,8 +37,9 @@ no additional database migration and does not change base templates.
   are required. These thresholds are intentionally conservative.
 - Load changes are limited to -10%/+5%; rep-range endpoints to +/-2 reps; RIR
   to +/-1 within 0–4. Harder targets require a clearly too-easy set. Unsupported
-  bodyweight/assisted and intensifier adjustments are rejected. Equipment-step
-  knowledge remains limited; half-kilogram suggestions may need manual rounding.
+  bodyweight/assisted and intensifier adjustments are rejected. Automatic load
+  changes require the exercise's minimum load increment and must match a load
+  reachable from the current logged value by whole increments.
 - One provider call per qualifying trigger set, including failures. A database
   claim prevents duplicate requests from retries or multiple tabs. No automatic
   provider retries. The provider request has a 20-second timeout; logging remains usable.
@@ -86,7 +87,8 @@ They do not substitute for an authenticated dev smoke test against your database
 
 ## Deployment
 
-No npm dependency changes or new migration are required. After dev verification:
+A follow-up migration adds the optional per-exercise minimum load increment.
+Apply pending migrations before deploying the application. After dev verification:
 
 ```bash
 git add app/api/workout-coach/route.ts components/workouts/AutosaveSetRow.tsx components/workouts/WorkoutLogger.tsx components/workouts/LiveWorkoutCoach.tsx lib/coaching/workout-coach-policy.ts lib/server/live-coaching-context.ts lib/server/workout-coach-actions.ts lib/server/workout-coach-engine.ts lib/server/workout-coach-outcomes.ts lib/server/workout-set-autosave.ts package.json scripts/test-workout-coach.ts scripts/test-workout-coach-engine.mjs scripts/test-workout-coach-outcomes.mjs T1_IMPLEMENTATION.md

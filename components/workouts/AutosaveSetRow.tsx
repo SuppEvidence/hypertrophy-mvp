@@ -422,7 +422,7 @@ export function AutosaveSetRow({
             onChange={(event) => setWeight(event.target.value)}
             type="number"
             inputMode="decimal"
-            step="0.5"
+            step="0.01"
             min="0"
             className={`${inputClass} px-2 pr-7 sm:px-3 sm:pr-8`}
             aria-label={`Set ${set.setNumber} weight`}

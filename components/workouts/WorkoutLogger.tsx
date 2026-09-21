@@ -117,6 +117,7 @@ type LoggerSessionExercise = Omit<LoggedExerciseForSummary, "sets" | "exercise">
   exercise: LoggedExerciseForSummary["exercise"] & {
     name: string;
     setupNotes: string | null;
+    minimumWeightIncrement: unknown;
     movementGroup: { id: string; name: string };
   };
   sets: LoggerSet[];
@@ -558,6 +559,9 @@ function EditableSessionBody({
                     <p className="mt-2 text-xs text-slate-400">
                       Suggested weight: <span className="font-semibold text-slate-100">{formatSuggestedWeight(weightSuggestions[item.id])}</span>
                     </p>
+                    {item.exercise.minimumWeightIncrement !== null ? <p className="mt-1 text-xs text-slate-500">
+                      Minimum load increment: {decimalToNumber(item.exercise.minimumWeightIncrement)}
+                    </p> : null}
                   </div>
                   {item.isSubstitution ? (
                     <p className="mt-1 text-xs text-amber-200">Substituted from {item.substitutedFromExercise?.name ?? "planned exercise"}</p>

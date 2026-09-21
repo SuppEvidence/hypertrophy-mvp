@@ -37,8 +37,10 @@ function estimateE1rm(weight: number, reps: number) {
   return weight * (1 + reps / 30);
 }
 
-function roundToNearestHalf(value: number) {
-  return Math.round(value * 2) / 2;
+function roundToAvailableIncrement(value: number, increment: unknown, anchor: number) {
+  const parsed = Number(increment);
+  const step = Number.isFinite(parsed) && parsed > 0 ? parsed : 0.5;
+  return Number((anchor + Math.round((value - anchor) / step) * step).toFixed(2));
 }
 
 type WeightSuggestion = {
@@ -151,7 +153,7 @@ async function buildWeightSuggestionsForSession(
 
     const estimatedWeight = best.e1rm / (1 + targetReps / 30);
     suggestions[item.id] = {
-      suggestedWeight: roundToNearestHalf(estimatedWeight),
+      suggestedWeight: roundToAvailableIncrement(estimatedWeight, item.exercise.minimumWeightIncrement, best.weight),
       targetReps,
       sourceE1rm: Number(best.e1rm.toFixed(1)),
       sourceSet: `${best.weight} × ${best.reps}`,

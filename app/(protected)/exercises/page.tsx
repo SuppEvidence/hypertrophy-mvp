@@ -168,6 +168,12 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
                     <span className="text-slate-500">Tags:</span> {exercise.tags.join(", ")}
                   </p>
                 ) : null}
+                {exercise.minimumWeightIncrement !== null ? (
+                  <p>
+                    <span className="text-slate-500">Minimum load increment:</span>{" "}
+                    {Number(exercise.minimumWeightIncrement)}
+                  </p>
+                ) : null}
               </div>
 
               {canArchive ? (

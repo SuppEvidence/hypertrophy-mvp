@@ -27,6 +27,7 @@ function reset() {
     isCompleted: n === 1, weight: n === 1 ? 80 : null, reps: n === 1 ? 6 : null, rir: n === 1 ? 0 : 1,
     startedAt: null, endedAt: null, updatedAt, prescription: clone(prescription), painFlag: false }));
   state = { exercise: { id: "slot", sessionId: "session", userId: "owner", status: "DRAFT", exerciseId: "exercise", updatedAt,
+    exercise: { name: "Machine press", minimumWeightIncrement: 2.5 },
     prescribedMinReps: 8, prescribedMaxReps: 12, sets }, actions: [] };
   calls = 0;
   decision = { action: "ADJUST", confidence: "MODERATE", reason: "Reduce load slightly.", suggestedLoad: 77.5, minReps: null, maxReps: null, targetRir: null };
@@ -134,6 +135,15 @@ await check("invalid large adjustment does not mutate prescription", async () =>
   decision.suggestedLoad = 50;
   assert.equal((await runLiveWorkoutCoach("owner", input)).action, null);
   assert.equal(state.exercise.sets[1].prescription.current.suggestedLoad, undefined);
+});
+await check("unconfigured increment prevents automatic load changes", async () => {
+  state.exercise.exercise.minimumWeightIncrement = null;
+  assert.equal((await runLiveWorkoutCoach("owner", input)).action, null);
+  assert.equal(state.exercise.sets[1].prescription.current.suggestedLoad, undefined);
+});
+await check("load outside configured increment is rejected", async () => {
+  decision.suggestedLoad = 76;
+  assert.equal((await runLiveWorkoutCoach("owner", input)).action, null);
 });
 await check("removal remains proposed until explicitly approved", async () => {
   decision.action = "REMOVE_SET"; decision.suggestedLoad = null;

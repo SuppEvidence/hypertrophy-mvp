@@ -45,6 +45,20 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
           </label>
         </div>
 
+        <Field
+          label="Minimum load increment"
+          name="minimumWeightIncrement"
+          type="number"
+          inputMode="decimal"
+          min="0.01"
+          max="1000"
+          step="0.01"
+          defaultValue={exercise?.minimumWeightIncrement === null || exercise?.minimumWeightIncrement === undefined
+            ? "" : Number(exercise.minimumWeightIncrement)}
+          placeholder="e.g. 2.5 or 5"
+          hint="Smallest possible change in the load number you log. For paired plates, enter the total logged change. Leave blank if unknown; the coach will then adjust reps or RIR instead of load."
+        />
+
         <label className="block space-y-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tags</span>
           <input

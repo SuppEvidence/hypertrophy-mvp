@@ -216,6 +216,7 @@ export async function buildLiveExerciseCoachingContext(params: {
     exercise: {
       id: current.exerciseId,
       name: current.exercise.name,
+      minimumWeightIncrement: numberOrNull(current.exercise.minimumWeightIncrement),
       pain: current.painFlag,
       movementPatternId: current.exercise.movementGroupId,
       movementPatternName: current.exercise.movementGroup.name,
