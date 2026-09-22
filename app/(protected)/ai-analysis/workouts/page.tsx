@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import {
   WorkoutAnalysisSchema,
   type WorkoutAnalysis,
@@ -134,12 +135,9 @@ export default async function WorkoutAnalysisPage({
 
                 <form action={analyzeAdvisorWorkoutAction}>
                   <input type="hidden" name="sessionId" value={session.id} />
-                  <button
-                    type="submit"
-                    className="min-h-10 rounded-xl border border-orange-400/25 bg-orange-500/10 px-3 text-xs font-semibold text-orange-200 transition hover:bg-orange-500/15"
-                  >
+                  <Button type="submit" variant="secondary" pendingText="Analyzing…" className="min-h-10 border-orange-400/25 bg-orange-500/10 px-3 text-xs text-orange-200 hover:bg-orange-500/15">
                     {analysis ? "Re-analyze" : "Analyze workout"}
-                  </button>
+                  </Button>
                 </form>
               </div>
 

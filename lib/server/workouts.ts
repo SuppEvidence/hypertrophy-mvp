@@ -6,6 +6,7 @@ import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { ensureProgramTemplates } from "@/lib/server/templates";
 import { getTemplatePrescription } from "@/lib/server/prescriptions";
+import { resolvePreWorkoutCoachProposalForUser } from "@/lib/server/pre-workout-coach";
 import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
 import { parseStoredWeeklyPlan } from "@/lib/templates/weeklyPlan";
 import { finishWorkoutSchema, startWorkoutSchema, stimulusSessionExerciseSchema, workoutSetSchema } from "@/lib/validations/workout";
@@ -502,6 +503,123 @@ export async function startWorkout(formData: FormData) {
       }
     }
 
+    return created;
+  });
+
+  redirect(`/log?sessionId=${session.id}`);
+}
+
+export async function startCoachedWorkout(formData: FormData) {
+  const userId = await requireUserId();
+  const rawProposal = String(formData.get("proposal") ?? "");
+  let proposal: unknown;
+  try {
+    proposal = JSON.parse(rawProposal);
+  } catch {
+    throw new Error("Invalid coached workout proposal.");
+  }
+  const resolved = await resolvePreWorkoutCoachProposalForUser(userId, proposal);
+  const { prescription, template, items } = resolved;
+
+  const session = await prisma.$transaction(async (tx) => {
+    const created = await tx.workoutSession.create({
+      data: {
+        userId,
+        programId: prescription.program.id,
+        templateId: template.id,
+        name: template.name,
+        status: "DRAFT",
+        mesocycleId: prescription.activeMesocycle?.id ?? null,
+        prescriptionSummary: {
+          mesocycleId: prescription.activeMesocycle?.id ?? null,
+          mesocycleName: prescription.activeMesocycle?.name ?? null,
+          generatedAt: new Date().toISOString(),
+          weekStart: prescription.generated.weeklyPlan.weekStart,
+          missedTemplateIds: prescription.generated.weeklyPlan.missedTemplateIds,
+          weeklyReallocatedSets: prescription.generated.weeklyPlan.reallocatedEffectiveSets,
+          weeklyUnallocatedSets: prescription.generated.weeklyPlan.unallocatedEffectiveSets,
+          weeklyReallocatedPhysicalSets: prescription.generated.weeklyPlan.reallocatedPhysicalSets,
+          weeklyUnallocatedPhysicalSets: prescription.generated.weeklyPlan.unallocatedPhysicalSets,
+          weeklyVirtualSlotsCreated: prescription.generated.weeklyPlan.virtualSlotsCreated,
+          preWorkoutCoach: {
+            ...resolved.proposal,
+            acceptedAt: new Date().toISOString(),
+          },
+        },
+      },
+    });
+
+    for (const [index, plan] of items.entries()) {
+      const item = plan.sourceItem;
+      const sourceBelongsToBase = item.templateId === template.id && !item.isWeeklyVirtualSlot && !item.isMesocycleVirtualSlot;
+      const prescriptionNotes = [
+        `T2 pre-workout coach: ${plan.reason}`,
+        item.adjustmentReason,
+        item.weeklyAdjustmentReason,
+        item.isMesocycleVirtualSlot ? "Temporary mesocycle movement slot approved for this block" : null,
+        item.isWeeklyVirtualSlot ? "Temporary weekly movement slot created for missed-workout redistribution" : null,
+        item.templateId !== template.id ? "Slot imported from another program template for this session" : null,
+      ].filter(Boolean);
+      const plannedSetRows = Array.from({ length: plan.sets }, (_, setIndex) => {
+        const setNumber = setIndex + 1;
+        const weeklyAdded = item.weeklyAddedSetPlans.find((row) => row.setNumber === setNumber);
+        const mesocycleAdded = item.mesocycleAddedSetPlans.find((row) => row.setNumber === setNumber);
+        const planned = item.setPlans.find((row) => row.setNumber === setNumber);
+        return { setNumber, setTypeId: weeklyAdded?.setTypeId ?? mesocycleAdded?.setTypeId ?? planned?.setTypeId ?? item.defaultSetTypeId };
+      });
+      const changedExercise = plan.exerciseId !== plan.defaultExerciseId;
+      const sessionExercise = await tx.workoutSessionExercise.create({
+        data: {
+          sessionId: created.id,
+          exerciseId: plan.exerciseId,
+          templateExerciseId: sourceBelongsToBase ? item.id : null,
+          sortOrder: index,
+          isSubstitution: changedExercise || item.templateId !== template.id,
+          substitutedFromExerciseId: changedExercise ? plan.defaultExerciseId : null,
+          basePlannedSets: sourceBelongsToBase ? item.basePlannedSets : 0,
+          prescribedPlannedSets: plan.sets,
+          prescribedMinReps: plan.minReps,
+          prescribedMaxReps: plan.maxReps,
+          prescribedRepBucket: item.repBucket,
+          prescriptionNote: prescriptionNotes.join("; "),
+          completedSets: 0,
+          stimulusSetTypeId: plannedSetRows[0]?.setTypeId ?? item.defaultSetTypeId,
+          repRangeStatus: "IN_RANGE",
+          effortStatus: "PRODUCTIVE",
+        },
+      });
+
+      for (const row of plannedSetRows) {
+        await tx.workoutSet.create({
+          data: {
+            sessionExerciseId: sessionExercise.id,
+            setNumber: row.setNumber,
+            setTypeId: row.setTypeId,
+            rir: plan.targetRir,
+            prescription: {
+              original: {
+                source: "TEMPLATE",
+                minReps: item.prescribedMinReps,
+                maxReps: item.prescribedMaxReps,
+                targetRir: item.rirTarget === null || item.rirTarget === undefined ? null : Number(item.rirTarget),
+                setTypeId: row.setTypeId,
+              },
+              current: {
+                source: "AI_PREWORKOUT",
+                minReps: plan.minReps,
+                maxReps: plan.maxReps,
+                targetRir: plan.targetRir,
+                setTypeId: row.setTypeId,
+              },
+            },
+            isCompleted: false,
+            repRangeStatus: "IN_RANGE",
+            effortStatus: "PRODUCTIVE",
+            painFlag: false,
+          },
+        });
+      }
+    }
     return created;
   });
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CheckCircle2, History, Plus, Trash2 } from "lucide-react";
 import { AutosaveSetRow } from "@/components/workouts/AutosaveSetRow";
 import { LiveWorkoutCoach } from "@/components/workouts/LiveWorkoutCoach";
+import { PreWorkoutCoach } from "@/components/workouts/PreWorkoutCoach";
 import { DeleteWorkoutButton } from "@/components/workouts/DeleteWorkoutButton";
 import { ExerciseCollapseCard } from "@/components/workouts/ExerciseCollapseCard";
 import { Button } from "@/components/ui/Button";
@@ -382,10 +383,13 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
         ) : selectedTemplate ? (
           <div className="space-y-3">
             {selectedTemplatePrescription ? <PrescriptionPreview prescription={selectedTemplatePrescription} /> : null}
+            <PreWorkoutCoach programId={selectedProgram.id} templateId={selectedTemplate.id} />
             <form action={startWorkout}>
               <input type="hidden" name="programId" value={selectedProgram.id} />
               <input type="hidden" name="templateId" value={selectedTemplate.id} />
-              <Button className="w-full">{data.hasUnfinishedSession ? "Start new workout anyway" : "Start selected template"}</Button>
+              <Button variant="secondary" className="w-full">
+                {data.hasUnfinishedSession ? "Start template unchanged anyway" : "Start template unchanged"}
+              </Button>
             </form>
           </div>
         ) : (
