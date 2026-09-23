@@ -1,5 +1,9 @@
 # T3 review correction — September 23, 2026
 
+If this file came with the T1–T3 model-routing package, use
+`T1_T3_MODEL_ROUTING.md` for model configuration, current request/route timeouts
+and installation commands. The coaching policy below still applies.
+
 ## Apply to your existing T3 installation
 
 No new database migration, dependency, or environment variable is required.

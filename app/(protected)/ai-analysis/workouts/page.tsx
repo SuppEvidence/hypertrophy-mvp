@@ -1,4 +1,6 @@
 import { Card } from "@/components/ui/Card";
+
+export const maxDuration = 120;
 import { Button } from "@/components/ui/Button";
 import {
   WorkoutAnalysisSchema,

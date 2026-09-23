@@ -3,7 +3,7 @@ import { getAuthenticatedUser } from "@/lib/auth/user";
 import { generatePreWorkoutCoachPlanForUser, PreWorkoutCoachRequestSchema } from "@/lib/server/pre-workout-coach";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 75;
 
 export async function POST(request: Request) {
   const origin = request.headers.get("origin");

@@ -4,7 +4,8 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { zodTextFormat } from "openai/helpers/zod";
 import { prisma } from "@/lib/db/prisma";
-import { getOpenAIClient, getOpenAIModel } from "@/lib/ai/openai";
+import { getOpenAIClient } from "@/lib/ai/openai";
+import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
 import { TRAINING_PROGRAMMING_POLICY } from "@/lib/ai/training-policy";
 import { buildLiveExerciseCoachingContext } from "@/lib/server/live-coaching-context";
 import { buildAllowedLoadOptions, detectCoachSignal, object, numeric, readPrescription, validateCoachDecision } from "@/lib/coaching/workout-coach-policy";
@@ -202,9 +203,11 @@ export async function runLiveWorkoutCoach(userId: string, input: { sessionId: st
         status: { in: ["APPLIED", "DECLINED"] } }, orderBy: { createdAt: "desc" }, take: 6,
       select: { actionType: true, reasonCode: true, appliedState: true, status: true, outcome: true },
     });
-    const model = getOpenAIModel();
+    const aiConfig = getCoachingModelConfig("T1");
+    const model = aiConfig.request.model;
+    const requestStartedAt = Date.now();
     const response = await getOpenAIClient().responses.parse({
-      model, store: false,
+      ...aiConfig.request,
       input: [{ role: "system", content: `${TRAINING_PROGRAMMING_POLICY}\n
 T1 LIVE WORKOUT RULES (override broader programming options):
 Return KEEP by default. Change only the next unstarted set. No rest advice: sets may alternate with other exercises.
@@ -223,7 +226,8 @@ The numeric signal is a noisy within-exercise proxy, not a measure of stimulus o
       { role: "user", content: JSON.stringify({ context, signal, nextSet: { setNumber: target.setNumber, current, referenceLoad,
         minimumWeightIncrement, allowedLoadOptions, isIntensifier: target.setType.isIntensifier }, memory }) }],
       text: { format: zodTextFormat(DecisionSchema, "live_workout_coach") },
-    }, { timeout: 20_000, maxRetries: 0 });
+    }, aiConfig.options);
+    logCoachingModelUsage(aiConfig, response, requestStartedAt);
     const decision = response.output_parsed;
     if (!decision) throw new Error("NO_DECISION");
     const unsupportedLoad = /assisted|bodyweight|body.weight|pull[ -]?up|chin[ -]?up|\bdips?\b/i.test(context.exercise.name);

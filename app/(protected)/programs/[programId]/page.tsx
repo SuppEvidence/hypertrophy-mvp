@@ -5,7 +5,7 @@ import { ProgramForm } from "@/components/programs/ProgramForm";
 import { MesocyclePanel } from "@/components/programs/MesocyclePanel";
 import { PageHeader } from "@/components/ui/PageHeader";
 
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 export default async function EditProgramPage({
   params,

@@ -1,5 +1,9 @@
 # T3 priority-based volume coaching
 
+If installing the T1–T3 model-routing package, follow `T1_T3_MODEL_ROUTING.md`
+for environment variables, timeouts and deployment. It supersedes the original
+single-model configuration and timeout values described below.
+
 ## September 23 correction
 
 For an installation where T3 is already migrated, see `T3_CORRECTION.md` first.

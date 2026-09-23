@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
-import { getOpenAIClient, getOpenAIModel } from "@/lib/ai/openai";
+import { getOpenAIClient } from "@/lib/ai/openai";
+import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
 import {
   ExerciseAssessmentSchema,
   MovementPatternAssessmentSchema,
@@ -696,11 +697,13 @@ export async function analyzeCompletedWorkoutForUser(
   try {
     const context = await buildWorkoutContext(sessionId, userId);
     const client = getOpenAIClient();
-    const model = getOpenAIModel();
+    const aiConfig = getCoachingModelConfig("WORKOUT_ANALYSIS");
+    const model = aiConfig.request.model;
+    const requestStartedAt = Date.now();
     const runtimeAnalysisSchema = createRuntimeWorkoutAnalysisSchema(context);
 
     const response = await client.responses.parse({
-      model,
+      ...aiConfig.request,
       input: [
         { role: "system", content: SYSTEM_INSTRUCTIONS },
         {
@@ -711,7 +714,8 @@ export async function analyzeCompletedWorkoutForUser(
       text: {
         format: zodTextFormat(runtimeAnalysisSchema, "hypertrophy_workout_analysis"),
       },
-    }, { timeout: 30_000, maxRetries: 0 });
+    }, aiConfig.options);
+    logCoachingModelUsage(aiConfig, response, requestStartedAt);
 
     const parsed = response.output_parsed;
     if (!parsed) {

@@ -2,7 +2,8 @@ import "server-only";
 
 import { z } from "zod";
 import { zodTextFormat } from "openai/helpers/zod";
-import { getOpenAIClient, getOpenAIModel } from "@/lib/ai/openai";
+import { getOpenAIClient } from "@/lib/ai/openai";
+import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
 import {
   PreWorkoutCoachModelPlanSchema,
   PreWorkoutCoachProposalSchema,
@@ -372,15 +373,18 @@ export async function generatePreWorkoutCoachPlanForUser(userId: string, rawInpu
   const input = PreWorkoutCoachRequestSchema.parse(rawInput);
   const context = await buildContext(userId, input);
   const fallback = defaultPlan(context);
-  const model = getOpenAIModel();
+  const aiConfig = getCoachingModelConfig("T2");
+  const model = aiConfig.request.model;
+  const requestStartedAt = Date.now();
   const response = await getOpenAIClient().responses.parse({
-    model, store: false,
+    ...aiConfig.request,
     input: [
       { role: "system", content: SYSTEM_INSTRUCTIONS },
       { role: "user", content: `Construct today's pre-session proposal from this context.\n\n${JSON.stringify(modelContext(context))}` },
     ],
     text: { format: zodTextFormat(runtimeSchema(context), "pre_workout_coach") },
-  }, { timeout: 30_000, maxRetries: 0 });
+  }, aiConfig.options);
+  logCoachingModelUsage(aiConfig, response, requestStartedAt);
   const parsed = response.output_parsed;
   if (!parsed) throw new Error("Coach returned no structured pre-workout plan.");
   const validation = validatePreWorkoutPlan(parsed, {

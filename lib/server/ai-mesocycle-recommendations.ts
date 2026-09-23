@@ -10,7 +10,8 @@ import {
   MesocycleRecommendationSchema,
   type MesocycleRecommendation,
 } from "@/lib/ai/mesocycle-recommendation-schema";
-import { getOpenAIClient, getOpenAIModel } from "@/lib/ai/openai";
+import { getOpenAIClient } from "@/lib/ai/openai";
+import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
 import { TRAINING_PROGRAMMING_POLICY } from "@/lib/ai/training-policy";
 import {
   WorkoutAnalysisSchema,
@@ -673,11 +674,13 @@ Decision rules:
 export async function generateMesocycleRecommendationForUser(userId: string, requestedMesocycleId?: string) {
   const { context, mesocycleId } = await buildMesocycleContext(userId, requestedMesocycleId);
   const client = getOpenAIClient();
-  const model = getOpenAIModel();
+  const aiConfig = getCoachingModelConfig("T3_MESOCYCLE");
+  const model = aiConfig.request.model;
+  const requestStartedAt = Date.now();
   const runtimeSchema = createRuntimeMesocycleSchema(context);
 
   const response = await client.responses.parse({
-    model,
+    ...aiConfig.request,
     input: [
       { role: "system", content: MESOCYCLE_SYSTEM_INSTRUCTIONS },
       {
@@ -691,7 +694,8 @@ export async function generateMesocycleRecommendationForUser(userId: string, req
         "hypertrophy_mesocycle_recommendation",
       ),
     },
-  }, { timeout: 30_000, maxRetries: 0 });
+  }, aiConfig.options);
+  logCoachingModelUsage(aiConfig, response, requestStartedAt);
 
   const parsed = response.output_parsed;
   if (!parsed) {

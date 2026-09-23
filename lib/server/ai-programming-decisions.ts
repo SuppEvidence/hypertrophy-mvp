@@ -18,7 +18,8 @@ import {
   WorkoutAnalysisSchema,
   type WorkoutAnalysis,
 } from "@/lib/ai/workout-analysis-schema";
-import { getOpenAIClient, getOpenAIModel } from "@/lib/ai/openai";
+import { getOpenAIClient } from "@/lib/ai/openai";
+import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
 import { requireUserId } from "@/lib/auth/user";
 import {
   nextT3CoachTarget,
@@ -770,10 +771,12 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
   const { context, validation, mesocycleId, mesocycleName, prescription, mesocycleUpdatedAt } =
     await buildProgrammingContext(userId);
   const client = getOpenAIClient();
-  const model = getOpenAIModel();
+  const aiConfig = getCoachingModelConfig("T3_VOLUME");
+  const model = aiConfig.request.model;
+  const requestStartedAt = Date.now();
 
   const response = await client.responses.parse({
-    model,
+    ...aiConfig.request,
     input: [
       { role: "system", content: PROGRAMMING_SYSTEM_INSTRUCTIONS },
       {
@@ -787,7 +790,8 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
         "hypertrophy_programming_recommendations",
       ),
     },
-  }, { timeout: 75_000, maxRetries: 0 });
+  }, aiConfig.options);
+  logCoachingModelUsage(aiConfig, response, requestStartedAt);
 
   const output = response.output_parsed;
   if (!output) {
