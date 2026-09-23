@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { ensureProgramTemplates } from "@/lib/server/templates";
 import { getTemplatePrescription } from "@/lib/server/prescriptions";
 import { resolvePreWorkoutCoachProposalForUser } from "@/lib/server/pre-workout-coach";
+import { runAutomaticPostWorkoutCoaching } from "@/lib/server/automatic-coaching";
 import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
 import { parseStoredWeeklyPlan } from "@/lib/templates/weeklyPlan";
 import { finishWorkoutSchema, startWorkoutSchema, stimulusSessionExerciseSchema, workoutSetSchema } from "@/lib/validations/workout";
@@ -859,7 +861,20 @@ export async function finishWorkout(sessionId: string, formData: FormData) {
 
   await prisma.workoutSession.update({
     where: { id: session.id },
-    data: { status: "COMPLETED", completedAt: new Date(), notes: input.notes || null },
+    data: {
+      status: "COMPLETED",
+      completedAt: new Date(),
+      notes: input.notes || null,
+      aiAnalysisStatus:
+        process.env.AUTO_WORKOUT_ANALYSIS_ENABLED === "false"
+          ? "NOT_REQUESTED"
+          : "PENDING",
+      aiAnalysisError: null,
+    },
+  });
+
+  after(async () => {
+    await runAutomaticPostWorkoutCoaching(session.id, userId);
   });
 
   revalidateCompletedWorkoutViews();

@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
@@ -9,7 +8,6 @@ import {
   MesocycleMovementRecommendationSchema,
   MesocyclePriorityRecommendationSchema,
   MesocycleRecommendationSchema,
-  MesocycleVolumeRecommendationSchema,
   type MesocycleRecommendation,
 } from "@/lib/ai/mesocycle-recommendation-schema";
 import { getOpenAIClient, getOpenAIModel } from "@/lib/ai/openai";
@@ -18,7 +16,6 @@ import {
   WorkoutAnalysisSchema,
   type WorkoutAnalysis,
 } from "@/lib/ai/workout-analysis-schema";
-import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { getStimulusContribution } from "@/lib/workouts/stimulus";
 
@@ -279,7 +276,7 @@ function summarizeSymptoms(
     });
 }
 
-async function buildMesocycleContext(userId: string) {
+async function buildMesocycleContext(userId: string, requestedMesocycleId?: string) {
   const program = await prisma.program.findFirst({
     where: { userId, isActive: true, isArchived: false },
     select: {
@@ -302,11 +299,13 @@ async function buildMesocycleContext(userId: string) {
       userId,
       programId: program.id,
       isArchived: false,
-      actualEndDate: null,
-      startDate: { lte: new Date() },
+      ...(requestedMesocycleId
+        ? { id: requestedMesocycleId }
+        : { actualEndDate: null, startDate: { lte: new Date() } }),
     },
     orderBy: { startDate: "desc" },
     include: {
+      musclePriorities: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
       volumeTargets: {
         include: { muscle: true },
         orderBy: { muscle: { sortOrder: "asc" } },
@@ -318,8 +317,11 @@ async function buildMesocycleContext(userId: string) {
     },
   });
 
-  if (!mesocycle) {
+  if (!mesocycle || (!requestedMesocycleId && mesocycle.startDate.getTime() + mesocycle.lengthWeeks * 7 * DAY_MS <= Date.now())) {
     throw new Error("A current mesocycle is required for mesocycle recommendations.");
+  }
+  if (!mesocycle.t3ActivatedAt || mesocycle.musclePriorities.length === 0) {
+    throw new Error("Configure T3 muscle priorities before a next-block review.");
   }
 
   const plannedEnd = new Date(
@@ -418,6 +420,9 @@ async function buildMesocycleContext(userId: string) {
         startDate: true,
         actualEndDate: true,
         aiRecommendation: true,
+        musclePriorities: {
+          select: { priority: true, coachTargetWeeklySets: true, muscle: { select: { name: true } } },
+        },
         volumeTargets: {
           select: {
             targetSets: true,
@@ -429,11 +434,13 @@ async function buildMesocycleContext(userId: string) {
     }),
   ]);
 
+  const effectiveNow = mesocycle.actualEndDate && mesocycle.actualEndDate < now
+    ? mesocycle.actualEndDate : now;
   const elapsedDays = Math.max(
     1,
     Math.min(
       mesocycle.lengthWeeks * 7,
-      Math.floor((now.getTime() - mesocycle.startDate.getTime()) / DAY_MS) + 1,
+      Math.floor((effectiveNow.getTime() - mesocycle.startDate.getTime()) / DAY_MS) + 1,
     ),
   );
   const elapsedWeeks = Math.max(1, elapsedDays / 7);
@@ -506,6 +513,7 @@ async function buildMesocycleContext(userId: string) {
       startDate: dateOnly(mesocycle.startDate),
       plannedEndDate: dateOnly(plannedEnd),
       lengthWeeks: mesocycle.lengthWeeks,
+      actualEndDate: dateOnly(mesocycle.actualEndDate),
       elapsedDays,
       completedSessions: sessions.length,
       analyzedSessions: analyzedSessions.length,
@@ -513,7 +521,16 @@ async function buildMesocycleContext(userId: string) {
         sessions.length > 0
           ? round((analyzedSessions.length / sessions.length) * 100, 0)
           : 0,
-      muscleVolumes: mesocycle.volumeTargets.map((target) => ({
+      priorityAssignments: mesocycle.musclePriorities.map((target) => ({
+        muscleName: target.muscle.name,
+        priority: target.priority,
+        baselineWeeklySets: finiteNumber(target.baselineWeeklySets),
+        coachTargetWeeklySets: finiteNumber(target.coachTargetWeeklySets),
+        usefulDoseRange: [finiteNumber(target.rangeMinimumSets), finiteNumber(target.rangeMaximumSets)],
+        coachingStatus: target.coachingStatus,
+        actualAverageWeeklyEffectiveSets: round((totals.get(target.muscleId) ?? 0) / elapsedWeeks, 1),
+      })),
+      legacyMuscleVolumes: mesocycle.volumeTargets.map((target) => ({
         muscleId: target.muscleId,
         muscleName: target.muscle.name,
         prescribedWeeklyTarget: finiteNumber(target.targetSets),
@@ -574,6 +591,11 @@ async function buildMesocycleContext(userId: string) {
         targetSets: finiteNumber(target.targetSets),
         priorityLevel: target.priorityLevel,
       })),
+      priorityAssignments: prior.musclePriorities.map((target) => ({
+        muscleName: target.muscle.name,
+        priority: target.priority,
+        coachTargetWeeklySets: finiteNumber(target.coachTargetWeeklySets),
+      })),
       hasStoredAiRecommendation: Boolean(prior.aiRecommendation),
     })),
   };
@@ -584,7 +606,7 @@ async function buildMesocycleContext(userId: string) {
 
 function createRuntimeMesocycleSchema(context: Awaited<ReturnType<typeof buildMesocycleContext>>["context"]) {
   const muscleNames = [
-    ...new Set(context.currentMesocycle.muscleVolumes.map((row) => row.muscleName)),
+    ...new Set(context.currentMesocycle.priorityAssignments.map((row) => row.muscleName)),
   ];
   const movementNames = [
     ...new Set([
@@ -595,13 +617,11 @@ function createRuntimeMesocycleSchema(context: Awaited<ReturnType<typeof buildMe
     ]),
   ];
 
-  if (muscleNames.length === 0 || movementNames.length === 0) {
+  if (muscleNames.length === 0) {
     return MesocycleRecommendationSchema;
   }
 
   const muscleNameSchema = z.enum(muscleNames as [string, ...string[]]);
-  const movementNameSchema = z.enum(movementNames as [string, ...string[]]);
-
   return MesocycleRecommendationSchema.extend({
     historyMode: z.literal(context.historyMode),
     nextPriorities: z
@@ -610,21 +630,14 @@ function createRuntimeMesocycleSchema(context: Awaited<ReturnType<typeof buildMe
           muscleName: muscleNameSchema,
         }),
       )
-      .max(5),
-    volumeRecommendations: z
-      .array(
-        MesocycleVolumeRecommendationSchema.extend({
-          muscleName: muscleNameSchema,
-        }),
-      )
       .max(10),
-    movementRecommendations: z
+    ...(movementNames.length ? { movementRecommendations: z
       .array(
         MesocycleMovementRecommendationSchema.extend({
-          movementPatternName: movementNameSchema,
+          movementPatternName: z.enum(movementNames as [string, ...string[]]),
         }),
       )
-      .max(10),
+      .max(10) } : {}),
   });
 }
 
@@ -635,6 +648,9 @@ Use the supplied deterministic data and the Programming Policy as hard guidance.
 
 Decision rules:
 - HOLD is the default when evidence is mixed, sparse, or already productive.
+- T3 owns in-block numeric dose assessment and adjustment proposals. This next-block review recommends outcome priorities and qualitative movement/template implications only. Do not prescribe exact weekly set targets or independently redo T3's volume decisions.
+- Movement-pattern actions may keep, shift emphasis, or review an exercise implementation for the NEXT block; they do not authorize a numeric volume change or edit a template.
+- Each priority suggestion must name its current and suggested priority. KEEP means identical priorities; PROMOTE means more direct focus; DEMOTE means less direct focus. The athlete decides whether to adopt it for the next block.
 - Priority status alone is not evidence that volume must increase.
 - Current movement-pattern quality and historical response outrank generic volume theory.
 - Do not infer individualized dose-response when historyMode is FIRST_MESOCYCLE. In that mode, make only conservative, well-supported changes and explicitly reflect lower confidence.
@@ -654,8 +670,8 @@ Decision rules:
 - The athlete-facing summary should state the few conclusions that materially affect the next block. Do not enumerate every small performance fluctuation or create implied logbook targets. Internal reasoning can be richer than the visible explanation.
 `;
 
-export async function generateMesocycleRecommendationForUser(userId: string) {
-  const { context, mesocycleId } = await buildMesocycleContext(userId);
+export async function generateMesocycleRecommendationForUser(userId: string, requestedMesocycleId?: string) {
+  const { context, mesocycleId } = await buildMesocycleContext(userId, requestedMesocycleId);
   const client = getOpenAIClient();
   const model = getOpenAIModel();
   const runtimeSchema = createRuntimeMesocycleSchema(context);
@@ -675,13 +691,30 @@ export async function generateMesocycleRecommendationForUser(userId: string) {
         "hypertrophy_mesocycle_recommendation",
       ),
     },
-  });
+  }, { timeout: 30_000, maxRetries: 0 });
 
   const parsed = response.output_parsed;
   if (!parsed) {
     throw new Error(
       `OpenAI returned no parsed mesocycle recommendation. Response status: ${response.status}`,
     );
+  }
+
+  const assigned = new Map(context.currentMesocycle.priorityAssignments.map((row) => [row.muscleName, row.priority]));
+  const rank = { INDIRECT_ONLY: 0, MAINTAIN: 1, GROW: 2, SPECIALIZE: 3 };
+  const seen = new Set<string>();
+  for (const row of parsed.nextPriorities) {
+    if (!assigned.has(row.muscleName) || seen.has(row.muscleName)) {
+      throw new Error("Next-block review returned an unknown or duplicate muscle.");
+    }
+    seen.add(row.muscleName);
+    if (assigned.get(row.muscleName) !== row.currentPriority) {
+      throw new Error("Next-block review changed the recorded current priority.");
+    }
+    const direction = Math.sign(rank[row.suggestedPriority] - rank[row.currentPriority]);
+    if ((direction > 0 ? "PROMOTE" : direction < 0 ? "DEMOTE" : "KEEP") !== row.action) {
+      throw new Error("Next-block priority direction is inconsistent.");
+    }
   }
 
   await prisma.programMesocycle.update({
@@ -696,11 +729,32 @@ export async function generateMesocycleRecommendationForUser(userId: string) {
   return parsed;
 }
 
-export async function generateMesocycleRecommendationAction() {
-  const userId = await requireUserId();
-  await generateMesocycleRecommendationForUser(userId);
-  revalidatePath("/ai-analysis");
-  revalidatePath("/ai-analysis/mesocycle");
+export async function maybeGenerateMesocycleRecommendationForUser(userId: string) {
+  if (process.env.AUTO_MESOCYCLE_REVIEW_ENABLED === "false") return null;
+  const program = await prisma.program.findFirst({
+    where: { userId, isActive: true, isArchived: false },
+    select: { id: true },
+  });
+  if (!program) return null;
+  const now = new Date();
+  const candidates = await prisma.programMesocycle.findMany({
+    where: { userId, programId: program.id, isArchived: false, actualEndDate: null, startDate: { lte: now } },
+    orderBy: { startDate: "desc" },
+    take: 12,
+    select: { id: true, startDate: true, lengthWeeks: true, aiRecommendedAt: true, t3ActivatedAt: true },
+  });
+  const current = candidates.find((row) => row.startDate.getTime() + row.lengthWeeks * 7 * DAY_MS > now.getTime());
+  if (!current?.t3ActivatedAt) return null;
+  if (current.aiRecommendedAt && now.getTime() - current.aiRecommendedAt.getTime() < 48 * 3_600_000) return null;
+  const end = current.startDate.getTime() + current.lengthWeeks * 7 * DAY_MS;
+  if (end - now.getTime() > 7 * DAY_MS) return null;
+  const sessionCount = await prisma.workoutSession.count({
+    where: { userId, mesocycleId: current.id, status: "COMPLETED",
+      ...(current.aiRecommendedAt ? { completedAt: { gt: current.aiRecommendedAt } } : {}),
+    },
+  });
+  if (sessionCount === 0) return null;
+  return generateMesocycleRecommendationForUser(userId, current.id);
 }
 
 export async function getCurrentMesocycleRecommendationForUser(userId: string): Promise<{
@@ -719,7 +773,7 @@ export async function getCurrentMesocycleRecommendationForUser(userId: string): 
   });
   if (!program) return null;
 
-  const mesocycle = await prisma.programMesocycle.findFirst({
+  const current = await prisma.programMesocycle.findFirst({
     where: {
       userId,
       programId: program.id,
@@ -739,7 +793,17 @@ export async function getCurrentMesocycleRecommendationForUser(userId: string): 
       aiRecommendedAt: true,
     },
   });
-
+  const currentIsActive = current && current.startDate.getTime() + current.lengthWeeks * 7 * DAY_MS > Date.now();
+  const mesocycle = currentIsActive && current.aiRecommendation
+    ? current
+    : await prisma.programMesocycle.findFirst({
+        where: { userId, programId: program.id, isArchived: false, aiRecommendedAt: { not: null } },
+        orderBy: { startDate: "desc" },
+        select: {
+          id: true, name: true, phase: true, startDate: true, lengthWeeks: true,
+          aiRecommendation: true, aiRecommendationModel: true, aiRecommendedAt: true,
+        },
+      }) ?? (currentIsActive ? current : null);
   if (!mesocycle) return null;
   const parsed = MesocycleRecommendationSchema.safeParse(mesocycle.aiRecommendation);
 

@@ -77,6 +77,7 @@ export type GeneratorMesocycle =
         muscleName: string;
         sortOrder: number;
         targetSets: unknown;
+        explicitTarget?: boolean;
         minimumSets?: unknown;
         maximumSets?: unknown;
         priorityLevel?: number;
@@ -321,7 +322,9 @@ function targetRows(program: GeneratorProgram, mesocycle: GeneratorMesocycle) {
       muscleId: target.muscleId,
       muscleName: target.muscleName,
       sortOrder: target.sortOrder,
-      target: overrideTarget > 0 ? round((overrideTarget * program.volumeWindowDays) / 7) : previous?.target ?? 0,
+      target: target.explicitTarget || overrideTarget > 0
+        ? round((overrideTarget * program.volumeWindowDays) / 7)
+        : previous?.target ?? 0,
       base: 0,
       planned: 0,
       delta: 0,

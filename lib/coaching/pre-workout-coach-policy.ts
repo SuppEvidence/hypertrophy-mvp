@@ -23,6 +23,7 @@ export type LocalReadinessInput = {
   performanceExposureCount: number;
   downwardExerciseSignals: number;
   recentPainSets: number;
+  recentPainExposures?: number;
   recentCompromisedSets: number;
   globalRecoveryStatus: GlobalRecoveryContext["status"];
 };
@@ -137,7 +138,7 @@ export function inferBodyCompositionTrend(rows: BodyMetricTrendInput[]): BodyCom
 export function summarizeGlobalRecovery(rows: RecoveryMetricInput[], now = new Date()): GlobalRecoveryContext {
   const recent = rows
     .map((row) => ({ ...row, date: new Date(row.loggedAt) }))
-    .filter((row) => !Number.isNaN(row.date.getTime()) && now.getTime() - row.date.getTime() <= 14 * 86_400_000)
+    .filter((row) => !Number.isNaN(row.date.getTime()) && row.date <= now && now.getTime() - row.date.getTime() <= 14 * 86_400_000)
     .sort((a, b) => b.date.getTime() - a.date.getTime())
     .slice(0, 5);
   const scored = recent
@@ -176,14 +177,15 @@ export function summarizeGlobalRecovery(rows: RecoveryMetricInput[], now = new D
 }
 
 export function inferLocalReadiness(input: LocalReadinessInput): LocalReadinessInference {
+  const pain = input.recentPainExposures ?? input.recentPainSets;
   const evidence: string[] = [];
   if (input.hoursSinceLastExposure !== null) evidence.push(`${round(input.hoursSinceLastExposure)} h since the latest movement-pattern exposure`);
   if (input.effectiveSetsLast48h > 0) evidence.push(`${round(input.effectiveSetsLast48h)} effective sets in the last 48 h`);
   if (input.downwardExerciseSignals > 0) evidence.push(`${input.downwardExerciseSignals} exercise performance trend${input.downwardExerciseSignals === 1 ? "" : "s"} currently down`);
-  if (input.recentPainSets > 0) evidence.push(`${input.recentPainSets} recent pain-flagged set${input.recentPainSets === 1 ? "" : "s"}`);
+  if (pain > 0) evidence.push(`${pain} recent pain-flagged ${input.recentPainExposures !== undefined ? "exercise exposures" : "sets"}`);
   if (input.recentCompromisedSets > 0) evidence.push(`${input.recentCompromisedSets} recent execution-compromised set${input.recentCompromisedSets === 1 ? "" : "s"}`);
 
-  const highConcern = input.recentPainSets > 0 || input.recentCompromisedSets >= 2 || input.downwardExerciseSignals >= 2 ||
+  const highConcern = pain > 0 || input.recentCompromisedSets >= 2 || input.downwardExerciseSignals >= 2 ||
     (input.hoursSinceLastExposure !== null && input.hoursSinceLastExposure < 24 && input.effectiveSetsLast48h >= 3) ||
     (input.globalRecoveryStatus === "HIGH_FATIGUE" && input.hoursSinceLastExposure !== null && input.hoursSinceLastExposure < 48);
   const recovering = !highConcern && (

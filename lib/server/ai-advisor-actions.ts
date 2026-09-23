@@ -3,8 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireUserId } from "@/lib/auth/user";
-import { generateMesocycleRecommendationForUser } from "@/lib/server/ai-mesocycle-recommendations";
 import { analyzeWorkoutAction } from "@/lib/server/ai-workout-analysis";
 import {
   generateProgrammingRecommendationsAction,
@@ -41,6 +39,7 @@ export async function generateAdvisorVolumeRecommendationsAction() {
       )}`,
     );
   }
+  redirect("/ai-analysis/volume");
 }
 
 export async function selectAdvisorProgrammingDecisionAction(formData: FormData) {
@@ -51,21 +50,6 @@ export async function selectAdvisorProgrammingDecisionAction(formData: FormData)
     redirect(
       `/ai-analysis/volume?error=${encodeURIComponent(
         errorMessage(error, "Could not save the programming selection."),
-      )}`,
-    );
-  }
-}
-
-export async function generateAdvisorMesocycleRecommendationAction() {
-  try {
-    const userId = await requireUserId();
-    await generateMesocycleRecommendationForUser(userId);
-    revalidatePath("/ai-analysis");
-    revalidatePath("/ai-analysis/mesocycle");
-  } catch (error) {
-    redirect(
-      `/ai-analysis/mesocycle?error=${encodeURIComponent(
-        errorMessage(error, "Mesocycle recommendation generation failed."),
       )}`,
     );
   }

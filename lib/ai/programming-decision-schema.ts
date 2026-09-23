@@ -6,6 +6,34 @@ export const ProgrammingConfidenceSchema = z.enum([
   "HIGH",
 ]);
 
+export const T3MusclePrioritySchema = z.enum([
+  "SPECIALIZE",
+  "GROW",
+  "MAINTAIN",
+  "INDIRECT_ONLY",
+]);
+
+export const T3VolumeStatusSchema = z.enum([
+  "INSUFFICIENT_EVIDENCE",
+  "ON_TRACK",
+  "RECOVERABILITY_CONCERN",
+  "BELOW_EXPECTED_RESPONSE",
+  "ABOVE_NEEDED_DOSE",
+  "NO_DIRECT_FOCUS",
+]);
+
+export const T3MuscleAssessmentSchema = z.object({
+  muscleId: z.string(),
+  muscleName: z.string(),
+  priority: T3MusclePrioritySchema,
+  status: T3VolumeStatusSchema,
+  confidence: ProgrammingConfidenceSchema,
+  recommendedRangeMinimum: z.number().min(0).max(60),
+  recommendedRangeMaximum: z.number().min(0).max(60),
+  rationale: z.string().max(900),
+  evidence: z.array(z.string().max(350)).max(7),
+});
+
 export const ProgrammingActionSchema = z.enum([
   "INCREASE_VOLUME",
   "DECREASE_VOLUME",
@@ -26,14 +54,14 @@ export const PlacementPreferenceSchema = z.enum([
 export const MovementChangeSchema = z.object({
   movementPatternId: z.string(),
   movementPatternName: z.string(),
-  deltaSets: z.number().int().min(-4).max(4),
+  deltaSets: z.number().int().min(-6).max(4),
 });
 
 export const ProgrammingOptionSchema = z.object({
   optionKey: z.enum(["OPTION_A", "OPTION_B"]),
   title: z.string().max(140),
   action: ProgrammingActionSchema,
-  deltaWeeklySets: z.number().int().min(-4).max(4),
+  deltaWeeklySets: z.number().int().min(-6).max(4),
   movementChanges: z.array(MovementChangeSchema).max(3),
   preferredExerciseType: ExerciseTypePreferenceSchema,
   placementPreference: PlacementPreferenceSchema,
@@ -59,7 +87,9 @@ export const ProgrammingDecisionProposalSchema = z.object({
 
 export const ProgrammingRecommendationsSchema = z.object({
   globalSummary: z.string().max(1200),
-  decisions: z.array(ProgrammingDecisionProposalSchema).min(1).max(5),
+  bodyCompositionContext: z.string().max(900),
+  assessments: z.array(T3MuscleAssessmentSchema).min(1).max(24),
+  decisions: z.array(ProgrammingDecisionProposalSchema).max(5),
 });
 
 export const StoredProgrammingOptionsSchema = z.array(

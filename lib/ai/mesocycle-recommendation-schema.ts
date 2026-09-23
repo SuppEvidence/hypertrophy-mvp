@@ -10,21 +10,14 @@ export const MesocycleHistoryModeSchema = z.enum([
 export const MesocyclePriorityRecommendationSchema = z.object({
   muscleName: z.string(),
   action: z.enum(["PROMOTE", "KEEP", "DEMOTE"]),
-  rationale: z.string(),
-});
-
-export const MesocycleVolumeRecommendationSchema = z.object({
-  muscleName: z.string(),
-  action: z.enum(["INCREASE", "HOLD", "DECREASE"]),
-  currentTargetSets: z.number().nullable(),
-  suggestedTargetSets: z.number().nullable(),
-  confidence: MesocycleConfidenceSchema,
+  currentPriority: z.enum(["SPECIALIZE", "GROW", "MAINTAIN", "INDIRECT_ONLY"]),
+  suggestedPriority: z.enum(["SPECIALIZE", "GROW", "MAINTAIN", "INDIRECT_ONLY"]),
   rationale: z.string(),
 });
 
 export const MesocycleMovementRecommendationSchema = z.object({
   movementPatternName: z.string(),
-  action: z.enum(["KEEP", "INCREASE", "REDUCE", "REVIEW_EXERCISE"]),
+  action: z.enum(["KEEP", "SHIFT_EMPHASIS", "REVIEW_EXERCISE"]),
   rationale: z.string(),
 });
 
@@ -44,8 +37,7 @@ export const MesocycleRecommendationSchema = z.object({
   historyMode: MesocycleHistoryModeSchema,
   currentBlockAssessment: z.string(),
   bodyMetricInterpretation: z.string(),
-  nextPriorities: z.array(MesocyclePriorityRecommendationSchema).max(5),
-  volumeRecommendations: z.array(MesocycleVolumeRecommendationSchema).max(10),
+  nextPriorities: z.array(MesocyclePriorityRecommendationSchema).max(10),
   movementRecommendations: z.array(MesocycleMovementRecommendationSchema).max(10),
   symptomPrecautions: z.array(MesocycleSymptomPrecautionSchema).max(6),
   templateImplications: z.array(z.string()).max(10),

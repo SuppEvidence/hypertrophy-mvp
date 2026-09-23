@@ -68,12 +68,17 @@ function formatDate(date: Date) {
   }).format(date);
 }
 
+async function staleAnalysisCutoff() {
+  return new Date(Date.now() - 10 * 60 * 1000);
+}
+
 export default async function WorkoutAnalysisPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+  const staleBefore = await staleAnalysisCutoff();
   const userId = await requireUserId();
   const sessions = await prisma.workoutSession.findMany({
     where: { userId, status: "COMPLETED" },
@@ -86,6 +91,10 @@ export default async function WorkoutAnalysisPage({
       aiAnalysis: true,
       aiAnalysisModel: true,
       aiAnalyzedAt: true,
+      aiAnalysisStatus: true,
+      aiAnalysisError: true,
+      aiAnalysisAttemptedAt: true,
+      completedAt: true,
     },
   });
 
@@ -119,6 +128,18 @@ export default async function WorkoutAnalysisPage({
       ) : (
         sessions.map((session) => {
           const analysis = parseStoredAnalysis(session.aiAnalysis);
+          const analysisStatus = analysis
+            ? "COMPLETE"
+            : session.aiAnalysisStatus;
+          const statusSince = session.aiAnalysisAttemptedAt ?? session.completedAt;
+          const stale =
+            ["PENDING", "RUNNING"].includes(analysisStatus) &&
+            Boolean(statusSince && statusSince < staleBefore);
+          const canAnalyze =
+            Boolean(analysis) ||
+            analysisStatus === "FAILED" ||
+            analysisStatus === "NOT_REQUESTED" ||
+            stale;
 
           return (
             <Card key={session.id} className="overflow-hidden">
@@ -131,15 +152,34 @@ export default async function WorkoutAnalysisPage({
                       ? ` · analyzed ${formatDate(session.aiAnalyzedAt)}`
                       : " · not analyzed"}
                   </p>
+                  <span className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                    analysisStatus === "COMPLETE"
+                      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                      : analysisStatus === "FAILED" || stale
+                        ? "border-rose-400/20 bg-rose-400/10 text-rose-200"
+                        : "border-sky-400/20 bg-sky-400/10 text-sky-200"
+                  }`}>
+                    {stale ? "Analysis interrupted" : analysisStatus.toLowerCase().replaceAll("_", " ")}
+                  </span>
                 </div>
 
-                <form action={analyzeAdvisorWorkoutAction}>
-                  <input type="hidden" name="sessionId" value={session.id} />
-                  <Button type="submit" variant="secondary" pendingText="Analyzing…" className="min-h-10 border-orange-400/25 bg-orange-500/10 px-3 text-xs text-orange-200 hover:bg-orange-500/15">
-                    {analysis ? "Re-analyze" : "Analyze workout"}
-                  </Button>
-                </form>
+                {canAnalyze ? (
+                  <form action={analyzeAdvisorWorkoutAction}>
+                    <input type="hidden" name="sessionId" value={session.id} />
+                    <Button type="submit" variant="secondary" pendingText="Analyzing…" className="min-h-10 border-orange-400/25 bg-orange-500/10 px-3 text-xs text-orange-200 hover:bg-orange-500/15">
+                      {analysis ? "Re-analyze" : analysisStatus === "FAILED" || stale ? "Retry analysis" : "Analyze workout"}
+                    </Button>
+                  </form>
+                ) : (
+                  <p className="text-xs text-slate-500">Analysis runs automatically after completion.</p>
+                )}
               </div>
+
+              {session.aiAnalysisError && !analysis ? (
+                <p className="mt-3 rounded-xl border border-rose-400/15 bg-rose-400/[0.05] p-3 text-xs leading-5 text-rose-200/80">
+                  {session.aiAnalysisError}
+                </p>
+              ) : null}
 
               {analysis ? (
                 <div className="mt-4">

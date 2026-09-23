@@ -17,6 +17,7 @@ async function getActiveMesocycle(programId: string, userId: string, now = new D
     take: 12,
     include: {
       volumeTargets: { include: { muscle: true } },
+      musclePriorities: { include: { muscle: true } },
       repPolicies: true,
       movementRepPolicies: true,
       movementVolumeTargets: { include: { movementGroup: true } },
@@ -30,6 +31,7 @@ async function getMesocycleForPrescription(programId: string, userId: string, me
     where: { id: mesocycleId, programId, userId, isArchived: false },
     include: {
       volumeTargets: { include: { muscle: true } },
+      musclePriorities: { include: { muscle: true } },
       repPolicies: true,
       movementRepPolicies: true,
       movementVolumeTargets: { include: { movementGroup: true } },
@@ -117,6 +119,34 @@ export async function buildProgramPrescription(
     }),
   ]);
   if (!program) return null;
+  const mesocycleVolumeTargets = activeMesocycle
+    ? activeMesocycle.musclePriorities.length > 0
+      ? activeMesocycle.musclePriorities.map((priority) => ({
+          muscleId: priority.muscleId,
+          muscleName: priority.muscle.name,
+          sortOrder: priority.muscle.sortOrder,
+          targetSets: priority.coachTargetWeeklySets,
+          explicitTarget: true,
+          minimumSets: priority.rangeMinimumSets,
+          maximumSets: priority.rangeMaximumSets,
+          priorityLevel:
+            priority.priority === "SPECIALIZE"
+              ? 2
+              : priority.priority === "GROW"
+                ? 1
+                : 0,
+        }))
+      : activeMesocycle.volumeTargets.map((target) => ({
+          muscleId: target.muscleId,
+          muscleName: target.muscle.name,
+          sortOrder: target.muscle.sortOrder,
+          targetSets: target.targetSets,
+          explicitTarget: false,
+          minimumSets: target.minimumSets,
+          maximumSets: target.maximumSets,
+          priorityLevel: target.priorityLevel,
+        }))
+    : [];
   const templateExercises = program.templates.flatMap((template) =>
     template.exercises.map((item) => ({
       id: item.id,
@@ -163,7 +193,7 @@ export async function buildProgramPrescription(
       })),
     })),
   );
-  const generated = generateMesocyclePrescription({
+  const generationInput: Parameters<typeof generateMesocyclePrescription>[0] = {
     program: {
       secondaryContribution: program.secondaryContribution,
       volumeWindowDays: volumeWindowDays(program.volumeWindowType, program.customWindowDays ?? null),
@@ -177,15 +207,7 @@ export async function buildProgramPrescription(
     mesocycle: activeMesocycle
       ? {
           id: activeMesocycle.id,
-          volumeTargets: activeMesocycle.volumeTargets.map((target) => ({
-            muscleId: target.muscleId,
-            muscleName: target.muscle.name,
-            sortOrder: target.muscle.sortOrder,
-            targetSets: target.targetSets,
-            minimumSets: target.minimumSets,
-            maximumSets: target.maximumSets,
-            priorityLevel: target.priorityLevel,
-          })),
+          volumeTargets: mesocycleVolumeTargets,
           repPolicies: activeMesocycle.repPolicies.map((policy) => ({
             repBucket: policy.repBucket,
             minReps: policy.minReps,
@@ -239,7 +261,8 @@ export async function buildProgramPrescription(
         sortOrder: link.muscle.sortOrder,
       })),
     })),
-  });
+  };
+  const generated = generateMesocyclePrescription(generationInput);
   const storedWeeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan, weekStart);
   const completedTemplateIds: string[] = Array.from(
     new Set(
@@ -295,6 +318,7 @@ export async function buildProgramPrescription(
   return {
     program,
     activeMesocycle,
+    generationInput,
     generated: {
       ...generated,
       items: weekly.items,

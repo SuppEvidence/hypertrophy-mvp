@@ -87,6 +87,13 @@ enum WorkoutCoachActionStatus {
   SUPERSEDED
 }
 
+enum MusclePriority {
+  SPECIALIZE
+  GROW
+  MAINTAIN
+  INDIRECT_ONLY
+}
+
 model Profile {
   id        String   @id @db.Uuid
   email     String?  @unique
@@ -134,6 +141,7 @@ model Muscle {
   programPriorityLinks   ProgramPriorityMuscle[]
   volumeTargets          MuscleVolumeTarget[]
   mesocycleVolumeTargets MesocycleMuscleVolumeTarget[]
+  mesocyclePriorities    MesocycleMusclePriority[]
 
   @@map("muscles")
 }
@@ -277,6 +285,11 @@ model ProgramMesocycle {
   aiRecommendation      Json?     @map("ai_recommendation")
   aiRecommendationModel String?   @map("ai_recommendation_model")
   aiRecommendedAt       DateTime? @map("ai_recommended_at")
+  t3ActivatedAt         DateTime? @map("t3_activated_at")
+  t3LastEvaluatedAt     DateTime? @map("t3_last_evaluated_at")
+  t3EvaluationStatus    String    @default("NOT_CONFIGURED") @map("t3_evaluation_status")
+  t3EvaluationError     String?   @map("t3_evaluation_error")
+  t3Assessment          Json?     @map("t3_assessment")
   notes         String?
   isArchived  Boolean      @default(false) @map("is_archived")
   createdAt   DateTime     @default(now()) @map("created_at")
@@ -288,12 +301,41 @@ model ProgramMesocycle {
   repPolicies   MesocycleRepPolicy[]
   movementRepPolicies MesocycleMovementRepPolicy[]
   movementVolumeTargets MesocycleMovementVolumeTarget[]
+  musclePriorities MesocycleMusclePriority[]
   workoutSessions WorkoutSession[]
 
   @@index([userId, startDate])
   @@index([programId, startDate])
   @@index([programId, actualEndDate, startDate])
   @@map("program_mesocycles")
+}
+
+model MesocycleMusclePriority {
+  id                    String         @id @default(uuid()) @db.Uuid
+  mesocycleId           String         @db.Uuid @map("mesocycle_id")
+  muscleId              String         @db.Uuid @map("muscle_id")
+  priority              MusclePriority
+  baselineWeeklySets    Decimal        @map("baseline_weekly_sets") @db.Decimal(5, 2)
+  coachTargetWeeklySets Decimal        @map("coach_target_weekly_sets") @db.Decimal(5, 2)
+  rangeMinimumSets      Decimal        @map("range_minimum_sets") @db.Decimal(5, 2)
+  rangeMaximumSets      Decimal        @map("range_maximum_sets") @db.Decimal(5, 2)
+  coachingStatus        String         @default("BASELINE") @map("coaching_status")
+  confidence            String?
+  rationale             String?
+  evidence              Json?
+  activatedAt           DateTime       @default(now()) @map("activated_at")
+  lastEvaluatedAt       DateTime?      @map("last_evaluated_at")
+  lastAdjustedAt        DateTime?      @map("last_adjusted_at")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+
+  mesocycle ProgramMesocycle @relation(fields: [mesocycleId], references: [id], onDelete: Cascade)
+  muscle    Muscle           @relation(fields: [muscleId], references: [id], onDelete: Restrict)
+
+  @@unique([mesocycleId, muscleId])
+  @@index([muscleId])
+  @@index([mesocycleId, priority])
+  @@map("mesocycle_muscle_priorities")
 }
 
 model MesocycleMuscleVolumeTarget {
@@ -483,6 +525,9 @@ model WorkoutSession {
   aiAnalysis      Json?     @map("ai_analysis")
   aiAnalysisModel String?   @map("ai_analysis_model")
   aiAnalyzedAt    DateTime? @map("ai_analyzed_at")
+  aiAnalysisStatus String   @default("NOT_REQUESTED") @map("ai_analysis_status")
+  aiAnalysisError String?   @map("ai_analysis_error")
+  aiAnalysisAttemptedAt DateTime? @map("ai_analysis_attempted_at")
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
 

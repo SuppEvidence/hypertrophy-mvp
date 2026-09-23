@@ -15,12 +15,12 @@ import { WorkoutAnalysisSchema } from "@/lib/ai/workout-analysis-schema";
 import { TRAINING_PROGRAMMING_POLICY } from "@/lib/ai/training-policy";
 import {
   inferBodyCompositionTrend,
-  inferLocalReadiness,
   summarizeGlobalRecovery,
   validatePreWorkoutPlan,
   type PreWorkoutSlotCandidate,
 } from "@/lib/coaching/pre-workout-coach-policy";
 import { summarizeExerciseHistory, type ExerciseExposureInput } from "@/lib/calculations/training-analytics";
+import { loadCoachingHistory as loadHistory, summarizeMovementReadiness, coachingExposure as exposure } from "@/lib/server/coaching-evidence";
 import { prisma } from "@/lib/db/prisma";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
 
@@ -33,7 +33,6 @@ export const PreWorkoutCoachRequestSchema = z.object({
 
 type ProgramPrescription = NonNullable<Awaited<ReturnType<typeof buildProgramPrescription>>>;
 type PrescriptionItem = ProgramPrescription["generated"]["items"][number];
-type HistoryRow = Awaited<ReturnType<typeof loadHistory>>[number];
 
 export type ResolvedPreWorkoutSessionItem = {
   sourceSlotId: string;
@@ -64,95 +63,6 @@ function prescribedSets(item: PrescriptionItem) {
   return item.isMissedThisWeek ? item.adjustedPlannedSets : item.weeklyAdjustedPlannedSets;
 }
 
-function executionCompromised(value: unknown) {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).executionCompromised === true);
-}
-
-async function loadHistory(userId: string, programId: string, since: Date) {
-  return prisma.workoutSessionExercise.findMany({
-    where: { session: { userId, programId, status: "COMPLETED", performedAt: { gte: since } } },
-    orderBy: { session: { performedAt: "desc" } },
-    take: 500,
-    select: {
-      exerciseId: true,
-      templateExerciseId: true,
-      painFlag: true,
-      exercise: { select: { name: true, movementGroupId: true } },
-      session: { select: { templateId: true, performedAt: true } },
-      sets: {
-        where: { isCompleted: true }, orderBy: { setNumber: "asc" },
-        select: {
-          setNumber: true, weight: true, reps: true, rir: true, painFlag: true, intensifierDetails: true,
-          setType: { select: { multiplier: true, isIntensifier: true } },
-        },
-      },
-    },
-  });
-}
-
-function exposure(row: HistoryRow): ExerciseExposureInput {
-  return {
-    performedAt: row.session.performedAt,
-    sets: row.sets.map((set) => {
-      const comparable = !set.setType.isIntensifier && !executionCompromised(set.intensifierDetails);
-      return {
-        setNumber: set.setNumber,
-        weight: comparable ? set.weight : null,
-        reps: comparable ? set.reps : null,
-        rir: comparable ? set.rir : null,
-        isCompleted: true,
-        painFlag: set.painFlag || row.painFlag,
-        setTypeMultiplier: set.setType.multiplier,
-        isIntensifier: set.setType.isIntensifier,
-      };
-    }),
-  };
-}
-
-function summarizeMovementReadiness(args: {
-  movementGroups: Array<{ id: string; name: string }>;
-  history: HistoryRow[];
-  globalRecoveryStatus: ReturnType<typeof summarizeGlobalRecovery>["status"];
-  now: Date;
-}) {
-  const historyByExercise = new Map<string, ExerciseExposureInput[]>();
-  for (const row of [...args.history].reverse()) {
-    const rows = historyByExercise.get(row.exerciseId) ?? [];
-    rows.push(exposure(row));
-    historyByExercise.set(row.exerciseId, rows);
-  }
-  const historySummary = new Map(
-    [...historyByExercise.entries()].map(([exerciseId, rows]) => [exerciseId, summarizeExerciseHistory(rows)]),
-  );
-  return args.movementGroups.map((movement) => {
-    const rows = args.history.filter((row) => row.exercise.movementGroupId === movement.id);
-    const latest = rows[0]?.session.performedAt ?? null;
-    const cutoff48 = args.now.getTime() - 48 * 3_600_000;
-    const cutoff72 = args.now.getTime() - 72 * 3_600_000;
-    const cutoff14d = args.now.getTime() - 14 * 86_400_000;
-    const effectiveSetsSince = (cutoff: number) => rows
-      .filter((row) => row.session.performedAt.getTime() >= cutoff)
-      .reduce((sum, row) => sum + row.sets.reduce((setSum, set) => setSum + Math.max(0, Number(set.setType.multiplier)), 0), 0);
-    const recent = rows.filter((row) => row.session.performedAt.getTime() >= cutoff14d);
-    const exerciseIds = [...new Set(rows.map((row) => row.exerciseId))];
-    const downwardExerciseSignals = exerciseIds.filter((id) => {
-      const summary = historySummary.get(id);
-      return summary?.performanceDirection === "DOWN" && summary.confidence !== "INSUFFICIENT";
-    }).length;
-    return inferLocalReadiness({
-      movementGroupId: movement.id,
-      movementGroupName: movement.name,
-      hoursSinceLastExposure: latest ? Math.max(0, (args.now.getTime() - latest.getTime()) / 3_600_000) : null,
-      effectiveSetsLast48h: effectiveSetsSince(cutoff48),
-      effectiveSetsLast72h: effectiveSetsSince(cutoff72),
-      performanceExposureCount: rows.filter((row) => row.sets.some((set) => numberOrNull(set.weight) !== null && set.reps !== null)).length,
-      downwardExerciseSignals,
-      recentPainSets: recent.reduce((sum, row) => sum + row.sets.filter((set) => set.painFlag || row.painFlag).length, 0),
-      recentCompromisedSets: recent.reduce((sum, row) => sum + row.sets.filter((set) => executionCompromised(set.intensifierDetails)).length, 0),
-      globalRecoveryStatus: args.globalRecoveryStatus,
-    });
-  });
-}
 
 function planItems(prescription: ProgramPrescription) {
   return prescription.generated.items.filter((item) =>
@@ -348,6 +258,16 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
         volumeTargets: context.prescription.activeMesocycle.volumeTargets.map((target) => ({
           muscle: target.muscle.name, targetSets: numberOrNull(target.targetSets),
           minimumSets: numberOrNull(target.minimumSets), maximumSets: numberOrNull(target.maximumSets), priorityLevel: target.priorityLevel,
+        })),
+        t3Priorities: context.prescription.activeMesocycle.musclePriorities.map((target) => ({
+          muscle: target.muscle.name,
+          priority: target.priority,
+          coachTargetWeeklySets: numberOrNull(target.coachTargetWeeklySets),
+          evidenceBasedRange: [
+            numberOrNull(target.rangeMinimumSets),
+            numberOrNull(target.rangeMaximumSets),
+          ],
+          coachingStatus: target.coachingStatus,
         })),
       } : null,
       weeklyPlan: context.prescription.generated.weeklyPlan,

@@ -1,9 +1,14 @@
 "use server";
 
-import { Prisma, type ProgramPhase } from "@prisma/client";
+import { Prisma, type MusclePriority, type ProgramPhase } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { requireUserId } from "@/lib/auth/user";
+import {
+  initialT3Range,
+  isT3Priority,
+} from "@/lib/coaching/t3-volume-policy";
 import { prisma } from "@/lib/db/prisma";
 import { estimateE1RM } from "@/lib/calculations/performance";
 import { parseMesocycleStructureOverrides } from "@/lib/planning/mesocycleStructure";
@@ -138,6 +143,19 @@ export async function endMesocycle(mesocycleId: string, formData: FormData) {
     data: { actualEndDate },
   });
 
+  if (process.env.AUTO_MESOCYCLE_REVIEW_ENABLED !== "false") {
+    after(async () => {
+      try {
+        const { generateMesocycleRecommendationForUser } = await import(
+          "@/lib/server/ai-mesocycle-recommendations"
+        );
+        await generateMesocycleRecommendationForUser(userId, mesocycle.id);
+      } catch (error) {
+        console.error("Automatic mesocycle review failed", error);
+      }
+    });
+  }
+
   revalidatePath(`/programs/${mesocycle.programId}`);
   revalidatePath("/templates");
   revalidatePath("/log");
@@ -200,6 +218,144 @@ export async function updateMesocycleVolumeTargets(mesocycleId: string, formData
   revalidatePath("/log");
   revalidatePath("/dashboard");
   redirect(`/programs/${mesocycle.programId}?saved=1`);
+}
+
+export async function updateMesocycleMusclePriorities(
+  mesocycleId: string,
+  formData: FormData,
+) {
+  const userId = await requireUserId();
+  const mesocycle = await prisma.programMesocycle.findFirst({
+    where: { id: mesocycleId, userId, isArchived: false },
+    include: {
+      musclePriorities: true,
+      program: {
+        select: {
+          id: true,
+          volumeWindowType: true,
+          customWindowDays: true,
+        },
+      },
+    },
+  });
+  if (!mesocycle) redirect("/programs");
+
+  const muscles = await prisma.muscle.findMany({
+    orderBy: { sortOrder: "asc" },
+    select: { id: true },
+  });
+  const priorities = muscles.map((muscle) => {
+    const value = formData.get(`priority:${muscle.id}`);
+    if (!isT3Priority(value)) {
+      throw new Error("Every muscle needs a valid T3 priority.");
+    }
+    return { muscleId: muscle.id, priority: value };
+  });
+
+  const prescription = await buildProgramPrescription(mesocycle.programId, userId, {
+    mesocycleId: mesocycle.id,
+    includeWeeklyPlan: false,
+  });
+  if (!prescription) throw new Error("Could not build the mesocycle baseline.");
+
+  const windowDays = volumeWindowDays(
+    mesocycle.program.volumeWindowType,
+    mesocycle.program.customWindowDays,
+  );
+  const plannedByMuscle = new Map(
+    prescription.generated.volumeRows.map((row) => [
+      row.muscleId,
+      round((row.planned * 7) / windowDays),
+    ]),
+  );
+  const existingByMuscle = new Map(
+    mesocycle.musclePriorities.map((row) => [row.muscleId, row]),
+  );
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    for (const row of priorities) {
+      const existing = existingByMuscle.get(row.muscleId);
+      const planned = plannedByMuscle.get(row.muscleId) ?? 0;
+      const baseline = existing ? toNumber(existing.baselineWeeklySets) : planned;
+      const coachTarget = existing ? toNumber(existing.coachTargetWeeklySets) : planned;
+      const range =
+        existing && existing.priority === row.priority
+          ? {
+              minimum: toNumber(existing.rangeMinimumSets),
+              maximum: toNumber(existing.rangeMaximumSets),
+            }
+          : initialT3Range(row.priority, coachTarget);
+
+      await tx.mesocycleMusclePriority.upsert({
+        where: {
+          mesocycleId_muscleId: {
+            mesocycleId: mesocycle.id,
+            muscleId: row.muscleId,
+          },
+        },
+        create: {
+          mesocycleId: mesocycle.id,
+          muscleId: row.muscleId,
+          priority: row.priority as MusclePriority,
+          baselineWeeklySets: baseline,
+          coachTargetWeeklySets: coachTarget,
+          rangeMinimumSets: range.minimum,
+          rangeMaximumSets: range.maximum,
+          coachingStatus: "BASELINE",
+          activatedAt: now,
+        },
+        update: {
+          priority: row.priority as MusclePriority,
+          rangeMinimumSets: range.minimum,
+          rangeMaximumSets: range.maximum,
+          coachingStatus: existing?.priority === row.priority ? existing.coachingStatus : "BASELINE",
+          ...(existing?.priority !== row.priority ? { confidence: null, rationale: null, evidence: Prisma.DbNull, lastEvaluatedAt: null } : {}),
+        },
+      });
+    }
+
+    await tx.mesocycleMusclePriority.deleteMany({
+      where: {
+        mesocycleId: mesocycle.id,
+        muscleId: { notIn: priorities.map((row) => row.muscleId) },
+      },
+    });
+    await tx.programMesocycle.update({
+      where: { id: mesocycle.id },
+      data: {
+        t3ActivatedAt: mesocycle.t3ActivatedAt ?? now,
+        t3EvaluationStatus: "PENDING",
+        t3EvaluationError: null,
+        t3Assessment: Prisma.DbNull,
+        t3LastEvaluatedAt: null,
+      },
+    });
+    await tx.aiProgrammingDecision.updateMany({
+      where: { userId, mesocycleId: mesocycle.id, status: "PENDING" },
+      data: { status: "SUPERSEDED" },
+    });
+  });
+
+  if (process.env.T3_VOLUME_COACH_ENABLED !== "false") {
+    after(async () => {
+      try {
+        const { runT3VolumeEvaluationForUser } = await import(
+          "@/lib/server/ai-programming-decisions"
+        );
+        await runT3VolumeEvaluationForUser(userId, { force: true });
+      } catch (error) {
+        console.error("Initial T3 evaluation failed", error);
+      }
+    });
+  }
+
+  revalidatePath(`/programs/${mesocycle.programId}`);
+  revalidatePath("/ai-analysis/volume");
+  revalidatePath("/templates");
+  revalidatePath("/log");
+  revalidatePath("/dashboard");
+  redirect(`/programs/${mesocycle.programId}?t3PrioritiesSaved=1`);
 }
 
 export async function updateMesocycleRepPolicies(mesocycleId: string, formData: FormData) {
@@ -361,6 +517,7 @@ export async function getMesocyclePanelData(programId: string) {
     orderBy: { startDate: "desc" },
     include: {
       volumeTargets: { include: { muscle: true } },
+      musclePriorities: { include: { muscle: true } },
       repPolicies: true,
       movementRepPolicies: true,
       movementVolumeTargets: { include: { movementGroup: true } },
@@ -449,6 +606,7 @@ export async function getMesocyclePanelData(programId: string) {
       muscleId: target.muscleId,
       weeklyTargetSets: toNumber(target.weeklyTargetSets),
     })),
+    programPriorityMuscleIds: program.priorityMuscles.map((row) => row.muscleId),
     mesocycles: mesocycles.map((mesocycle) => {
       const plannedEndDate = plannedMesocycleEndDate(mesocycle.startDate, mesocycle.lengthWeeks);
       const effectiveEndDate = effectiveMesocycleEndDate(mesocycle.startDate, mesocycle.lengthWeeks, mesocycle.actualEndDate);
@@ -479,6 +637,21 @@ export async function getMesocyclePanelData(programId: string) {
         endedEarly: Boolean(mesocycle.actualEndDate && mesocycle.actualEndDate < plannedEndDate),
         lengthWeeks: mesocycle.lengthWeeks,
         notes: mesocycle.notes ?? "",
+        t3ActivatedAt: mesocycle.t3ActivatedAt?.toISOString() ?? null,
+        t3LastEvaluatedAt: mesocycle.t3LastEvaluatedAt?.toISOString() ?? null,
+        t3EvaluationStatus: mesocycle.t3EvaluationStatus,
+        t3EvaluationError: mesocycle.t3EvaluationError,
+        musclePriorities: mesocycle.musclePriorities.map((priority) => ({
+          muscleId: priority.muscleId,
+          priority: priority.priority,
+          baselineWeeklySets: toNumber(priority.baselineWeeklySets),
+          coachTargetWeeklySets: toNumber(priority.coachTargetWeeklySets),
+          rangeMinimumSets: toNumber(priority.rangeMinimumSets),
+          rangeMaximumSets: toNumber(priority.rangeMaximumSets),
+          coachingStatus: priority.coachingStatus,
+          confidence: priority.confidence,
+          rationale: priority.rationale,
+        })),
         volumeTargets: mesocycle.volumeTargets.map((target: any) => ({
           muscleId: target.muscleId,
           targetSets: toNumber(target.targetSets),

@@ -18,6 +18,19 @@ const HISTORY_EXPOSURES = 8;
 const PATTERN_HISTORY_EXPOSURES = 60;
 const MAX_BATCH_HISTORY_EXPOSURES = 500;
 
+function parseStoredAnalysis(value: unknown): WorkoutAnalysis | null {
+  const current = WorkoutAnalysisSchema.safeParse(value);
+  if (current.success) return current.data;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const legacy = WorkoutAnalysisSchema.safeParse({
+      ...(value as Record<string, unknown>),
+      movementPatternAssessments: [],
+    });
+    if (legacy.success) return legacy.data;
+  }
+  return null;
+}
+
 type CompletedSet = {
   setNumber: number;
   weight: unknown;
@@ -642,57 +655,108 @@ function createRuntimeWorkoutAnalysisSchema(
   });
 }
 
-export async function analyzeCompletedWorkoutForUser(sessionId: string, userId: string): Promise<WorkoutAnalysis> {
-  const context = await buildWorkoutContext(sessionId, userId);
-  const client = getOpenAIClient();
-  const model = getOpenAIModel();
-  const runtimeAnalysisSchema = createRuntimeWorkoutAnalysisSchema(context);
-
-  const response = await client.responses.parse({
-    model,
-    input: [
-      { role: "system", content: SYSTEM_INSTRUCTIONS },
-      {
-        role: "user",
-        content: `Analyze this completed workout. Return one exerciseAssessment for every exercise and one set assessment for every completed set. Copy every sessionExerciseId and movementPatternId exactly from the supplied context; never invent, shorten, reformat, or substitute an identifier.\n\n${JSON.stringify(context)}`,
-      },
-    ],
-    text: {
-      format: zodTextFormat(runtimeAnalysisSchema, "hypertrophy_workout_analysis"),
+export async function analyzeCompletedWorkoutForUser(
+  sessionId: string,
+  userId: string,
+  options?: { force?: boolean },
+): Promise<WorkoutAnalysis> {
+  const stored = await prisma.workoutSession.findFirst({
+    where: { id: sessionId, userId, status: "COMPLETED" },
+    select: {
+      aiAnalysis: true,
+      aiAnalysisStatus: true,
+      aiAnalysisAttemptedAt: true,
     },
   });
-
-  const parsed = response.output_parsed;
-  if (!parsed) {
-    throw new Error(`OpenAI returned no parsed workout analysis. Response status: ${response.status}`);
+  if (!stored) throw new Error("Completed workout not found.");
+  const existing = parseStoredAnalysis(stored.aiAnalysis);
+  if (!options?.force && stored.aiAnalysisStatus === "COMPLETE" && existing) {
+    return existing;
+  }
+  if (
+    !options?.force &&
+    stored.aiAnalysisStatus === "RUNNING" &&
+    stored.aiAnalysisAttemptedAt &&
+    Date.now() - stored.aiAnalysisAttemptedAt.getTime() < 10 * 60 * 1000
+  ) {
+    if (existing) return existing;
+    throw new Error("Workout analysis is already running.");
   }
 
-  const validSessionExerciseIds = new Set(context.exercises.map((exercise) => exercise.sessionExerciseId));
-  for (const assessment of parsed.exerciseAssessments) {
-    if (!validSessionExerciseIds.has(assessment.sessionExerciseId)) {
-      throw new Error("AI analysis returned an unknown sessionExerciseId.");
-    }
-  }
-
-  const validMovementPatternIds = new Set(
-    context.movementPatterns.map((pattern) => pattern.movementPatternId),
-  );
-  for (const assessment of parsed.movementPatternAssessments) {
-    if (!validMovementPatternIds.has(assessment.movementPatternId)) {
-      throw new Error("AI analysis returned an unknown movementPatternId.");
-    }
-  }
-
+  const attemptedAt = new Date();
   await prisma.workoutSession.update({
     where: { id: sessionId },
     data: {
-      aiAnalysis: parsed as unknown as Prisma.InputJsonValue,
-      aiAnalysisModel: model,
-      aiAnalyzedAt: new Date(),
+      aiAnalysisStatus: "RUNNING",
+      aiAnalysisError: null,
+      aiAnalysisAttemptedAt: attemptedAt,
     },
   });
 
-  return parsed;
+  try {
+    const context = await buildWorkoutContext(sessionId, userId);
+    const client = getOpenAIClient();
+    const model = getOpenAIModel();
+    const runtimeAnalysisSchema = createRuntimeWorkoutAnalysisSchema(context);
+
+    const response = await client.responses.parse({
+      model,
+      input: [
+        { role: "system", content: SYSTEM_INSTRUCTIONS },
+        {
+          role: "user",
+          content: `Analyze this completed workout. Return one exerciseAssessment for every exercise and one set assessment for every completed set. Copy every sessionExerciseId and movementPatternId exactly from the supplied context; never invent, shorten, reformat, or substitute an identifier.\n\n${JSON.stringify(context)}`,
+        },
+      ],
+      text: {
+        format: zodTextFormat(runtimeAnalysisSchema, "hypertrophy_workout_analysis"),
+      },
+    }, { timeout: 30_000, maxRetries: 0 });
+
+    const parsed = response.output_parsed;
+    if (!parsed) {
+      throw new Error(`OpenAI returned no parsed workout analysis. Response status: ${response.status}`);
+    }
+
+    const validSessionExerciseIds = new Set(context.exercises.map((exercise) => exercise.sessionExerciseId));
+    for (const assessment of parsed.exerciseAssessments) {
+      if (!validSessionExerciseIds.has(assessment.sessionExerciseId)) {
+        throw new Error("AI analysis returned an unknown sessionExerciseId.");
+      }
+    }
+
+    const validMovementPatternIds = new Set(
+      context.movementPatterns.map((pattern) => pattern.movementPatternId),
+    );
+    for (const assessment of parsed.movementPatternAssessments) {
+      if (!validMovementPatternIds.has(assessment.movementPatternId)) {
+        throw new Error("AI analysis returned an unknown movementPatternId.");
+      }
+    }
+
+    await prisma.workoutSession.update({
+      where: { id: sessionId },
+      data: {
+        aiAnalysis: parsed as unknown as Prisma.InputJsonValue,
+        aiAnalysisModel: model,
+        aiAnalyzedAt: new Date(),
+        aiAnalysisStatus: "COMPLETE",
+        aiAnalysisError: null,
+      },
+    });
+
+    return parsed;
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? (error.message.trim() || "Workout analysis failed.").slice(0, 500)
+        : "Workout analysis failed.";
+    await prisma.workoutSession.update({
+      where: { id: sessionId },
+      data: { aiAnalysisStatus: "FAILED", aiAnalysisError: message },
+    });
+    throw error;
+  }
 }
 
 export async function analyzeWorkoutAction(formData: FormData) {
@@ -700,6 +764,6 @@ export async function analyzeWorkoutAction(formData: FormData) {
   const sessionId = String(formData.get("sessionId") ?? "");
   if (!sessionId) throw new Error("Missing workout session id.");
 
-  await analyzeCompletedWorkoutForUser(sessionId, userId);
+  await analyzeCompletedWorkoutForUser(sessionId, userId, { force: true });
   revalidatePath("/ai-analysis");
 }

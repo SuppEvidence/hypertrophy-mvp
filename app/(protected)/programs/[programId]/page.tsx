@@ -5,12 +5,14 @@ import { ProgramForm } from "@/components/programs/ProgramForm";
 import { MesocyclePanel } from "@/components/programs/MesocyclePanel";
 import { PageHeader } from "@/components/ui/PageHeader";
 
+export const maxDuration = 120;
+
 export default async function EditProgramPage({
   params,
   searchParams,
 }: {
   params: Promise<{ programId: string }>;
-  searchParams?: Promise<{ saved?: string; mesocycleEnded?: string; mesocycleEndError?: string }>;
+  searchParams?: Promise<{ saved?: string; t3PrioritiesSaved?: string; mesocycleEnded?: string; mesocycleEndError?: string }>;
 }) {
   const { programId } = await params;
   const query = await searchParams;
@@ -32,6 +34,9 @@ export default async function EditProgramPage({
       />
       {query?.saved ? (
         <div className="rounded-2xl border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-100">Planning changes saved.</div>
+      ) : null}
+      {query?.t3PrioritiesSaved ? (
+        <div className="rounded-2xl border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-100">T3 priorities saved. The current prescription remains the starting baseline; the automatic assessment appears under AI Advisor → Volume Coaching.</div>
       ) : null}
       {query?.mesocycleEnded ? (
         <div className="rounded-2xl border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-100">Mesocycle ended. Its overlay is no longer active and the review now uses the actual end date.</div>

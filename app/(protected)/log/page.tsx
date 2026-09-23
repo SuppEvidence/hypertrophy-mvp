@@ -2,6 +2,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { WorkoutLogger } from "@/components/workouts/WorkoutLogger";
 import { getWorkoutLoggerData } from "@/lib/server/workouts";
 
+export const maxDuration = 180;
+
 type PageProps = {
   searchParams: Promise<{
     programId?: string;

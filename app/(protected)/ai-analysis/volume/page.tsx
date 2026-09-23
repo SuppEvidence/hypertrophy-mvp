@@ -1,11 +1,19 @@
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import Link from "next/link";
 import { StoredProgrammingOptionsSchema } from "@/lib/ai/programming-decision-schema";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
+import { getDashboardData } from "@/lib/server/dashboard";
+import { t3PriorityLabel } from "@/lib/coaching/t3-volume-policy";
+import { T3_REVIEW_LEASE_MS } from "@/lib/coaching/t3-volume-policy";
+import { T3PlanPreviewSchema } from "@/lib/coaching/t3-prescription-preview";
 import {
   generateAdvisorVolumeRecommendationsAction,
   selectAdvisorProgrammingDecisionAction,
 } from "@/lib/server/ai-advisor-actions";
+
+export const maxDuration = 120;
 
 function label(value: string) {
   return value.toLowerCase().replaceAll("_", " ");
@@ -42,6 +50,10 @@ function formatDate(date: Date) {
   }).format(date);
 }
 
+async function staleT3Cutoff() {
+  return new Date(Date.now() - T3_REVIEW_LEASE_MS);
+}
+
 export default async function VolumeRecommendationsPage({
   searchParams,
 }: {
@@ -49,8 +61,26 @@ export default async function VolumeRecommendationsPage({
 }) {
   const { error } = await searchParams;
   const userId = await requireUserId();
+  const staleBefore = await staleT3Cutoff();
+  const dashboard = await getDashboardData(userId);
+  const mesocycle = dashboard.mesocycle?.status === "Current"
+    ? await prisma.programMesocycle.findFirst({
+        where: { id: dashboard.mesocycle.id, userId },
+        include: {
+          musclePriorities: {
+            include: { muscle: true },
+            orderBy: { muscle: { sortOrder: "asc" } },
+          },
+        },
+      })
+    : null;
   const recent = await prisma.aiProgrammingDecision.findMany({
-    where: { userId, status: { in: ["PENDING", "SELECTED"] } },
+    where: {
+      userId,
+      mesocycleId: mesocycle?.id ?? "00000000-0000-0000-0000-000000000000",
+      decisionType: "T3_MUSCLE_VOLUME",
+      status: { in: ["PENDING", "SELECTED"] },
+    },
     orderBy: { createdAt: "desc" },
     take: 20,
     select: {
@@ -72,13 +102,26 @@ export default async function VolumeRecommendationsPage({
     },
   });
 
-  const latestGenerationId = recent[0]?.generationId ?? null;
+  const storedAssessment = mesocycle?.t3Assessment && typeof mesocycle.t3Assessment === "object" && !Array.isArray(mesocycle.t3Assessment)
+    ? mesocycle.t3Assessment as Record<string, unknown>
+    : null;
+  const latestGenerationId = typeof storedAssessment?.generationId === "string"
+    ? storedAssessment.generationId : null;
   const decisions = latestGenerationId
     ? recent
         .filter((decision) => decision.generationId === latestGenerationId)
         .sort((a, b) => a.targetMuscleName.localeCompare(b.targetMuscleName))
     : [];
-  const summary = decisions[0] ? globalSummary(decisions[0].context) : null;
+  const summary = typeof storedAssessment?.globalSummary === "string"
+    ? storedAssessment.globalSummary : decisions[0] ? globalSummary(decisions[0].context) : null;
+  const bodyContext = typeof storedAssessment?.bodyCompositionContext === "string"
+    ? storedAssessment.bodyCompositionContext : null;
+  const configured = Boolean(mesocycle?.t3ActivatedAt && mesocycle.musclePriorities.length > 0);
+  const staleReview = Boolean(
+    mesocycle &&
+    ["PENDING", "RUNNING"].includes(mesocycle.t3EvaluationStatus) &&
+    mesocycle.updatedAt < staleBefore,
+  );
 
   return (
     <div className="space-y-4">
@@ -90,21 +133,20 @@ export default async function VolumeRecommendationsPage({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-100">
-            Volume recommendations
+            Volume coaching
           </h2>
           <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-500">
-            Current-block decisions from workout evidence, recovery, movement
-            patterns, historical response, and recorded symptom context.
+            T3 reviews the current block automatically using outcome priorities,
+            workout evidence, recovery, Metrics, symptoms, and historical response.
           </p>
         </div>
-        <form action={generateAdvisorVolumeRecommendationsAction}>
-          <button
-            type="submit"
-            className="min-h-10 rounded-xl bg-orange-500 px-4 text-xs font-bold text-white transition hover:bg-orange-400"
-          >
-            {decisions.length > 0 ? "Refresh recommendations" : "Generate recommendations"}
-          </button>
-        </form>
+        {configured && (mesocycle?.t3EvaluationStatus !== "RUNNING" || staleReview) ? (
+          <form action={generateAdvisorVolumeRecommendationsAction}>
+            <Button type="submit" pendingText="Reviewing volume…" className="text-xs">
+              {mesocycle?.t3EvaluationStatus === "FAILED" || staleReview ? "Retry T3 review" : "Review volume"}
+            </Button>
+          </form>
+        ) : null}
       </div>
 
       <div className="rounded-xl border border-sky-400/15 bg-sky-400/[0.05] px-3 py-2.5 text-xs leading-5 text-slate-400">
@@ -114,13 +156,13 @@ export default async function VolumeRecommendationsPage({
         issue by the number of sets performed.
       </div>
 
-      {decisions.length === 0 ? (
+      {!configured ? (
         <Card>
-          <p className="font-semibold text-slate-100">No active volume review</p>
+          <p className="font-semibold text-slate-100">Set your block priorities</p>
           <p className="mt-1 text-sm leading-6 text-slate-400">
-            Generate recommendations once you have enough properly logged and
-            analyzed workouts. HOLD remains the default when evidence is sparse.
+            Activate T3 in the current mesocycle. It captures the current prescription as the transition baseline and then evaluates evidence automatically.
           </p>
+          {dashboard.activeProgram ? <Link href={`/programs/${dashboard.activeProgram.id}`} className="mt-3 inline-flex text-xs font-semibold text-orange-300">Open mesocycle priorities</Link> : null}
         </Card>
       ) : (
         <>
@@ -128,18 +170,39 @@ export default async function VolumeRecommendationsPage({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                  Latest review
+                  Latest T3 assessment · {mesocycle?.t3EvaluationStatus.toLowerCase().replaceAll("_", " ")}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-slate-300">
-                  {summary ?? "Current programming review generated."}
+                  {summary ?? "Waiting for enough current-block evidence to assess the useful dose. The baseline remains in place."}
                 </p>
+                {bodyContext ? <p className="mt-2 text-xs leading-5 text-slate-500">{bodyContext}</p> : null}
+                {mesocycle?.t3EvaluationError ? <p className="mt-2 text-xs text-rose-300">{mesocycle.t3EvaluationError}</p> : null}
+                {stringArray(storedAssessment?.reviewNotes).map((note, index) => <p key={index} className="mt-2 text-xs text-amber-200">{note}</p>)}
+                {mesocycle?.t3EvaluationStatus === "RUNNING" ? <p role="status" className="mt-2 text-xs text-orange-300">Reviewing volume… Refresh shortly to see the result.</p> : null}
               </div>
               <div className="text-right text-[11px] text-slate-600">
-                <p>{formatDate(decisions[0].createdAt)}</p>
-                <p className="mt-1">{decisions[0].model}</p>
+                {mesocycle?.t3LastEvaluatedAt ? <p>{formatDate(mesocycle.t3LastEvaluatedAt)}</p> : null}
               </div>
             </div>
           </Card>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            {mesocycle?.musclePriorities.map((row) => (
+              <Card key={row.muscleId}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-100">{row.muscle.name}</p>
+                  <span className="text-[11px] text-orange-300">{t3PriorityLabel(row.priority)}</span>
+                </div>
+                <p className="mt-2 text-xs text-slate-400">
+                  Approved target {Number(row.coachTargetWeeklySets)} · estimated useful range {Number(row.rangeMinimumSets)}–{Number(row.rangeMaximumSets)} effective sets/wk
+                </p>
+                <p className="mt-1 text-xs text-slate-500">{label(row.coachingStatus)}{row.confidence ? ` · ${label(row.confidence)} confidence` : ""}</p>
+                {row.rationale ? <p className="mt-2 text-xs leading-5 text-slate-500">{row.rationale}</p> : null}
+              </Card>
+            ))}
+          </div>
+
+          {decisions.length > 0 ? <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Approval-needed changes</h3> : null}
 
           <div className="space-y-3">
             {decisions.map((decision) => {
@@ -190,6 +253,9 @@ export default async function VolumeRecommendationsPage({
 
                   <div className="mt-3 grid gap-2 lg:grid-cols-2">
                     {options.map((option) => {
+                      const context = decision.context && typeof decision.context === "object" && !Array.isArray(decision.context) ? decision.context : {};
+                      const previews = context.optionPreviews && typeof context.optionPreviews === "object" && !Array.isArray(context.optionPreviews) ? context.optionPreviews : {};
+                      const preview = T3PlanPreviewSchema.safeParse(previews[option.optionKey]);
                       const preferred =
                         decision.recommendedOptionKey === option.optionKey;
                       const isSelected =
@@ -236,6 +302,12 @@ export default async function VolumeRecommendationsPage({
                           <p className="mt-2 text-xs leading-5 text-slate-500">
                             {option.rationale}
                           </p>
+                          {preview.success ? <div className="mt-3 space-y-1 text-xs text-slate-300">
+                            <p className="font-semibold">Changes if approved</p>
+                            {preview.data.slots.map((slot) => <p key={slot.id}>{slot.template} · {slot.exercise}: {slot.before} → {slot.after} sets</p>)}
+                            {preview.data.muscles.map((muscle) => <p key={muscle.muscleId}>{muscle.name}: {muscle.before} → {muscle.after} effective sets/week</p>)}
+                            <p className="text-slate-500">Physical set changes follow the template’s repeat frequency. Secondary-muscle effects are included above.</p>
+                          </div> : <p className="mt-2 text-xs text-amber-200">Run a new volume review to preview this older option.</p>}
 
                           {!selected ? (
                             <form
@@ -252,12 +324,15 @@ export default async function VolumeRecommendationsPage({
                                 name="selectionKey"
                                 value={option.optionKey}
                               />
-                              <button
+                              <Button
                                 type="submit"
+                                variant="secondary"
+                                pendingText="Applying…"
+                                disabled={!preview.success}
                                 className="min-h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs font-semibold text-slate-200 transition hover:border-orange-400/40 hover:text-orange-200"
                               >
                                 Choose this option
-                              </button>
+                              </Button>
                             </form>
                           ) : null}
                         </div>
@@ -307,20 +382,21 @@ export default async function VolumeRecommendationsPage({
                           name="selectionKey"
                           value="KEEP_AS_IS"
                         />
-                        <button
+                        <Button
                           type="submit"
+                          variant="secondary"
+                          pendingText="Saving…"
                           className="min-h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs font-semibold text-slate-200 transition hover:border-emerald-400/40 hover:text-emerald-200"
                         >
                           Keep current setup
-                        </button>
+                        </Button>
                       </form>
                     ) : null}
                   </div>
 
                   {selected ? (
                     <p className="mt-3 text-xs leading-5 text-emerald-300">
-                      Selection recorded as AI learning memory. It has not
-                      changed the program or templates automatically.
+                      Selection recorded. A chosen dose change updates this mesocycle’s coach target; structural slot changes remain approval-gated.
                     </p>
                   ) : null}
                 </Card>

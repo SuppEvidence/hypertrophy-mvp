@@ -1,6 +1,5 @@
 import { Card } from "@/components/ui/Card";
 import { requireUserId } from "@/lib/auth/user";
-import { generateAdvisorMesocycleRecommendationAction } from "@/lib/server/ai-advisor-actions";
 import {
   getCurrentMesocycleRecommendationForUser,
 } from "@/lib/server/ai-mesocycle-recommendations";
@@ -49,10 +48,9 @@ export default async function MesocycleRecommendationsPage({
   if (!current) {
     return (
       <Card>
-        <h2 className="font-semibold text-slate-100">No current mesocycle</h2>
+        <h2 className="font-semibold text-slate-100">No block review yet</h2>
         <p className="mt-1 text-sm leading-6 text-slate-400">
-          Start or configure a current mesocycle before generating a next-block
-          recommendation.
+          Configure T3 priorities for a current block. Its next-block review appears automatically in the final week or after ending the block early.
         </p>
       </Card>
     );
@@ -73,28 +71,20 @@ export default async function MesocycleRecommendationsPage({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-100">
-            Mesocycle recommendations
+            Next-block review
           </h2>
           <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-500">
-            End-of-block review for next priorities, weekly volume, movement
-            allocation, symptom precautions, and future template changes.
+            An automatic transition review for next-block priorities, movement
+            implementation, symptom precautions, and future template changes. T3 owns current-block volume.
           </p>
         </div>
-        <form action={generateAdvisorMesocycleRecommendationAction}>
-          <button
-            type="submit"
-            className="min-h-10 rounded-xl bg-orange-500 px-4 text-xs font-bold text-white transition hover:bg-orange-400"
-          >
-            {recommendation ? "Refresh meso review" : "Generate meso review"}
-          </button>
-        </form>
       </div>
 
       <Card className="border-orange-400/15 bg-gradient-to-br from-slate-900 to-orange-950/10">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-orange-300/80">
-              Current block
+              Reviewed block
             </p>
             <h3 className="mt-1 text-xl font-semibold text-slate-50">
               {current.name}
@@ -104,14 +94,14 @@ export default async function MesocycleRecommendationsPage({
             </p>
           </div>
           <span className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-300">
-            Ends {formatDate(plannedEnd)}
+            Planned end {formatDate(plannedEnd)}
           </span>
         </div>
       </Card>
 
       {!recommendation ? (
         <Card>
-          <p className="font-semibold text-slate-100">Ready for the first end-of-block review</p>
+          <p className="font-semibold text-slate-100">Review will appear near the block transition</p>
           <p className="mt-2 text-sm leading-6 text-slate-400">
             The first AI-era transition does not need a prior completed
             mesocycle. The Advisor will treat historical dose-response as
@@ -119,9 +109,8 @@ export default async function MesocycleRecommendationsPage({
             this block mainly to establish the baseline for later comparisons.
           </p>
           <p className="mt-3 text-xs leading-5 text-slate-500">
-            Best used near the end of the block after the relevant workouts have
-            been analyzed. Generating a review does not modify the program or
-            templates automatically.
+            The review runs after a workout in the final week or when you end
+            the block early. It does not modify the next block or templates automatically.
           </p>
         </Card>
       ) : (
@@ -238,6 +227,9 @@ export default async function MesocycleRecommendationsPage({
                       <p className="text-sm font-semibold text-slate-100">
                         {item.muscleName}
                       </p>
+                      <p className="mt-1 text-xs font-medium text-slate-300">
+                        {label(item.currentPriority)} → {label(item.suggestedPriority)}
+                      </p>
                       <p className="mt-1 text-xs leading-5 text-slate-500">
                         {item.rationale}
                       </p>
@@ -254,41 +246,6 @@ export default async function MesocycleRecommendationsPage({
               ) : (
                 <p className="text-sm text-slate-500">No priority changes suggested.</p>
               )}
-            </div>
-          </Card>
-
-          <Card>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-              Weekly volume
-            </p>
-            <div className="mt-3 divide-y divide-white/[0.06]">
-              {recommendation.volumeRecommendations.map((item, index) => (
-                <div
-                  key={`${item.muscleName}-${index}`}
-                  className="py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-slate-100">
-                      {item.muscleName}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs tabular-nums text-slate-500">
-                        {item.currentTargetSets ?? "—"} → {item.suggestedTargetSets ?? "—"} sets/wk
-                      </span>
-                      <span
-                        className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${actionClass(
-                          item.action,
-                        )}`}
-                      >
-                        {label(item.action)}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    {item.rationale}
-                  </p>
-                </div>
-              ))}
             </div>
           </Card>
 

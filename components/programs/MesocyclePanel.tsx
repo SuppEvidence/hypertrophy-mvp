@@ -6,9 +6,8 @@ import {
   endMesocycle,
   removeMesocycleStructureOverride,
   updateMesocycle,
+  updateMesocycleMusclePriorities,
   updateMesocycleMovementRepPolicies,
-  updateMesocycleMovementVolumeTargets,
-  updateMesocycleVolumeTargets,
 } from "@/lib/server/mesocycles";
 import { phaseOptions } from "@/lib/programs/options";
 import { Button } from "@/components/ui/Button";
@@ -29,6 +28,21 @@ type Mesocycle = {
   endedEarly: boolean;
   lengthWeeks: number;
   notes: string;
+  t3ActivatedAt: string | null;
+  t3LastEvaluatedAt: string | null;
+  t3EvaluationStatus: string;
+  t3EvaluationError: string | null;
+  musclePriorities: Array<{
+    muscleId: string;
+    priority: "SPECIALIZE" | "GROW" | "MAINTAIN" | "INDIRECT_ONLY";
+    baselineWeeklySets: number;
+    coachTargetWeeklySets: number;
+    rangeMinimumSets: number;
+    rangeMaximumSets: number;
+    coachingStatus: string;
+    confidence: string | null;
+    rationale: string | null;
+  }>;
   volumeTargets: Array<{
     muscleId: string;
     targetSets: number;
@@ -124,6 +138,7 @@ type Props = {
     muscles: Array<{ id: string; name: string }>;
     movementGroups: Array<{ id: string; name: string }>;
     programTargets: Array<{ muscleId: string; weeklyTargetSets: number }>;
+    programPriorityMuscleIds: string[];
     mesocycles: Mesocycle[];
     reviews: Review[];
   };
@@ -221,39 +236,65 @@ function EndMesocycleForm({ mesocycle }: { mesocycle: Mesocycle }) {
   );
 }
 
-function MesocycleTargetsForm({ mesocycle, muscles, programTargets }: { mesocycle: Mesocycle; muscles: Array<{ id: string; name: string }>; programTargets: Array<{ muscleId: string; weeklyTargetSets: number }> }) {
-  const targetMap = new Map(mesocycle.volumeTargets.map((target) => [target.muscleId, target]));
-  const fallbackMap = new Map(programTargets.map((target) => [target.muscleId, target.weeklyTargetSets]));
+const priorityOptions = [
+  { value: "SPECIALIZE", label: "High priority", help: "Protect and pursue the strongest supported growth response." },
+  { value: "GROW", label: "Grow", help: "Seek growth while keeping recovery and other priorities balanced." },
+  { value: "MAINTAIN", label: "Maintenance", help: "Use the lowest supported dose that preserves the current result." },
+  { value: "INDIRECT_ONLY", label: "No direct focus", help: "Do not add direct work; incidental training can remain." },
+] as const;
+
+function MesocyclePrioritiesForm({ mesocycle, muscles, programTargets, programPriorityMuscleIds }: {
+  mesocycle: Mesocycle;
+  muscles: Array<{ id: string; name: string }>;
+  programTargets: Array<{ muscleId: string; weeklyTargetSets: number }>;
+  programPriorityMuscleIds: string[];
+}) {
+  const priorityMap = new Map(mesocycle.musclePriorities.map((target) => [target.muscleId, target]));
+  const legacyMap = new Map(mesocycle.volumeTargets.map((target) => [target.muscleId, target.targetSets]));
+  const programTargetMap = new Map(programTargets.map((target) => [target.muscleId, target.weeklyTargetSets]));
+  const programPrioritySet = new Set(programPriorityMuscleIds);
 
   return (
-    <form action={updateMesocycleVolumeTargets.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
+    <form action={updateMesocycleMusclePriorities.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-orange-500/20 bg-orange-500/[0.035] p-3">
       <div>
-        <h4 className="font-semibold text-slate-100">Muscle-target exceptions</h4>
-        <p className="mt-1 text-xs text-slate-500">Optional weekly overrides. Leave a target blank to inherit the program baseline shown below it.</p>
+        <h4 className="font-semibold text-slate-100">T3 muscle priorities</h4>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          Set the intended outcome, not a weekly-set quota. On first save the coach captures the current prescription as the transition baseline, so enabling T3 during an ongoing block does not immediately rewrite it.
+        </p>
       </div>
       <div className="space-y-2">
         {muscles.map((muscle) => {
-          const target = targetMap.get(muscle.id);
+          const target = priorityMap.get(muscle.id);
+          const fallback = legacyMap.get(muscle.id) ?? programTargetMap.get(muscle.id) ?? 0;
+          const defaultPriority = target?.priority ?? (programPrioritySet.has(muscle.id) ? "SPECIALIZE" : fallback > 0 ? "GROW" : "INDIRECT_ONLY");
           return (
-            <div key={muscle.id} className="grid grid-cols-[1fr_90px_auto] items-end gap-2 rounded-xl border border-slate-800 p-2">
+            <div key={muscle.id} className="grid gap-2 rounded-xl border border-slate-800 bg-slate-950/55 p-2 md:grid-cols-[1fr_180px] md:items-center">
               <div>
                 <p className="text-sm font-semibold text-slate-200">{muscle.name}</p>
-                <p className="text-xs text-slate-500">Inherited: {fallbackMap.get(muscle.id) ?? 0} sets/wk</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {target
+                    ? `Baseline ${target.baselineWeeklySets} · coach target ${target.coachTargetWeeklySets} sets/wk · ${target.coachingStatus.toLowerCase().replaceAll("_", " ")}`
+                    : `Current prescription (~${fallback} sets/wk) will be captured as baseline`}
+                </p>
               </div>
-              <Field label="Override / wk" name={`target:${muscle.id}`} type="number" min="0" max="40" step="0.5" defaultValue={target?.targetSets ?? ""} />
-              <input type="hidden" name={`min:${muscle.id}`} value={target?.minimumSets ?? ""} />
-              <input type="hidden" name={`max:${muscle.id}`} value={target?.maximumSets ?? ""} />
-              <label className="flex min-h-12 flex-col justify-end gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Block priority
-                <span className="flex min-h-12 items-center justify-center rounded-xl border border-slate-800 bg-slate-950 px-3">
-                  <input name={`priority:${muscle.id}`} type="checkbox" defaultChecked={(target?.priorityLevel ?? 0) > 0} className="h-5 w-5" />
-                </span>
+              <label className="block space-y-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Outcome priority</span>
+                <select name={`priority:${muscle.id}`} defaultValue={defaultPriority} className={selectClass}>
+                  {priorityOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
               </label>
             </div>
           );
         })}
       </div>
-      <Button type="submit" variant="secondary" className="w-full">Save muscle exceptions</Button>
+      <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+        {priorityOptions.map((option) => <p key={option.value}><span className="font-semibold text-slate-300">{option.label}:</span> {option.help}</p>)}
+      </div>
+      <Button type="submit" variant="secondary" pendingText="Activating coach…" className="w-full">
+        {mesocycle.t3ActivatedAt ? "Save priorities" : "Activate T3 priorities"}
+      </Button>
     </form>
   );
 }
@@ -282,29 +323,6 @@ function MesocycleMovementRepPolicyForm({ mesocycle, movementGroups }: { mesocyc
   );
 }
 
-function MesocycleMovementVolumeTargetsForm({ mesocycle, movementGroups }: { mesocycle: Mesocycle; movementGroups: Array<{ id: string; name: string }> }) {
-  const targetMap = new Map(mesocycle.movementVolumeTargets.map((target) => [target.movementGroupId, target]));
-
-  return (
-    <form action={updateMesocycleMovementVolumeTargets.bind(null, mesocycle.id)} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-      <div>
-        <h4 className="font-semibold text-slate-100">Movement-pattern prescription targets</h4>
-        <p className="mt-1 text-xs text-slate-500">Optional weekly effective-set targets for this block. They are more specific than muscle baselines, so the generator uses them to adjust matching slots and to suggest temporary structure changes when needed.</p>
-      </div>
-      {movementGroups.map((movementGroup) => {
-        const target = targetMap.get(movementGroup.id);
-        return (
-          <div key={movementGroup.id} className="grid grid-cols-[1fr_90px] items-end gap-2 rounded-xl border border-slate-800 p-2">
-            <p className="text-sm font-semibold text-slate-200">{movementGroup.name}</p>
-            <Field label="Effective / wk" name={`target:${movementGroup.id}`} type="number" min="0" max="60" step="0.5" defaultValue={target?.targetSets ?? ""} />
-          </div>
-        );
-      })}
-      <Button type="submit" variant="secondary" className="w-full">Save movement targets</Button>
-    </form>
-  );
-}
-
 function MesocycleStructurePlan({ mesocycle }: { mesocycle: Mesocycle }) {
   const plan = mesocycle.structurePlan;
   const editable = mesocycle.status !== "COMPLETED";
@@ -322,7 +340,7 @@ function MesocycleStructurePlan({ mesocycle }: { mesocycle: Mesocycle }) {
 
       {!hasMovementTargets ? (
         <p className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-500">
-          Set movement-pattern effective-set targets above to enable structural suggestions. Muscle targets remain the program-level volume foundation; movement targets tell the generator where that work should sit.
+          No approved T3 dose change currently requires a movement-level implementation. If one does, the coach can propose it here; adding or removing a slot still requires your approval.
         </p>
       ) : null}
 
@@ -522,12 +540,19 @@ function MesocycleItem({ mesocycle, data }: { mesocycle: Mesocycle; data: Props[
           </div>
         ) : null}
 
+        {mesocycle.status !== "COMPLETED" ? (
+          <MesocyclePrioritiesForm
+            mesocycle={mesocycle}
+            muscles={data.muscles}
+            programTargets={data.programTargets}
+            programPriorityMuscleIds={data.programPriorityMuscleIds}
+          />
+        ) : null}
+
         <details className="rounded-2xl border border-slate-800 bg-slate-900/40 p-3">
           <summary className="cursor-pointer text-sm font-semibold text-slate-200">Optional mesocycle overrides</summary>
-          <p className="mt-2 text-xs leading-5 text-slate-500">Use these only for differences from the reusable program foundation. Blank fields inherit program or template values.</p>
+          <p className="mt-2 text-xs leading-5 text-slate-500">Rep-range exceptions remain manual. T3 owns in-block volume reasoning, while structural additions and removals remain approval-gated.</p>
           <div className="mt-3 space-y-3">
-            <MesocycleTargetsForm mesocycle={mesocycle} muscles={data.muscles} programTargets={data.programTargets} />
-            <MesocycleMovementVolumeTargetsForm mesocycle={mesocycle} movementGroups={data.movementGroups} />
             <MesocycleMovementRepPolicyForm mesocycle={mesocycle} movementGroups={data.movementGroups} />
           </div>
         </details>
@@ -548,7 +573,7 @@ export function MesocyclePanel({ data }: Props) {
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">Mesocycle layer</p>
         <h2 className="mt-1 text-lg font-semibold text-slate-100">Temporary training block</h2>
-        <p className="mt-1 text-sm text-slate-400">A mesocycle adds dates, phase, review boundaries, and optional exceptions. It does not duplicate or replace the reusable program and templates.</p>
+        <p className="mt-1 text-sm text-slate-400">A mesocycle adds dates, phase, outcome priorities, review boundaries, and optional rep-range exceptions. T3 learns the useful dose inside that block without replacing reusable templates.</p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -558,7 +583,7 @@ export function MesocyclePanel({ data }: Props) {
         </div>
         <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-orange-300">Set per mesocycle</p>
-          <p className="mt-2 text-sm text-slate-300">Start, planned length, phase, optional target/range exceptions, and actual end date.</p>
+          <p className="mt-2 text-sm text-slate-300">Start, planned length, phase, muscle priorities, optional rep-range exceptions, and actual end date.</p>
         </div>
       </div>
 
