@@ -122,6 +122,7 @@ export function PreWorkoutCoach({ programId, templateId }: { programId: string; 
           </div>
 
           <p className="text-sm leading-6 text-slate-200">{result.proposal.summary}</p>
+          <p className="text-xs text-slate-400">Sets: {result.display.volume.baselinePhysical} → {result.display.volume.proposedPhysical} · Estimated effective sets: {result.display.volume.baselineEffective} → {result.display.volume.proposedEffective} · Intensifiers: {result.display.volume.baselineIntensifiers} → {result.display.volume.proposedIntensifiers}</p>
           <p className="text-xs leading-5 text-slate-500">{result.proposal.bodyComposition.interpretation}</p>
 
           {localWarnings.length > 0 ? (
@@ -151,6 +152,7 @@ export function PreWorkoutCoach({ programId, templateId }: { programId: string; 
                   <span className="text-slate-200">{index + 1}. {item.exerciseName}<span className="block text-slate-500">{item.movementGroupName}</span></span>
                   <span className="text-right text-slate-300">{item.sets} sets · {item.repRange}{item.targetRir !== null ? ` · ${item.targetRir} RIR` : ""}</span>
                   <span className="col-span-2 text-slate-500">{item.reason}</span>
+                  <span className="col-span-2 text-slate-500">Set types: {item.setTypes.join(" · ")}</span>
                 </div>
               ))}
             </div>

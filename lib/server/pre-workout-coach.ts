@@ -18,6 +18,8 @@ import {
   inferBodyCompositionTrend,
   summarizeGlobalRecovery,
   validatePreWorkoutPlan,
+  preWorkoutVolume,
+  canIntroduceSetType,
   type PreWorkoutSlotCandidate,
 } from "@/lib/coaching/pre-workout-coach-policy";
 import { summarizeExerciseHistory, type ExerciseExposureInput } from "@/lib/calculations/training-analytics";
@@ -45,6 +47,7 @@ export type ResolvedPreWorkoutSessionItem = {
   maxReps: number | null;
   targetRir: number | null;
   reason: string;
+  setTypeIds: string[];
 };
 
 const LOOKBACK_DAYS = 90;
@@ -62,6 +65,28 @@ function slotId(item: PrescriptionItem) {
 
 function prescribedSets(item: PrescriptionItem) {
   return item.isMissedThisWeek ? item.adjustedPlannedSets : item.weeklyAdjustedPlannedSets;
+}
+
+function prescribedSetTypes(item: PrescriptionItem, sets: number) {
+  return Array.from({ length: sets }, (_, index) => {
+    const number = index + 1;
+    return (item.isMissedThisWeek ? null : item.weeklyAddedSetPlans.find((row) => row.setNumber === number))?.setTypeId ??
+      item.mesocycleAddedSetPlans.find((row) => row.setNumber === number)?.setTypeId ??
+      item.setPlans.find((row) => row.setNumber === number)?.setTypeId ?? item.defaultSetTypeId;
+  });
+}
+
+function validationEvidence(context: Awaited<ReturnType<typeof buildContext>>) {
+  return {
+    setTypes: context.prescription.setTypes.map((type) => ({ ...type, multiplier: Number(type.multiplier) })),
+    exercises: context.catalog.map((exercise) => ({
+      id: exercise.id,
+      movementGroupName: context.items.find((item) => item.movementGroupId === exercise.movementGroupId)?.movementGroupName ?? "",
+      primaryMuscleIds: exercise.primaryMuscles.map((link) => link.muscle.id),
+      secondaryMuscleIds: exercise.secondaryMuscles.map((link) => link.muscle.id),
+    })),
+    secondaryContribution: Number(context.prescription.program.secondaryContribution),
+  };
 }
 
 
@@ -90,8 +115,8 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
       orderBy: [{ isSeed: "desc" }, { name: "asc" }],
       select: {
         id: true, name: true, movementGroupId: true, setupNotes: true, tags: true,
-        primaryMuscles: { select: { muscle: { select: { name: true } } } },
-        secondaryMuscles: { select: { muscle: { select: { name: true } } } },
+        primaryMuscles: { select: { muscle: { select: { id: true, name: true } } } },
+        secondaryMuscles: { select: { muscle: { select: { id: true, name: true } } } },
       },
     }),
     loadHistory(userId, input.programId, since),
@@ -182,6 +207,7 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
       targetRir: numberOrNull(item.rirTarget),
       defaultExerciseId: preferred,
       allowedExerciseIds,
+      prescribedSetTypeIds: prescribedSetTypes(item, sets),
     };
   });
   const itemBySlot = new Map(items.map((item) => [slotId(item), item]));
@@ -201,6 +227,7 @@ function defaultPlan(context: Awaited<ReturnType<typeof buildContext>>): PreWork
       sourceSlotId: candidate.id,
       exerciseId: candidate.defaultExerciseId,
       sets: candidate.prescribedSets,
+      setTypeIds: [...candidate.prescribedSetTypeIds],
       minReps: candidate.minReps,
       maxReps: candidate.maxReps,
       targetRir: candidate.targetRir,
@@ -218,18 +245,24 @@ function runtimeSchema(context: Awaited<ReturnType<typeof buildContext>>) {
   const templateIds = context.templates.map((template) => template.id) as [string, ...string[]];
   const slotIds = context.candidates.map((candidate) => candidate.id) as [string, ...string[]];
   const exerciseIds = [...new Set(context.candidates.flatMap((candidate) => candidate.allowedExerciseIds))] as [string, ...string[]];
+  const setTypeIds = context.prescription.setTypes.map((type) => type.id) as [string, ...string[]];
   if (!templateIds.length || !slotIds.length || !exerciseIds.length) throw new Error("No valid coached-workout options are available.");
   return PreWorkoutCoachModelPlanSchema.extend({
     baseTemplateId: z.enum(templateIds),
     items: z.array(PreWorkoutPlanItemSchema.extend({
       sourceSlotId: z.enum(slotIds),
       exerciseId: z.enum(exerciseIds),
+      setTypeIds: z.array(z.enum(setTypeIds)).min(1).max(8),
     })).min(1).max(12),
   });
 }
 
 function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
   const allowedExerciseIds = new Set(context.candidates.flatMap((candidate) => candidate.allowedExerciseIds));
+  const evidence = validationEvidence(context);
+  const eligibleByExercise = new Map(evidence.exercises.map((exercise) => [exercise.id,
+    evidence.setTypes.filter((type) => canIntroduceSetType(exercise, type)).map((type) => type.id),
+  ]));
   const historyByExercise = new Map<string, ExerciseExposureInput[]>();
   for (const row of [...context.history].reverse()) {
     const rows = historyByExercise.get(row.exerciseId) ?? [];
@@ -277,6 +310,7 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
     globalRecovery: context.globalRecovery,
     localizedReadiness: context.localizedReadiness,
     recentWorkoutAnalyses: context.recentAnalyses,
+    setTypes: context.prescription.setTypes.map((type) => ({ id: type.id, name: type.name, slug: type.slug, multiplier: Number(type.multiplier), isIntensifier: type.isIntensifier })),
     templates: context.templates.map((template) => ({ id: template.id, name: template.name, sequenceIndex: template.sequenceIndex })),
     slots: context.candidates.map((candidate) => {
       const item = context.itemBySlot.get(candidate.id)!;
@@ -289,6 +323,7 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
         slotRole: item.slotRole,
         defaultExerciseId: candidate.defaultExerciseId,
         prescribedSets: candidate.prescribedSets,
+        prescribedSetTypeIds: candidate.prescribedSetTypeIds,
         maximumAllowedSets: candidate.maxSets,
         minReps: candidate.minReps,
         maxReps: candidate.maxReps,
@@ -301,6 +336,7 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
       setupNotes: exercise.setupNotes, tags: exercise.tags,
       primaryMuscles: exercise.primaryMuscles.map((link) => link.muscle.name),
       secondaryMuscles: exercise.secondaryMuscles.map((link) => link.muscle.name),
+      eligibleNewIntensifierSetTypeIds: eligibleByExercise.get(exercise.id) ?? [],
     })),
     exerciseEvidence,
   };
@@ -313,6 +349,8 @@ T2 PRE-SESSION COACHING RULES
 - A different existing template may be the base when current localized evidence or the athlete's stated constraints make it materially better today.
 - You may omit or reorder slots, import at most two compatible slots from other templates, substitute only an allowed exercise within the same movement pattern, reduce/redistribute sets, or shift rep/RIR targets within the supplied limits.
 - Never increase the base template's total physical sets. Good recovery alone never justifies more work.
+- Each item must list one setTypeId per set. Preserve existing set types unless a specific local reason justifies a change. Consider physical sets, effective sets (the sum of multipliers), and intensifier count together. Do not increase total effective sets above the base workout.
+- New intensifiers are only allowed on single-muscle isolation movements in the app's approved compatibility list. Do not propose lengthened partials for squats, presses, rows, hinges, leg curls, or any exercise without a known suitable long-length range. At most one newly added intensifier per session; do not use one to conceal a set-count reduction. Retaining an existing template intensifier is allowed. Multipliers estimate volume, not exact stimulus or fatigue.
 - Structural changes are proposals and require user approval. Do not claim they have already been applied.
 - Treat localized readiness as a cautious inference from performance, recency, symptoms and execution—not a measurement of muscle recovery or a diagnosis.
 - A credible fat-loss trend changes expectations: maintaining performance and training quality may be successful. It does not automatically require a lighter workout.
@@ -327,6 +365,8 @@ T2 PRE-SESSION COACHING RULES
 function displayFor(context: Awaited<ReturnType<typeof buildContext>>, plan: PreWorkoutCoachModelPlan): PreWorkoutCoachDisplay {
   const baseTemplate = context.templates.find((template) => template.id === plan.baseTemplateId)!;
   const labels: string[] = [];
+  const dose = preWorkoutVolume(plan, context.candidates, context.prescription.setTypes.map((type) => ({ ...type, multiplier: Number(type.multiplier) })));
+  const names = new Map(context.prescription.setTypes.map((type) => [type.id, type.name]));
   if (plan.baseTemplateId !== context.input.templateId) labels.push(`Use ${baseTemplate.name} instead of ${context.requestedTemplate.name}`);
   const requestedSlots = context.candidates.filter((candidate) => candidate.templateId === context.input.templateId);
   const plannedIds = new Set(plan.items.map((item) => item.sourceSlotId));
@@ -341,6 +381,7 @@ function displayFor(context: Awaited<ReturnType<typeof buildContext>>, plan: Pre
     const exercise = context.exerciseById.get(item.exerciseId)!;
     if (item.exerciseId !== slot.defaultExerciseId) labels.push(`Swap ${source.movementGroupName} to ${exercise.name}`);
     if (item.sets !== slot.prescribedSets) labels.push(`${source.movementGroupName}: ${slot.prescribedSets} → ${item.sets} sets`);
+    if (item.setTypeIds.some((id, index) => id !== slot.prescribedSetTypeIds[index])) labels.push(`${source.movementGroupName}: adjust set type`);
     if (!sameRange(item.minReps, item.maxReps, slot.minReps, slot.maxReps)) labels.push(`${source.movementGroupName}: adjust rep target`);
     if ((item.targetRir ?? null) !== (slot.targetRir ?? null)) labels.push(`${source.movementGroupName}: adjust RIR target`);
   }
@@ -348,6 +389,7 @@ function displayFor(context: Awaited<ReturnType<typeof buildContext>>, plan: Pre
     requestedTemplateName: context.requestedTemplate.name,
     baseTemplateName: baseTemplate.name,
     changeLabels: [...new Set(labels)].slice(0, 10),
+    volume: { baselinePhysical: dose.baseline.physical, proposedPhysical: dose.proposed.physical, baselineEffective: dose.baseline.effective, proposedEffective: dose.proposed.effective, baselineIntensifiers: dose.baseline.intensifiers, proposedIntensifiers: dose.proposed.intensifiers },
     items: plan.items.map((item) => {
       const source = context.itemBySlot.get(item.sourceSlotId)!;
       return {
@@ -356,6 +398,7 @@ function displayFor(context: Awaited<ReturnType<typeof buildContext>>, plan: Pre
         movementGroupName: source.movementGroupName,
         exerciseName: context.exerciseById.get(item.exerciseId)?.name ?? source.exerciseName,
         sets: item.sets,
+        setTypes: item.setTypeIds.map((id) => names.get(id) ?? "Unknown"),
         repRange: item.minReps !== null && item.maxReps !== null ? `${item.minReps}–${item.maxReps}` : "No target",
         targetRir: item.targetRir,
         reason: item.reason,
@@ -392,6 +435,7 @@ export async function generatePreWorkoutCoachPlanForUser(userId: string, rawInpu
     templateIds: context.templates.map((template) => template.id),
     slots: context.candidates,
     localizedReadiness: context.localizedReadiness,
+    ...validationEvidence(context),
   });
   const plan = validation.ok ? parsed : {
     ...fallback,
@@ -438,6 +482,7 @@ export async function resolvePreWorkoutCoachProposalForUser(userId: string, valu
     templateIds: context.templates.map((template) => template.id),
     slots: context.candidates,
     localizedReadiness: context.localizedReadiness,
+    ...validationEvidence(context),
   });
   if (!validation.ok) throw new Error("The coached workout proposal is no longer valid.");
   const template = context.templates.find((candidate) => candidate.id === plan.baseTemplateId);
@@ -451,6 +496,7 @@ export async function resolvePreWorkoutCoachProposalForUser(userId: string, valu
       defaultExerciseId: context.candidateBySlot.get(item.sourceSlotId)?.defaultExerciseId ?? sourceItem.exerciseId,
       exerciseId: item.exerciseId,
       sets: item.sets,
+      setTypeIds: item.setTypeIds,
       minReps: item.minReps,
       maxReps: item.maxReps,
       targetRir: item.targetRir,

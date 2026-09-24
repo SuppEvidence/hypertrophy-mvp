@@ -318,6 +318,7 @@ export async function buildProgramPrescription(
   return {
     program,
     activeMesocycle,
+    setTypes,
     generationInput,
     generated: {
       ...generated,

@@ -16,6 +16,7 @@ export const PreWorkoutPlanItemSchema = z.object({
   sourceSlotId: z.string().min(1).max(240),
   exerciseId: z.string().uuid(),
   sets: z.number().int().min(1).max(8),
+  setTypeIds: z.array(z.string().uuid()).min(1).max(8),
   minReps: z.number().int().min(3).max(30).nullable(),
   maxReps: z.number().int().min(3).max(30).nullable(),
   targetRir: z.number().min(0).max(4).nullable(),
@@ -89,12 +90,14 @@ export type PreWorkoutCoachDisplay = {
   requestedTemplateName: string;
   baseTemplateName: string;
   changeLabels: string[];
+  volume: { baselinePhysical: number; proposedPhysical: number; baselineEffective: number; proposedEffective: number; baselineIntensifiers: number; proposedIntensifiers: number };
   items: Array<{
     sourceSlotId: string;
     movementGroupId: string;
     movementGroupName: string;
     exerciseName: string;
     sets: number;
+    setTypes: string[];
     repRange: string;
     targetRir: number | null;
     reason: string;

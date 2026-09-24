@@ -116,7 +116,7 @@ const slots: PreWorkoutSlotCandidate[] = [
   { id: "s3", templateId: "tb", sortOrder: 0, movementGroupId: "mg1", prescribedSets: 2, maxSets: 3, minReps: 8, maxReps: 12, targetRir: 1, defaultExerciseId: "e2", allowedExerciseIds: ["e1", "e2"] },
   { id: "s4", templateId: "tb", sortOrder: 1, movementGroupId: "mg3", prescribedSets: 2, maxSets: 2, minReps: 12, maxReps: 20, targetRir: 1, defaultExerciseId: "e4", allowedExerciseIds: ["e4"] },
   { id: "s5", templateId: "tb", sortOrder: 2, movementGroupId: "mg4", prescribedSets: 1, maxSets: 1, minReps: 10, maxReps: 15, targetRir: 1, defaultExerciseId: "e5", allowedExerciseIds: ["e5"] },
-];
+].map((slot) => ({ ...slot, prescribedSetTypeIds: Array(slot.prescribedSets).fill("normal") }));
 const readiness = [
   { ...inferLocalReadiness(localBase), movementGroupId: "mg1" },
   { ...inferLocalReadiness(localBase), movementGroupId: "mg2" },
@@ -126,11 +126,25 @@ const readiness = [
 const keep = {
   decision: "KEEP" as const, confidence: "MODERATE" as const, baseTemplateId: "ta", summary: "Keep.", constraintsApplied: [],
   items: [
-    { sourceSlotId: "s1", exerciseId: "e1", sets: 3, minReps: 8, maxReps: 12, targetRir: 1, reason: "Keep." },
-    { sourceSlotId: "s2", exerciseId: "e3", sets: 2, minReps: 10, maxReps: 15, targetRir: 1, reason: "Keep." },
+    { sourceSlotId: "s1", exerciseId: "e1", sets: 3, setTypeIds: ["normal", "normal", "normal"], minReps: 8, maxReps: 12, targetRir: 1, reason: "Keep." },
+    { sourceSlotId: "s2", exerciseId: "e3", sets: 2, setTypeIds: ["normal", "normal"], minReps: 10, maxReps: 15, targetRir: 1, reason: "Keep." },
   ],
 };
-const config = { requestedTemplateId: "ta", templateIds: ["ta", "tb"], slots, localizedReadiness: readiness };
+const config = { requestedTemplateId: "ta", templateIds: ["ta", "tb"], slots, localizedReadiness: readiness,
+  setTypes: [
+    { id: "normal", slug: "normal", name: "Normal", multiplier: 1, isIntensifier: false },
+    { id: "partials", slug: "lengthened-partials", name: "Lengthened partials", multiplier: 1.2, isIntensifier: true },
+    { id: "myo", slug: "myo-reps", name: "Myo-reps", multiplier: 1.3, isIntensifier: true },
+  ],
+  exercises: [
+    { id: "e1", movementGroupName: "Squat pattern", primaryMuscleIds: ["quads"], secondaryMuscleIds: ["glutes"] },
+    { id: "e2", movementGroupName: "Lateral raise", primaryMuscleIds: ["delts"], secondaryMuscleIds: [] },
+    { id: "e3", movementGroupName: "Leg curl", primaryMuscleIds: ["hamstrings"], secondaryMuscleIds: [] },
+    { id: "e4", movementGroupName: "Knee extension", primaryMuscleIds: ["quads"], secondaryMuscleIds: [] },
+    { id: "e5", movementGroupName: "Hammer curl", primaryMuscleIds: ["biceps"], secondaryMuscleIds: [] },
+  ],
+  secondaryContribution: 0.5,
+};
 
 check("exact requested template is a valid KEEP plan", () => {
   assert.equal(validatePreWorkoutPlan(keep, config).ok, true);
@@ -145,9 +159,9 @@ check("another existing template is a valid approved adjustment", () => {
   const plan = {
     ...keep, decision: "ADJUST" as const, baseTemplateId: "tb",
     items: [
-      { sourceSlotId: "s3", exerciseId: "e2", sets: 2, minReps: 8, maxReps: 12, targetRir: 1, reason: "Use alternate press." },
-      { sourceSlotId: "s4", exerciseId: "e4", sets: 2, minReps: 12, maxReps: 20, targetRir: 1, reason: "Use alternate session." },
-      { sourceSlotId: "s5", exerciseId: "e5", sets: 1, minReps: 10, maxReps: 15, targetRir: 1, reason: "Use alternate session." },
+      { sourceSlotId: "s3", exerciseId: "e2", sets: 2, setTypeIds: ["normal", "normal"], minReps: 8, maxReps: 12, targetRir: 1, reason: "Use alternate press." },
+      { sourceSlotId: "s4", exerciseId: "e4", sets: 2, setTypeIds: ["normal", "normal"], minReps: 12, maxReps: 20, targetRir: 1, reason: "Use alternate session." },
+      { sourceSlotId: "s5", exerciseId: "e5", sets: 1, setTypeIds: ["normal"], minReps: 10, maxReps: 15, targetRir: 1, reason: "Use alternate session." },
     ],
   };
   assert.equal(validatePreWorkoutPlan(plan, config).ok, true);
@@ -179,12 +193,82 @@ check("at most two slots can be imported into a base template", () => {
     ...keep, decision: "ADJUST" as const,
     items: [
       { ...keep.items[0], sets: 1 },
-      { sourceSlotId: "s3", exerciseId: "e2", sets: 1, minReps: 8, maxReps: 12, targetRir: 1, reason: "Import." },
-      { sourceSlotId: "s4", exerciseId: "e4", sets: 1, minReps: 12, maxReps: 20, targetRir: 1, reason: "Import." },
-      { sourceSlotId: "s5", exerciseId: "e5", sets: 1, minReps: 10, maxReps: 15, targetRir: 1, reason: "Import." },
+      { sourceSlotId: "s3", exerciseId: "e2", sets: 1, setTypeIds: ["normal"], minReps: 8, maxReps: 12, targetRir: 1, reason: "Import." },
+      { sourceSlotId: "s4", exerciseId: "e4", sets: 1, setTypeIds: ["normal"], minReps: 12, maxReps: 20, targetRir: 1, reason: "Import." },
+      { sourceSlotId: "s5", exerciseId: "e5", sets: 1, setTypeIds: ["normal"], minReps: 10, maxReps: 15, targetRir: 1, reason: "Import." },
     ],
   };
   assert.equal(validatePreWorkoutPlan(plan, config).ok, false);
+});
+
+check("a squat cannot gain lengthened partials even when another set is removed", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].setTypeIds[0] = "partials";
+  plan.items[1].sets = 1;
+  plan.items[1].setTypeIds = ["normal"];
+  assert.ok(validatePreWorkoutPlan(plan, config).errors.some((error) => error.includes("unsuitable")));
+});
+
+check("effective volume cannot rise with an unchanged physical set count", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[1].setTypeIds[0] = "myo";
+  assert.ok(validatePreWorkoutPlan(plan, config).errors.some((error) => error.includes("total effective sets")));
+});
+
+check("partial reps on a leg curl are rejected despite local budget", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[1].setTypeIds[0] = "partials";
+  plan.items[0].sets = 2;
+  plan.items[0].setTypeIds = ["normal", "normal"];
+  assert.ok(validatePreWorkoutPlan(plan, config).errors.some((error) => error.includes("unsuitable")));
+});
+
+check("one myo-rep set on a supported isolation exercise is valid with matching dose reduction", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].sets = 2;
+  plan.items[0].setTypeIds = ["normal", "normal"];
+  plan.items[1].setTypeIds[1] = "myo";
+  assert.equal(validatePreWorkoutPlan(plan, config).ok, true);
+});
+
+check("local caution forbids an intensifier even if another set is removed", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].sets = 2;
+  plan.items[0].setTypeIds = ["normal", "normal"];
+  plan.items[1].setTypeIds[1] = "myo";
+  const caution = readiness.map((item) => item.movementGroupId === "mg2" ? { ...item, status: "CAUTION" as const } : item);
+  assert.ok(validatePreWorkoutPlan(plan, { ...config, localizedReadiness: caution }).errors.some((error) => error.includes("unsuitable")));
+});
+
+check("a set-type-only change counts as a plan adjustment", () => {
+  const base = structuredClone(keep);
+  base.items[1].setTypeIds[0] = "myo";
+  assert.ok(validatePreWorkoutPlan(base, config).errors.some((error) => error.includes("KEEP must preserve")));
+});
+
+check("two new intensifiers cannot be offset by dropping a different set", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].sets = 1;
+  plan.items[0].setTypeIds = ["normal"];
+  plan.items[1].setTypeIds = ["myo", "myo"];
+  assert.ok(validatePreWorkoutPlan(plan, config).errors.some((error) => error.includes("At most one new intensifier")));
+});
+
+check("a substituted exercise cannot inherit an unsuitable template intensifier", () => {
+  const slot = slots[2];
+  slot.prescribedSetTypeIds = ["partials", "normal"];
+  try {
+    const changed = { ...structuredClone(keep), decision: "ADJUST" as const, baseTemplateId: "tb",
+      items: [
+        { ...keep.items[0], sourceSlotId: "s3", exerciseId: "e1", sets: 2, setTypeIds: ["partials", "normal"] },
+        { ...keep.items[1], sourceSlotId: "s4", exerciseId: "e4", setTypeIds: ["normal", "normal"] },
+        { ...keep.items[1], sourceSlotId: "s5", exerciseId: "e5", sets: 1, setTypeIds: ["normal"] },
+      ],
+    };
+    assert.ok(validatePreWorkoutPlan(changed, config).errors.some((error) => error.includes("unsuitable")));
+  } finally {
+    slot.prescribedSetTypeIds = ["normal", "normal"];
+  }
 });
 
 console.log(`${checks} pre-workout coaching policy checks passed.`);

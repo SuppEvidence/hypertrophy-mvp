@@ -567,7 +567,7 @@ export async function startCoachedWorkout(formData: FormData) {
         const weeklyAdded = item.weeklyAddedSetPlans.find((row) => row.setNumber === setNumber);
         const mesocycleAdded = item.mesocycleAddedSetPlans.find((row) => row.setNumber === setNumber);
         const planned = item.setPlans.find((row) => row.setNumber === setNumber);
-        return { setNumber, setTypeId: weeklyAdded?.setTypeId ?? mesocycleAdded?.setTypeId ?? planned?.setTypeId ?? item.defaultSetTypeId };
+        return { setNumber, setTypeId: plan.setTypeIds[setIndex] ?? weeklyAdded?.setTypeId ?? mesocycleAdded?.setTypeId ?? planned?.setTypeId ?? item.defaultSetTypeId };
       });
       const changedExercise = plan.exerciseId !== plan.defaultExerciseId;
       const sessionExercise = await tx.workoutSessionExercise.create({

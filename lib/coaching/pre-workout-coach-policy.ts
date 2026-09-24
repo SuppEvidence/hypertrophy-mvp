@@ -40,7 +40,37 @@ export type PreWorkoutSlotCandidate = {
   targetRir: number | null;
   defaultExerciseId: string;
   allowedExerciseIds: string[];
+  prescribedSetTypeIds: string[];
 };
+
+export type CoachSetType = { id: string; name: string; slug: string; multiplier: number; isIntensifier: boolean };
+export type CoachExercise = { id: string; movementGroupName: string; primaryMuscleIds: string[]; secondaryMuscleIds: string[] };
+
+// Deliberately narrow: movement names are explicit capabilities, not guesses from an exercise's display name.
+// Other movements may retain existing template intensifiers, but the coach cannot introduce one.
+const INTRODUCIBLE_INTENSIFIERS: Record<string, string[]> = {
+  "lateral raise": ["lengthened-partials", "rest-pause", "drop-set", "myo-reps"],
+  "knee extension": ["lengthened-partials", "rest-pause", "drop-set", "myo-reps"],
+  "leg curl": ["rest-pause", "drop-set", "myo-reps"],
+  "triceps lengthened": ["rest-pause", "drop-set", "myo-reps"],
+  "triceps pressdown": ["rest-pause", "drop-set", "myo-reps"],
+  "hammer curl": ["rest-pause", "drop-set", "myo-reps"],
+  "straight-leg calf raise": ["rest-pause", "drop-set", "myo-reps"],
+};
+
+export function canIntroduceSetType(exercise: CoachExercise, type: CoachSetType) {
+  return exercise.primaryMuscleIds.length === 1 && exercise.secondaryMuscleIds.length === 0 &&
+    Boolean(INTRODUCIBLE_INTENSIFIERS[exercise.movementGroupName.toLowerCase()]?.includes(type.slug));
+}
+
+export function preWorkoutVolume(plan: Pick<PreWorkoutCoachModelPlan, "baseTemplateId" | "items">, slots: PreWorkoutSlotCandidate[], setTypes: CoachSetType[]) {
+  const byId = new Map(setTypes.map((type) => [type.id, type]));
+  const bySlot = new Map(slots.map((slot) => [slot.id, slot]));
+  const baseline = slots.filter((slot) => slot.templateId === plan.baseTemplateId).flatMap((slot) => slot.prescribedSetTypeIds);
+  const proposed = plan.items.flatMap((item) => item.setTypeIds);
+  const totals = (ids: string[]) => ({ physical: ids.length, effective: round(ids.reduce((sum, id) => sum + (byId.get(id)?.multiplier ?? 0), 0), 2), intensifiers: ids.filter((id) => byId.get(id)?.isIntensifier).length });
+  return { baseline: totals(baseline), proposed: totals(proposed), bySlot };
+}
 
 function finite(value: unknown) {
   const parsed = Number(value);
@@ -239,6 +269,7 @@ function isDefaultPlan(plan: PreWorkoutCoachModelPlan, slots: PreWorkoutSlotCand
   return plan.items.every((item, index) => {
     const slot = expected[index];
     return slot?.id === item.sourceSlotId && slot.defaultExerciseId === item.exerciseId && slot.prescribedSets === item.sets &&
+      item.setTypeIds.length === slot.prescribedSetTypeIds.length && item.setTypeIds.every((id, n) => id === slot.prescribedSetTypeIds[n]) &&
       sameNullable(slot.minReps, item.minReps) && sameNullable(slot.maxReps, item.maxReps) && sameNullable(slot.targetRir, item.targetRir);
   });
 }
@@ -248,14 +279,36 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
   templateIds: string[];
   slots: PreWorkoutSlotCandidate[];
   localizedReadiness: LocalReadinessInference[];
+  setTypes: CoachSetType[];
+  exercises: CoachExercise[];
+  secondaryContribution: number;
 }) {
   const errors: string[] = [];
   const slotById = new Map(config.slots.map((slot) => [slot.id, slot]));
   const localByMovement = new Map(config.localizedReadiness.map((item) => [item.movementGroupId, item]));
+  const typeById = new Map(config.setTypes.map((type) => [type.id, type]));
+  const exerciseById = new Map(config.exercises.map((exercise) => [exercise.id, exercise]));
   if (!config.templateIds.includes(plan.baseTemplateId)) errors.push("Unknown base template.");
   const seen = new Set<string>();
   let totalSets = 0;
   let importedSlots = 0;
+  let newlyIntroducedIntensifiers = 0;
+  const movementDose = new Map<string, number>();
+  const baselineMovementDose = new Map<string, number>();
+  const muscleDose = new Map<string, number>();
+  const baselineMuscleDose = new Map<string, number>();
+  const addDose = (movement: Map<string, number>, muscles: Map<string, number>, slot: PreWorkoutSlotCandidate, exerciseId: string, dose: number) => {
+    movement.set(slot.movementGroupId, (movement.get(slot.movementGroupId) ?? 0) + dose);
+    const exercise = exerciseById.get(exerciseId);
+    if (exercise) {
+      for (const id of exercise.primaryMuscleIds) muscles.set(id, (muscles.get(id) ?? 0) + dose);
+      for (const id of exercise.secondaryMuscleIds) muscles.set(id, (muscles.get(id) ?? 0) + dose * config.secondaryContribution);
+    }
+  };
+  for (const slot of config.slots.filter((slot) => slot.templateId === plan.baseTemplateId)) {
+    addDose(baselineMovementDose, baselineMuscleDose, slot, slot.defaultExerciseId,
+      slot.prescribedSetTypeIds.reduce((sum, id) => sum + (typeById.get(id)?.multiplier ?? 0), 0));
+  }
   for (const item of plan.items) {
     const slot = slotById.get(item.sourceSlotId);
     if (!slot) { errors.push(`Unknown source slot ${item.sourceSlotId}.`); continue; }
@@ -264,6 +317,25 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
     if (slot.templateId !== plan.baseTemplateId) importedSlots += 1;
     if (!slot.allowedExerciseIds.includes(item.exerciseId)) errors.push(`Exercise does not match slot ${item.sourceSlotId}.`);
     if (item.sets < 1 || item.sets > slot.maxSets) errors.push(`Set count is outside the allowed range for slot ${item.sourceSlotId}.`);
+    if (item.setTypeIds.length !== item.sets) errors.push(`Every physical set needs one set type in slot ${item.sourceSlotId}.`);
+    for (const [index, id] of item.setTypeIds.entries()) {
+      const type = typeById.get(id);
+      const originalId = slot.prescribedSetTypeIds[index];
+      if (!type || !Number.isFinite(type.multiplier) || type.multiplier <= 0) {
+        errors.push(`Unavailable set type in slot ${item.sourceSlotId}.`); continue;
+      }
+      if (id === originalId && item.exerciseId === slot.defaultExerciseId) continue;
+      // Reverting a prescribed intensifier to a normal set is always a conservative option.
+      if (!type.isIntensifier && Math.abs(type.multiplier - 1) < 0.001) continue;
+      const exercise = exerciseById.get(item.exerciseId);
+      const permitted = exercise && canIntroduceSetType(exercise, type);
+      if (!permitted || type.multiplier > 1.35 || slot.targetRir === null || slot.targetRir > 2 ||
+          item.targetRir === null || item.targetRir > 2 || (item.minReps ?? 0) < 8 ||
+          ["CAUTION", "RECOVERING"].includes(localByMovement.get(slot.movementGroupId)?.status ?? "")) {
+        errors.push(`Set type ${type.name} is unsuitable for this exercise or prescription.`);
+      }
+      if (!typeById.get(originalId ?? "")?.isIntensifier) newlyIntroducedIntensifiers += 1;
+    }
     if ((item.minReps === null) !== (item.maxReps === null) || (item.minReps !== null && item.maxReps !== null && item.minReps > item.maxReps)) {
       errors.push(`Invalid rep range for slot ${item.sourceSlotId}.`);
     }
@@ -278,6 +350,10 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
       errors.push(`RIR adjustment is too large for slot ${item.sourceSlotId}.`);
     }
     const local = localByMovement.get(slot.movementGroupId);
+    const previousEffective = slot.prescribedSetTypeIds.reduce((sum, id) => sum + (typeById.get(id)?.multiplier ?? 0), 0);
+    const nextEffective = item.setTypeIds.reduce((sum, id) => sum + (typeById.get(id)?.multiplier ?? 0), 0);
+    addDose(movementDose, muscleDose, slot, item.exerciseId, nextEffective);
+    if (local?.status === "CAUTION" && nextEffective > previousEffective + 0.001) errors.push(`Locally cautioned movement cannot gain effective volume in slot ${item.sourceSlotId}.`);
     if (local?.status === "CAUTION" && (item.sets > slot.prescribedSets || (slot.targetRir !== null && item.targetRir !== null && item.targetRir < slot.targetRir))) {
       errors.push(`A locally cautioned movement cannot be made harder in slot ${item.sourceSlotId}.`);
     }
@@ -286,6 +362,16 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
   if (importedSlots > 2) errors.push("At most two slots may be imported from outside the base template.");
   const baseTotal = config.slots.filter((slot) => slot.templateId === plan.baseTemplateId).reduce((sum, slot) => sum + slot.prescribedSets, 0);
   if (totalSets > baseTotal) errors.push("Pre-session coaching cannot increase the base template's total physical sets.");
+  const dose = preWorkoutVolume(plan, config.slots, config.setTypes);
+  if (dose.proposed.effective > dose.baseline.effective + 0.001) errors.push("Pre-session coaching cannot increase the base template's total effective sets.");
+  if (newlyIntroducedIntensifiers > 1) errors.push("At most one new intensifier may be proposed for this workout.");
+  for (const [id, effective] of movementDose) {
+    if (effective > (baselineMovementDose.get(id) ?? 0) + 1.001) errors.push("A movement cannot gain more than one effective set in a pre-workout adjustment.");
+    if (localByMovement.get(id)?.status === "CAUTION" && effective > (baselineMovementDose.get(id) ?? 0) + 0.001) errors.push("A locally cautioned movement cannot gain effective volume through imported slots.");
+  }
+  for (const [id, effective] of muscleDose) {
+    if (effective > (baselineMuscleDose.get(id) ?? 0) + 1.001) errors.push("A muscle cannot gain more than one estimated effective set in a pre-workout adjustment.");
+  }
   const defaultPlan = isDefaultPlan(plan, config.slots, config.requestedTemplateId);
   if (plan.decision === "KEEP" && !defaultPlan) errors.push("KEEP must preserve the requested template exactly.");
   if (plan.decision === "ADJUST" && defaultPlan) errors.push("ADJUST must contain a material plan change.");
