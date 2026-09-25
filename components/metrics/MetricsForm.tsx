@@ -95,7 +95,7 @@ export function MetricsForm({
 
       <details className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">Mesocycle circumference check-in</summary>
-        <p className="mt-2 text-xs text-slate-500">Mesocycle start/end entries are preferred in reviews. The nearest saved circumference within seven days of each boundary is used as a fallback.</p>
+        <p className="mt-2 text-xs text-slate-500">Save a start and end check-in within seven days of their block boundaries, with at least one matching circumference. The previous block’s end check-in also counts as the next block’s start when the blocks are close together; you do not need to log the same measurements twice.</p>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <Field label="Chest" name="chest" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.chest ?? ""} />
           <Field label="Shoulders" name="shoulders" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.shoulders ?? ""} />

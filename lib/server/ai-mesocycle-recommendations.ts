@@ -20,8 +20,35 @@ import {
 import { prisma } from "@/lib/db/prisma";
 import { getStimulusContribution } from "@/lib/workouts/stimulus";
 import { getEnergyPhaseContext, getEnergyPhaseTimeline } from "@/lib/server/energy-phases";
+import { selectMesocycleCheckins } from "@/lib/coaching/mesocycle-checkins";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function mesocycleEnd(row: { startDate: Date; lengthWeeks: number; actualEndDate: Date | null }) {
+  return row.actualEndDate ?? new Date(row.startDate.getTime() + row.lengthWeeks * 7 * DAY_MS - DAY_MS);
+}
+
+async function checkinsForMesocycle(userId: string, row: { programId: string; startDate: Date; lengthWeeks: number; actualEndDate: Date | null }, now: Date) {
+  const endDate = mesocycleEnd(row);
+  const [prior, logs] = await Promise.all([
+    prisma.programMesocycle.findFirst({
+      where: { userId, programId: row.programId, isArchived: false, startDate: { lt: row.startDate } },
+      orderBy: { startDate: "desc" },
+      select: { startDate: true, lengthWeeks: true, actualEndDate: true },
+    }),
+    prisma.metricLog.findMany({
+      where: { userId, isDraft: false, loggedAt: {
+        gte: new Date(row.startDate.getTime() - 14 * DAY_MS),
+        lte: new Date(Math.min(now.getTime(), endDate.getTime() + 8 * DAY_MS - 1)),
+      }, logType: { in: ["MESOCYCLE_START", "MESOCYCLE_END"] } },
+      orderBy: { loggedAt: "asc" },
+      select: { loggedAt: true, updatedAt: true, logType: true, chest: true, shoulders: true, arms: true, thighs: true, glutes: true, calves: true,
+        bodyweight: true, waist: true },
+    }),
+  ]);
+  const priorEndDate = prior ? mesocycleEnd(prior) : null;
+  return selectMesocycleCheckins({ logs, startDate: row.startDate, endDate, priorEndDate, now });
+}
 
 function finiteNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
@@ -325,13 +352,20 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
   if (!mesocycle.t3ActivatedAt || mesocycle.musclePriorities.length === 0) {
     throw new Error("Configure T3 muscle priorities before a next-block review.");
   }
+  const boundaryCheckins = await checkinsForMesocycle(userId, {
+    programId: program.id, startDate: mesocycle.startDate,
+    lengthWeeks: mesocycle.lengthWeeks, actualEndDate: mesocycle.actualEndDate,
+  }, new Date());
+  if (!boundaryCheckins.ready) {
+    throw new Error("Save start and end mesocycle circumference check-ins with at least one matching measurement before the next-block review. The previous block's end check-in can provide the start baseline.");
+  }
 
   const plannedEnd = new Date(
     mesocycle.startDate.getTime() + mesocycle.lengthWeeks * 7 * DAY_MS - DAY_MS,
   );
   const now = new Date();
 
-  const [sessions, metrics, priorMesocycles, candidateExercises] = await Promise.all([
+  const [sessions, priorMesocycles, candidateExercises] = await Promise.all([
     prisma.workoutSession.findMany({
       where: {
         userId,
@@ -381,29 +415,6 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
             },
           },
         },
-      },
-    }),
-    prisma.metricLog.findMany({
-      where: {
-        userId,
-        isDraft: false,
-        loggedAt: {
-          gte: new Date(mesocycle.startDate.getTime() - 14 * DAY_MS),
-          lte: new Date(plannedEnd.getTime() + 14 * DAY_MS),
-        },
-      },
-      orderBy: { loggedAt: "asc" },
-      take: 200,
-      select: {
-        loggedAt: true,
-        bodyweight: true,
-        waist: true,
-        chest: true,
-        shoulders: true,
-        arms: true,
-        thighs: true,
-        glutes: true,
-        calves: true,
       },
     }),
     prisma.programMesocycle.findMany({
@@ -475,8 +486,8 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
     }
   }
 
-  const startMetric = metrics.at(0) ?? null;
-  const endMetric = metrics.at(-1) ?? null;
+  const startMetric = boundaryCheckins.start;
+  const endMetric = boundaryCheckins.end;
   const symptomSummary = summarizeSymptoms(sessions);
   const executionSummary = summarizeExecutionQuality(sessions);
   const analyzedSessions = sessions
@@ -602,6 +613,8 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
     bodyMetrics: {
       start: metricSnapshot(startMetric),
       latest: metricSnapshot(endMetric),
+      startSource: boundaryCheckins.startSource,
+      comparableCircumferences: boundaryCheckins.sharedFields,
       caution:
         "Circumference measures are noisy supporting evidence. Interpret with bodyweight, waist, training response, and measurement timing; do not infer precise muscle gain from a single change.",
     },
@@ -761,7 +774,7 @@ export async function generateMesocycleRecommendationForUser(userId: string, req
   return parsed;
 }
 
-export async function maybeGenerateMesocycleRecommendationForUser(userId: string) {
+export async function maybeGenerateMesocycleRecommendationForUser(userId: string, requestedMesocycleId?: string, endedNow = false) {
   if (process.env.AUTO_MESOCYCLE_REVIEW_ENABLED === "false") return null;
   const program = await prisma.program.findFirst({
     where: { userId, isActive: true, isArchived: false },
@@ -770,19 +783,28 @@ export async function maybeGenerateMesocycleRecommendationForUser(userId: string
   if (!program) return null;
   const now = new Date();
   const candidates = await prisma.programMesocycle.findMany({
-    where: { userId, programId: program.id, isArchived: false, actualEndDate: null, startDate: { lte: now } },
+    where: { userId, programId: program.id, isArchived: false, startDate: { lte: now },
+      ...(requestedMesocycleId ? { id: requestedMesocycleId } : {}) },
     orderBy: { startDate: "desc" },
     take: 12,
-    select: { id: true, startDate: true, lengthWeeks: true, aiRecommendedAt: true, t3ActivatedAt: true },
+    select: { id: true, startDate: true, lengthWeeks: true, actualEndDate: true, aiRecommendedAt: true, t3ActivatedAt: true },
   });
-  const current = candidates.find((row) => row.startDate.getTime() + row.lengthWeeks * 7 * DAY_MS > now.getTime());
+  const current = candidates.find((row) => {
+    const end = mesocycleEnd(row);
+    return now.getTime() >= end.getTime() - 7 * DAY_MS &&
+      now.getTime() < end.getTime() + 8 * DAY_MS;
+  });
   if (!current?.t3ActivatedAt) return null;
-  if (current.aiRecommendedAt && now.getTime() - current.aiRecommendedAt.getTime() < 48 * 3_600_000) return null;
-  const end = current.startDate.getTime() + current.lengthWeeks * 7 * DAY_MS;
-  if (end - now.getTime() > 7 * DAY_MS) return null;
+  const checkins = await checkinsForMesocycle(userId, { ...current, programId: program.id }, now);
+  if (!checkins.ready) return null;
+  const measurementsChanged = Boolean(current.aiRecommendedAt &&
+    [checkins.start?.updatedAt, checkins.end?.updatedAt].some((changedAt) =>
+      changedAt && changedAt > current.aiRecommendedAt!));
+  if (current.aiRecommendedAt && !measurementsChanged && !endedNow &&
+    now.getTime() - current.aiRecommendedAt.getTime() < 48 * 3_600_000) return null;
   const sessionCount = await prisma.workoutSession.count({
     where: { userId, mesocycleId: current.id, status: "COMPLETED",
-      ...(current.aiRecommendedAt ? { completedAt: { gt: current.aiRecommendedAt } } : {}),
+      ...(current.aiRecommendedAt && !measurementsChanged && !endedNow ? { completedAt: { gt: current.aiRecommendedAt } } : {}),
     },
   });
   if (sessionCount === 0) return null;
@@ -798,6 +820,7 @@ export async function getCurrentMesocycleRecommendationForUser(userId: string): 
   aiRecommendation: MesocycleRecommendation | null;
   aiRecommendationModel: string | null;
   aiRecommendedAt: Date | null;
+  checkinStatus: { startSaved: boolean; endSaved: boolean; comparable: boolean; startSource: "EXPLICIT" | "PRIOR_END" | null } | null;
 } | null> {
   const program = await prisma.program.findFirst({
     where: { userId, isActive: true, isArchived: false },
@@ -823,10 +846,12 @@ export async function getCurrentMesocycleRecommendationForUser(userId: string): 
       aiRecommendation: true,
       aiRecommendationModel: true,
       aiRecommendedAt: true,
+      actualEndDate: true,
+      t3ActivatedAt: true,
     },
   });
   const currentIsActive = current && current.startDate.getTime() + current.lengthWeeks * 7 * DAY_MS > Date.now();
-  const mesocycle = currentIsActive && current.aiRecommendation
+  const mesocycle = currentIsActive
     ? current
     : await prisma.programMesocycle.findFirst({
         where: { userId, programId: program.id, isArchived: false, aiRecommendedAt: { not: null } },
@@ -834,13 +859,21 @@ export async function getCurrentMesocycleRecommendationForUser(userId: string): 
         select: {
           id: true, name: true, phase: true, startDate: true, lengthWeeks: true,
           aiRecommendation: true, aiRecommendationModel: true, aiRecommendedAt: true,
+          actualEndDate: true, t3ActivatedAt: true,
         },
       }) ?? (currentIsActive ? current : null);
   if (!mesocycle) return null;
   const parsed = MesocycleRecommendationSchema.safeParse(mesocycle.aiRecommendation);
+  const now = new Date();
+  const checkins = currentIsActive && mesocycle.id === current?.id && mesocycle.t3ActivatedAt && !parsed.success &&
+    now.getTime() >= mesocycleEnd(mesocycle).getTime() - 7 * DAY_MS
+      ? await checkinsForMesocycle(userId, { ...mesocycle, programId: program.id }, now)
+      : null;
 
   return {
     ...mesocycle,
     aiRecommendation: parsed.success ? parsed.data : null,
+    checkinStatus: checkins ? { startSaved: Boolean(checkins.start), endSaved: Boolean(checkins.end),
+      comparable: checkins.ready, startSource: checkins.startSource } : null,
   };
 }

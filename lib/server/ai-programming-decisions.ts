@@ -28,6 +28,7 @@ import {
   T3_REVIEW_LEASE_MS,
 } from "@/lib/coaching/t3-volume-policy";
 import { prisma } from "@/lib/db/prisma";
+import { selectMesocycleCheckins } from "@/lib/coaching/mesocycle-checkins";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { getDashboardData } from "@/lib/server/dashboard";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
@@ -223,6 +224,7 @@ function summarizeHistoricalMesocycle(args: {
     }>;
   }>;
   secondaryContribution: number;
+  priorEndDate: Date | null;
   metrics: Array<{
     loggedAt: Date;
     logType: string;
@@ -269,8 +271,10 @@ function summarizeHistoricalMesocycle(args: {
     ? Math.max(1, daysBetween(mesocycle.startDate, mesocycle.actualEndDate) / 7)
     : Math.max(1, mesocycle.lengthWeeks);
 
-  const startMetric = closestMetric(metrics, mesocycle.startDate, "MESOCYCLE_START");
-  const endMetric = closestMetric(metrics, endDate, "MESOCYCLE_END");
+  const checkins = selectMesocycleCheckins({ logs: metrics, startDate: mesocycle.startDate,
+    endDate, priorEndDate: args.priorEndDate, now: new Date() });
+  const startMetric = checkins.start ?? closestMetric(metrics, mesocycle.startDate, "MESOCYCLE_START");
+  const endMetric = checkins.end ?? closestMetric(metrics, endDate, "MESOCYCLE_END");
 
   return {
     mesocycleId: mesocycle.id,
@@ -613,17 +617,19 @@ async function buildProgrammingContext(userId: string) {
     ];
   });
 
-  const historicalDoseResponse = completedHistory.map((historical) =>
-    summarizeHistoricalMesocycle({
+  const historicalDoseResponse = completedHistory.map((historical, index) => {
+    const prior = completedHistory[index + 1];
+    return summarizeHistoricalMesocycle({
       mesocycle: historical,
+      priorEndDate: prior ? prior.actualEndDate ?? new Date(prior.startDate.getTime() + prior.lengthWeeks * 7 * DAY_MS - DAY_MS) : null,
       sessions: historicalSessions,
       secondaryContribution: finiteNumber(program.secondaryContribution) ?? 0.5,
       metrics: historicalMetrics.map((metric) => ({
         ...metric,
         logType: String(metric.logType),
       })),
-    }),
-  );
+    });
+  });
 
   const currentMovementVolumes = dashboard.movementCoverage.map((coverage) => {
     const target = mesocycle.movementVolumeTargets.find(

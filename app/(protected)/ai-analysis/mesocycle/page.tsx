@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/Card";
+import Link from "next/link";
 import { requireUserId } from "@/lib/auth/user";
 import {
   getCurrentMesocycleRecommendationForUser,
@@ -50,7 +51,7 @@ export default async function MesocycleRecommendationsPage({
       <Card>
         <h2 className="font-semibold text-slate-100">No block review yet</h2>
         <p className="mt-1 text-sm leading-6 text-slate-400">
-          Configure T3 priorities for a current block. Its next-block review appears automatically in the final week or after ending the block early.
+          Configure T3 priorities for a current block. Its next-block review runs near the end once comparable start and end circumference check-ins are saved.
         </p>
       </Card>
     );
@@ -108,10 +109,29 @@ export default async function MesocycleRecommendationsPage({
             insufficient, default toward HOLD when evidence is unclear, and use
             this block mainly to establish the baseline for later comparisons.
           </p>
-          <p className="mt-3 text-xs leading-5 text-slate-500">
-            The review runs after a workout in the final week or when you end
-            the block early. It does not modify the next block or templates automatically.
-          </p>
+          {current.checkinStatus ? (
+            <div className="mt-3 space-y-2 text-sm text-slate-400">
+              <p>
+                {!current.checkinStatus.startSaved
+                  ? "Save a mesocycle start circumference check-in. A previous block's end check-in within seven days of this start also counts."
+                  : !current.checkinStatus.endSaved
+                    ? "Save a mesocycle end circumference check-in within seven days of the block end."
+                    : !current.checkinStatus.comparable
+                      ? "The start and end check-ins need at least one matching circumference measurement."
+                      : "Check-ins are ready. The review runs after a completed workout or a saved check-in."}
+              </p>
+              {!current.checkinStatus.comparable ? (
+                <Link href={`/metrics?logType=${current.checkinStatus.startSaved ? "MESOCYCLE_END" : "MESOCYCLE_START"}`}
+                  className="inline-flex text-xs font-semibold text-orange-300 hover:text-orange-200">
+                  Open metrics check-in
+                </Link>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              The review waits until the last week and uses saved start and end circumference check-ins. It does not modify the next block or templates automatically.
+            </p>
+          )}
         </Card>
       ) : (
         <>

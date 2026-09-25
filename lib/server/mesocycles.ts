@@ -10,6 +10,7 @@ import {
   isT3Priority,
 } from "@/lib/coaching/t3-volume-policy";
 import { prisma } from "@/lib/db/prisma";
+import { selectMesocycleCheckins } from "@/lib/coaching/mesocycle-checkins";
 import { estimateE1RM } from "@/lib/calculations/performance";
 import { parseMesocycleStructureOverrides } from "@/lib/planning/mesocycleStructure";
 import { volumeWindowDays } from "@/lib/programs/options";
@@ -146,10 +147,10 @@ export async function endMesocycle(mesocycleId: string, formData: FormData) {
   if (process.env.AUTO_MESOCYCLE_REVIEW_ENABLED !== "false") {
     after(async () => {
       try {
-        const { generateMesocycleRecommendationForUser } = await import(
+        const { maybeGenerateMesocycleRecommendationForUser } = await import(
           "@/lib/server/ai-mesocycle-recommendations"
         );
-        await generateMesocycleRecommendationForUser(userId, mesocycle.id);
+        await maybeGenerateMesocycleRecommendationForUser(userId, mesocycle.id, true);
       } catch (error) {
         console.error("Automatic mesocycle review failed", error);
       }
@@ -941,6 +942,14 @@ async function buildMesocycleReview(
     where: { userId, isDraft: false, loggedAt: { gte: circumferenceWindowStart, lt: circumferenceWindowEnd } },
     orderBy: { loggedAt: "asc" },
   });
+  const preceding = await prisma.programMesocycle.findFirst({
+    where: { userId, programId: mesocycle.programId, isArchived: false, startDate: { lt: startDate } },
+    orderBy: { startDate: "desc" },
+    select: { startDate: true, lengthWeeks: true, actualEndDate: true },
+  });
+  const checkins = selectMesocycleCheckins({ logs: metrics, startDate, endDate,
+    priorEndDate: preceding ? effectiveMesocycleEndDate(preceding.startDate, preceding.lengthWeeks, preceding.actualEndDate) : null,
+    now: new Date() });
   const startWindowEnd = addDays(startDate, 7);
   const endWindowStart = addDays(endExclusive, -7);
   const avg = (values: Array<number | null>) => {
@@ -950,10 +959,10 @@ async function buildMesocycleReview(
   const metricNumber = (value: unknown) => (value === null || value === undefined ? null : toNumber(value));
   const startMetrics = metrics.filter((metric: any) => metric.loggedAt >= startDate && metric.loggedAt < startWindowEnd);
   const endMetrics = metrics.filter((metric: any) => metric.loggedAt >= endWindowStart && metric.loggedAt < endExclusive);
-  const startBoundaryMetrics = metrics.filter(
+  const startBoundaryMetrics = checkins.start ? [checkins.start] : metrics.filter(
     (metric: any) => metric.loggedAt >= circumferenceWindowStart && metric.loggedAt < addDays(startDate, 8),
   );
-  const endBoundaryMetrics = metrics.filter(
+  const endBoundaryMetrics = checkins.end ? [checkins.end] : metrics.filter(
     (metric: any) => metric.loggedAt >= addDays(endDate, -7) && metric.loggedAt < circumferenceWindowEnd,
   );
   const circumferenceFields = ["chest", "shoulders", "arms", "thighs", "glutes", "calves"] as const;

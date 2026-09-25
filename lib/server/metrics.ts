@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { calculateFatigueSummary } from "@/lib/metrics/fatigue";
@@ -75,6 +76,18 @@ export async function createMetricLog(formData: FormData) {
     await prisma.metricLog.update({ where: { id: existingDraft.id }, data });
   } else {
     await prisma.metricLog.create({ data });
+  }
+
+  if (!data.isDraft && ["MESOCYCLE_START", "MESOCYCLE_END"].includes(data.logType) &&
+      process.env.AUTO_MESOCYCLE_REVIEW_ENABLED !== "false") {
+    after(async () => {
+      try {
+        const { maybeGenerateMesocycleRecommendationForUser } = await import("@/lib/server/ai-mesocycle-recommendations");
+        await maybeGenerateMesocycleRecommendationForUser(userId);
+      } catch (error) {
+        console.error("Automatic mesocycle check-in review failed", error);
+      }
+    });
   }
 
   revalidatePath("/metrics");
