@@ -1,5 +1,6 @@
 import { analyzeCompletedWorkoutForUser } from "@/lib/server/ai-workout-analysis";
 import { runT3VolumeEvaluationForUser } from "@/lib/server/ai-programming-decisions";
+import { evaluateCoachingInterventionsAfterWorkout } from "@/lib/server/coaching-intervention-outcomes";
 
 export async function runAutomaticPostWorkoutCoaching(
   sessionId: string,
@@ -11,6 +12,12 @@ export async function runAutomaticPostWorkoutCoaching(
     } catch (error) {
       console.error("Automatic workout analysis failed", error);
     }
+  }
+
+  try {
+    await evaluateCoachingInterventionsAfterWorkout(userId, sessionId);
+  } catch (error) {
+    console.error("Coaching intervention follow-up failed", error);
   }
 
   try {

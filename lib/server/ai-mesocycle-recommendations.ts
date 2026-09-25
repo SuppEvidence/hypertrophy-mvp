@@ -650,6 +650,7 @@ Use the supplied deterministic data and the Programming Policy as hard guidance.
 Decision rules:
 - HOLD is the default when evidence is mixed, sparse, or already productive.
 - T3 owns in-block numeric dose assessment and adjustment proposals. This next-block review recommends outcome priorities and qualitative movement/template implications only. Do not prescribe exact weekly set targets or independently redo T3's volume decisions.
+- Legacy numeric mesocycle targets and prior coach-owned dose estimates are historical context, not a ceiling or a required target for the next block. Prefer observed completed work and response, interpreted with body metrics, recovery, symptoms and execution quality.
 - Movement-pattern actions may keep, shift emphasis, or review an exercise implementation for the NEXT block; they do not authorize a numeric volume change or edit a template.
 - Each priority suggestion must name its current and suggested priority. KEEP means identical priorities; PROMOTE means more direct focus; DEMOTE means less direct focus. The athlete decides whether to adopt it for the next block.
 - Priority status alone is not evidence that volume must increase.

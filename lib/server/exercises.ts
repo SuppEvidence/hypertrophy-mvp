@@ -7,14 +7,17 @@ import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/data/seedCatalog";
 import { exerciseSchema } from "@/lib/validations/exercise";
+import { z } from "zod";
 
 export async function getExerciseReferenceData() {
-  const [muscles, movementGroups] = await Promise.all([
+  const userId = await requireUserId();
+  const [muscles, movementGroups, setTypes] = await Promise.all([
     prisma.muscle.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.movementGroup.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.setType.findMany({ where: { isActive: true, OR: [{ userId: null }, { userId }] }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, isIntensifier: true } }),
   ]);
 
-  return { muscles, movementGroups };
+  return { muscles, movementGroups, setTypes };
 }
 
 export async function listExercises(searchParams?: {
@@ -88,8 +91,47 @@ export async function getExerciseForEdit(exerciseId: string) {
       movementGroup: true,
       primaryMuscles: { include: { muscle: true } },
       secondaryMuscles: { include: { muscle: true } },
+      coachingProfiles: { where: { userId }, take: 1 },
     },
   });
+}
+
+const coachingProfileInput = z.object({
+  preference: z.enum(["NEUTRAL", "PREFERRED", "AVOID"]),
+  intensifierPreference: z.enum(["DEFAULT", "NONE", "ONLY_SELECTED"]),
+  notes: z.string().trim().max(800),
+});
+
+export async function saveExerciseCoachingProfile(exerciseId: string, formData: FormData) {
+  const userId = await requireUserId();
+  const exercise = await prisma.exercise.findFirst({ where: { id: exerciseId, OR: [{ isSeed: true, userId: null }, { userId }] } });
+  if (!exercise) throw new Error("Exercise not found.");
+  const input = coachingProfileInput.parse({
+    preference: formData.get("preference"),
+    intensifierPreference: formData.get("intensifierPreference"),
+    notes: String(formData.get("notes") ?? ""),
+  });
+  const requested = [...new Set(formData.getAll("allowedIntensifierIds").map(String))];
+  const available = await prisma.setType.findMany({
+    where: { id: { in: requested }, isActive: true, isIntensifier: true, OR: [{ userId: null }, { userId }] },
+    select: { id: true },
+  });
+  if (available.length !== requested.length) throw new Error("Select active set types from your catalog.");
+  if (input.intensifierPreference === "ONLY_SELECTED" && !requested.length) throw new Error("Select at least one permitted intensifier.");
+  const data = {
+    preference: input.preference,
+    intensifierPreference: input.intensifierPreference,
+    allowedIntensifierIds: input.intensifierPreference === "ONLY_SELECTED" ? requested : [],
+    notes: input.notes || null,
+    lastConfirmedAt: new Date(),
+  };
+  await prisma.exerciseCoachingProfile.upsert({
+    where: { userId_exerciseId: { userId, exerciseId } },
+    create: { userId, exerciseId, ...data },
+    update: data,
+  });
+  revalidatePath(`/exercises/${exerciseId}`);
+  revalidatePath("/exercises");
 }
 
 function parseTags(value: string | undefined) {
@@ -213,6 +255,19 @@ export async function saveExercise(exerciseId: string, formData: FormData) {
         },
       });
       await replaceMuscleLinks(copy.id, primaryMuscleIds, secondaryMuscleIds, tx);
+      const coachingProfile = await tx.exerciseCoachingProfile.findUnique({
+        where: { userId_exerciseId: { userId, exerciseId: existing.id } },
+      });
+      if (coachingProfile) {
+        await tx.exerciseCoachingProfile.create({ data: {
+          userId, exerciseId: copy.id,
+          preference: coachingProfile.preference,
+          intensifierPreference: coachingProfile.intensifierPreference,
+          allowedIntensifierIds: coachingProfile.allowedIntensifierIds,
+          notes: coachingProfile.notes,
+          lastConfirmedAt: coachingProfile.lastConfirmedAt,
+        } });
+      }
       return copy;
     }
 

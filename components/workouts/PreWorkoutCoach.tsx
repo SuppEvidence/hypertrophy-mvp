@@ -54,6 +54,24 @@ export function PreWorkoutCoach({ programId, templateId }: { programId: string; 
     }
   }
 
+  async function decline() {
+    if (!result) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/pre-workout-coach/decline", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interventionId: result.proposal.interventionId }),
+      });
+      if (!response.ok) throw new Error("Could not save your choice. Please retry.");
+      setResult(null);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save your choice.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const plannedMovementIds = new Set(result?.display.items.map((item) => item.movementGroupId) ?? []);
   const localWarnings = result?.proposal.localizedReadiness.filter((item) =>
     plannedMovementIds.has(item.movementGroupId) && (item.status === "CAUTION" || item.status === "RECOVERING"),
@@ -164,6 +182,7 @@ export function PreWorkoutCoach({ programId, templateId }: { programId: string; 
               {result.proposal.decision === "ADJUST" ? "Start coached workout" : "Start reviewed workout"}
             </Button>
           </form>
+          <button type="button" disabled={busy} onClick={() => void decline()} className="w-full text-center text-xs text-slate-400 underline disabled:opacity-50">Skip this proposal</button>
         </div>
       ) : null}
     </div>

@@ -524,6 +524,11 @@ export async function startCoachedWorkout(formData: FormData) {
   const { prescription, template, items } = resolved;
 
   const session = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.coachingIntervention.updateMany({
+      where: { id: resolved.proposal.interventionId, userId, programId: prescription.program.id, stage: "T2_PRE_WORKOUT", status: "PROPOSED" },
+      data: { status: "ACCEPTED", decidedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw new Error("This workout proposal was already handled. Review again.");
     const created = await tx.workoutSession.create({
       data: {
         userId,
@@ -622,6 +627,7 @@ export async function startCoachedWorkout(formData: FormData) {
         });
       }
     }
+    await tx.coachingIntervention.update({ where: { id: resolved.proposal.interventionId }, data: { sessionId: created.id } });
     return created;
   });
 

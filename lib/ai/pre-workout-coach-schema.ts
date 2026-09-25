@@ -67,6 +67,7 @@ export const LocalReadinessInferenceSchema = z.object({
 });
 
 export const PreWorkoutCoachProposalSchema = PreWorkoutCoachModelPlanSchema.extend({
+  interventionId: z.string().uuid(),
   version: z.literal("T2.0"),
   generatedAt: z.string().datetime(),
   expiresAt: z.string().datetime(),

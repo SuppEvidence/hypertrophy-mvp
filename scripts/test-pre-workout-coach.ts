@@ -231,6 +231,35 @@ check("one myo-rep set on a supported isolation exercise is valid with matching 
   assert.equal(validatePreWorkoutPlan(plan, config).ok, true);
 });
 
+check("exercise profile blocks new intensifiers even with matching dose reduction", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].sets = 2;
+  plan.items[0].setTypeIds = ["normal", "normal"];
+  plan.items[1].setTypeIds[1] = "myo";
+  const exercises = config.exercises.map((exercise) => exercise.id === "e3"
+    ? { ...exercise, intensifierPreference: "NONE" as const } : exercise);
+  assert.ok(validatePreWorkoutPlan(plan, { ...config, exercises }).errors.some((error) => error.includes("unsuitable")));
+});
+
+check("selected intensifier profile remains subject to movement safety", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].sets = 2;
+  plan.items[0].setTypeIds = ["normal", "normal"];
+  plan.items[1].setTypeIds[1] = "myo";
+  const selected = config.exercises.map((exercise) => exercise.id === "e3"
+    ? { ...exercise, intensifierPreference: "ONLY_SELECTED" as const, allowedIntensifierIds: ["myo"] } : exercise);
+  assert.equal(validatePreWorkoutPlan(plan, { ...config, exercises: selected }).ok, true);
+  const unselected = selected.map((exercise) => exercise.id === "e3" ? { ...exercise, allowedIntensifierIds: ["partials"] } : exercise);
+  assert.ok(validatePreWorkoutPlan(plan, { ...config, exercises: unselected }).errors.some((error) => error.includes("unsuitable")));
+  const squat = { ...structuredClone(keep), decision: "ADJUST" as const };
+  squat.items[0].setTypeIds[0] = "partials";
+  squat.items[1].sets = 1;
+  squat.items[1].setTypeIds = ["normal"];
+  const squatSelected = config.exercises.map((exercise) => exercise.id === "e1"
+    ? { ...exercise, intensifierPreference: "ONLY_SELECTED" as const, allowedIntensifierIds: ["partials"] } : exercise);
+  assert.ok(validatePreWorkoutPlan(squat, { ...config, exercises: squatSelected }).errors.some((error) => error.includes("unsuitable")));
+});
+
 check("local caution forbids an intensifier even if another set is removed", () => {
   const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
   plan.items[0].sets = 2;

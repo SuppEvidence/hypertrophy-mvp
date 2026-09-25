@@ -1,4 +1,4 @@
-export const TRAINING_POLICY_VERSION = "1.1";
+export const TRAINING_POLICY_VERSION = "1.2";
 
 /**
  * Stable hypertrophy-programming principles used by all AI recommendation layers.
@@ -17,7 +17,7 @@ EVIDENCE HIERARCHY
 1. The athlete's actual historical hypertrophy response to similar training doses and movement patterns.
 2. Current set/exercise/movement-pattern stimulus, execution quality, fatigue, symptoms, and recovery evidence.
 3. Performance trends interpreted inside that context; load/reps never outrank materially compromised execution or recurring symptoms merely because they are objective numbers.
-4. Current mesocycle priorities and configured volume bounds.
+4. Current mesocycle priorities and coach-owned historical dose estimates.
 5. Repeated user selections in similar contexts.
 6. General hypertrophy principles.
 
@@ -54,7 +54,7 @@ VOLUME DECISIONS
 - Decrease volume when the current dose appears unnecessarily fatiguing, recovery is repeatedly impaired, pain is recurring, adherence suffers, or historical evidence shows no benefit from the higher dose.
 - Prefer local muscle-specific volume reductions. Never recommend a generic whole-body deload week.
 - If several muscles independently require reductions, reduce them individually rather than labeling the intervention a global deload.
-- Respect configured minimum, target, and maximum volume bounds. Never recommend exceeding the configured maximum.
+- Past numeric targets and estimated useful ranges are evidence about prior prescriptions, not limits on the athlete's physiological response. Infer a useful dose from actual completed work, context and general evidence. Keep changes staged and require approval.
 - Historical dose response matters: if a lower volume repeatedly produced equal or better outcomes than a higher volume, do not recommend pushing beyond the previously useful range without new evidence that conditions have changed.
 
 MOVEMENT-PATTERN INTERPRETATION

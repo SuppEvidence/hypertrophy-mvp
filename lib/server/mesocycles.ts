@@ -175,51 +175,6 @@ export async function archiveMesocycle(formData: FormData) {
   redirect(`/programs/${mesocycle.programId}`);
 }
 
-export async function updateMesocycleVolumeTargets(mesocycleId: string, formData: FormData) {
-  const userId = await requireUserId();
-  const mesocycle = await prisma.programMesocycle.findFirst({ where: { id: mesocycleId, userId, isArchived: false } });
-  if (!mesocycle) redirect("/programs");
-
-  const muscles = await prisma.muscle.findMany({ orderBy: { sortOrder: "asc" } });
-  const rows = muscles
-    .map((muscle) => {
-      const targetSets = decimalOrNull(formData.get(`target:${muscle.id}`));
-      const minimumSets = decimalOrNull(formData.get(`min:${muscle.id}`));
-      const maximumSets = decimalOrNull(formData.get(`max:${muscle.id}`));
-      const priorityLevel = formData.get(`priority:${muscle.id}`) === "on" ? 1 : 0;
-      return {
-        muscleId: muscle.id,
-        targetSets,
-        minimumSets,
-        maximumSets,
-        priorityLevel,
-      };
-    })
-    .filter((row) => row.targetSets !== null || row.minimumSets !== null || row.maximumSets !== null || row.priorityLevel > 0);
-
-  await prisma.$transaction(async (tx) => {
-    await tx.mesocycleMuscleVolumeTarget.deleteMany({ where: { mesocycleId } });
-    if (rows.length > 0) {
-      await tx.mesocycleMuscleVolumeTarget.createMany({
-        data: rows.map((row) => ({
-          mesocycleId,
-          muscleId: row.muscleId,
-          targetSets: row.targetSets ?? 0,
-          minimumSets: row.minimumSets,
-          maximumSets: row.maximumSets,
-          priorityLevel: row.priorityLevel,
-        })),
-      });
-    }
-  });
-
-  revalidatePath(`/programs/${mesocycle.programId}`);
-  revalidatePath("/templates");
-  revalidatePath("/log");
-  revalidatePath("/dashboard");
-  redirect(`/programs/${mesocycle.programId}?saved=1`);
-}
-
 export async function updateMesocycleMusclePriorities(
   mesocycleId: string,
   formData: FormData,

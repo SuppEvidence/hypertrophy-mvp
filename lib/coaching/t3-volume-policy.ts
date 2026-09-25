@@ -39,16 +39,10 @@ export function initialT3Range(
   baselineWeeklySets: number,
 ) {
   const baseline = Math.min(T3_RANGE_CEILING, Math.max(0, Number.isFinite(baselineWeeklySets) ? Number(baselineWeeklySets.toFixed(1)) : 0));
-  if (priority === "SPECIALIZE") {
-    return { minimum: Math.max(0, baseline - 1), maximum: Math.min(T3_RANGE_CEILING, baseline + 4) };
-  }
-  if (priority === "GROW") {
-    return { minimum: Math.max(0, baseline - 2), maximum: Math.min(T3_RANGE_CEILING, baseline + 3) };
-  }
-  if (priority === "MAINTAIN") {
-    return { minimum: Math.max(0, baseline - 2), maximum: Math.min(T3_RANGE_CEILING, baseline + 1) };
-  }
-  return { minimum: 0, maximum: baseline };
+  // An unreviewed block knows its prescribed starting dose, not a proven response range.
+  // The coach estimates the range once there is training evidence; priority alone never invents one.
+  void priority;
+  return { minimum: baseline, maximum: baseline };
 }
 
 export function shouldRunT3Evaluation(args: {
@@ -91,16 +85,6 @@ export function nextT3CoachTarget(args: {
 
   const next = args.current + args.delta;
   if (next < 0 || (next > T3_RANGE_CEILING && args.delta > 0)) throw new Error("The proposed training dose is outside the application limits.");
-  const currentInside = args.current >= args.minimum && args.current <= args.maximum;
-  const nextInside = next >= args.minimum && next <= args.maximum;
-  const movesTowardRange =
-    (args.current < args.minimum && next > args.current && next <= args.maximum) ||
-    (args.current > args.maximum && next < args.current && next >= args.minimum);
-
-  if (args.delta !== 0 && !nextInside && !(currentInside === false && movesTowardRange)) {
-    throw new Error("T3 volume proposal must remain inside, or move toward, its evidence-based range.");
-  }
-
   return Number(next.toFixed(1));
 }
 

@@ -94,6 +94,30 @@ enum MusclePriority {
   INDIRECT_ONLY
 }
 
+enum ExerciseCoachingPreference {
+  NEUTRAL
+  PREFERRED
+  AVOID
+}
+
+enum ExerciseIntensifierPreference {
+  DEFAULT
+  NONE
+  ONLY_SELECTED
+}
+
+enum CoachingInterventionStage {
+  T2_PRE_WORKOUT
+  T3_VOLUME
+}
+
+enum CoachingInterventionStatus {
+  PROPOSED
+  ACCEPTED
+  DECLINED
+  SUPERSEDED
+}
+
 model Profile {
   id        String   @id @db.Uuid
   email     String?  @unique
@@ -109,6 +133,8 @@ model Profile {
   setTypes SetType[]
   mesocycles ProgramMesocycle[]
   workoutCoachActions WorkoutCoachAction[]
+  exerciseCoachingProfiles ExerciseCoachingProfile[]
+  coachingInterventions CoachingIntervention[]
 
   @@map("profiles")
 }
@@ -212,11 +238,32 @@ model Exercise {
   templateExercises TemplateExercise[]
   sessionExercises WorkoutSessionExercise[]
   substitutedSessionExercises WorkoutSessionExercise[] @relation("SubstitutedFromExercise")
+  coachingProfiles ExerciseCoachingProfile[]
 
   @@index([userId, slug])
   @@index([name])
   @@index([movementGroupId])
   @@map("exercises")
+}
+
+model ExerciseCoachingProfile {
+  id                       String @id @default(uuid()) @db.Uuid
+  userId                   String @db.Uuid @map("user_id")
+  exerciseId               String @db.Uuid @map("exercise_id")
+  preference               ExerciseCoachingPreference @default(NEUTRAL)
+  intensifierPreference    ExerciseIntensifierPreference @default(DEFAULT) @map("intensifier_preference")
+  allowedIntensifierIds    String[] @default([]) @map("allowed_intensifier_ids")
+  notes                    String? @db.VarChar(800)
+  lastConfirmedAt          DateTime @default(now()) @map("last_confirmed_at")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  user     Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseId])
+  @@index([userId, preference])
+  @@map("exercise_coaching_profiles")
 }
 
 model ExercisePrimaryMuscle {
@@ -537,12 +584,40 @@ model WorkoutSession {
   mesocycle ProgramMesocycle? @relation(fields: [mesocycleId], references: [id], onDelete: SetNull)
   exercises WorkoutSessionExercise[]
   coachActions WorkoutCoachAction[]
+  coachingInterventions CoachingIntervention[]
 
   @@index([userId, status, performedAt])
   @@index([programId, performedAt])
   @@index([templateId])
   @@index([mesocycleId])
   @@map("workout_sessions")
+}
+
+model CoachingIntervention {
+  id              String @id @default(uuid()) @db.Uuid
+  userId          String @db.Uuid @map("user_id")
+  programId       String @db.Uuid @map("program_id")
+  mesocycleId     String? @db.Uuid @map("mesocycle_id")
+  sessionId       String? @db.Uuid @map("session_id")
+  sourceDecisionId String? @unique @db.Uuid @map("source_decision_id")
+  stage           CoachingInterventionStage
+  status          CoachingInterventionStatus @default(PROPOSED)
+  proposal        Json
+  baseline        Json
+  outcome         Json?
+  decidedAt       DateTime? @map("decided_at")
+  evaluatedAt     DateTime? @map("evaluated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user     Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session  WorkoutSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  sourceDecision AiProgrammingDecision? @relation(fields: [sourceDecisionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, stage, createdAt])
+  @@index([userId, status, evaluatedAt])
+  @@index([mesocycleId, stage])
+  @@map("coaching_interventions")
 }
 
 model WorkoutSessionExercise {
@@ -707,6 +782,7 @@ model AiProgrammingDecision {
   outcomeEvaluatedAt    DateTime? @map("outcome_evaluated_at")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
+  coachingIntervention  CoachingIntervention?
 
   @@index([userId, createdAt])
   @@index([userId, status, createdAt])

@@ -55,7 +55,11 @@ function slotPriorityRank(slot: PreWorkoutSlotCandidate, priorities: Map<string,
 }
 
 export type CoachSetType = { id: string; name: string; slug: string; multiplier: number; isIntensifier: boolean };
-export type CoachExercise = { id: string; movementGroupName: string; primaryMuscleIds: string[]; secondaryMuscleIds: string[] };
+export type CoachExercise = { id: string; movementGroupName: string; primaryMuscleIds: string[]; secondaryMuscleIds: string[];
+  preference?: "NEUTRAL" | "PREFERRED" | "AVOID";
+  intensifierPreference?: "DEFAULT" | "NONE" | "ONLY_SELECTED";
+  allowedIntensifierIds?: string[];
+};
 
 // Deliberately narrow: movement names are explicit capabilities, not guesses from an exercise's display name.
 // Other movements may retain existing template intensifiers, but the coach cannot introduce one.
@@ -70,6 +74,8 @@ const INTRODUCIBLE_INTENSIFIERS: Record<string, string[]> = {
 };
 
 export function canIntroduceSetType(exercise: CoachExercise, type: CoachSetType) {
+  if (exercise.preference === "AVOID" || exercise.intensifierPreference === "NONE") return false;
+  if (exercise.intensifierPreference === "ONLY_SELECTED" && !exercise.allowedIntensifierIds?.includes(type.id)) return false;
   return exercise.primaryMuscleIds.length === 1 && exercise.secondaryMuscleIds.length === 0 &&
     Boolean(INTRODUCIBLE_INTENSIFIERS[exercise.movementGroupName.toLowerCase()]?.includes(type.slug));
 }
@@ -330,6 +336,9 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
     seen.add(item.sourceSlotId);
     if (slot.templateId !== plan.baseTemplateId) importedSlots += 1;
     if (!slot.allowedExerciseIds.includes(item.exerciseId)) errors.push(`Exercise does not match slot ${item.sourceSlotId}.`);
+    if (item.exerciseId !== slot.defaultExerciseId && exerciseById.get(item.exerciseId)?.preference === "AVOID") {
+      errors.push(`Avoided exercise cannot be introduced into slot ${item.sourceSlotId}.`);
+    }
     if (item.sets < 1 || item.sets > slot.maxSets) errors.push(`Set count is outside the allowed range for slot ${item.sourceSlotId}.`);
     if (item.setTypeIds.length !== item.sets) errors.push(`Every physical set needs one set type in slot ${item.sourceSlotId}.`);
     for (const [index, id] of item.setTypeIds.entries()) {

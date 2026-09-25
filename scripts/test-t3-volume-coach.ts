@@ -15,7 +15,7 @@ import {
 assert.equal(suggestedT3Priority({ programPriority: true, baselineWeeklySets: 4 }), "SPECIALIZE");
 assert.equal(suggestedT3Priority({ programPriority: false, baselineWeeklySets: 6 }), "GROW");
 assert.equal(suggestedT3Priority({ programPriority: false, baselineWeeklySets: 0 }), "INDIRECT_ONLY");
-assert.deepEqual(initialT3Range("MAINTAIN", 4), { minimum: 2, maximum: 5 });
+assert.deepEqual(initialT3Range("MAINTAIN", 4), { minimum: 4, maximum: 4 });
 
 const now = new Date("2026-09-23T12:00:00Z");
 const activatedAt = new Date("2026-09-10T12:00:00Z");
@@ -42,7 +42,8 @@ assert.equal(nextT3CoachTarget({ current: 13, delta: -2, minimum: 6, maximum: 10
 assert.equal(nextT3CoachTarget({ current: 0, delta: 0, minimum: 0, maximum: 0, priority: "INDIRECT_ONLY" }), 0);
 assert.throws(() => nextT3CoachTarget({ current: 8, delta: 3, minimum: 6, maximum: 12, priority: "GROW" }));
 assert.throws(() => nextT3CoachTarget({ current: 8, delta: 1, minimum: 6, maximum: 12, priority: "INDIRECT_ONLY" }));
-assert.throws(() => nextT3CoachTarget({ current: 8, delta: 2, minimum: 5, maximum: 9, priority: "GROW" }));
+assert.equal(nextT3CoachTarget({ current: 8, delta: 2, minimum: 5, maximum: 9, priority: "GROW" }), 10,
+  "An estimated useful range is evidence, not a hard prescription cap");
 
 const review = MesocycleRecommendationSchema.safeParse({
   summary: "Keep the next block conservative.",
