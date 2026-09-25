@@ -743,6 +743,8 @@ CURRENT TASK
 - HOLD is the default under sparse, noisy, contradictory, or execution-compromised evidence.
 - During credible fat loss (for example, declining bodyweight and waist), stable strength and productive execution can be a successful response. Do not demand gain-phase strength improvement.
 - SPECIALIZE protects the highest priority but does not automatically mean more volume. GROW seeks a productive response. MAINTAIN seeks the lowest supported dose that preserves the result. INDIRECT_ONLY may retain incidental work but must never receive an increase proposal.
+- Assess the proposed changes against the WHOLE program budget: effective muscle and movement dose, physical slots, session capacity, overlapping fatigue, and recent recoverability. When priority work needs more room, look for demonstrably less valuable lower-priority work to release first. Do not automatically cut a productive muscle or imply that each added effective set has a one-to-one recovery cost.
+- If recommending several muscle changes in the same review, explain their combined effect in the global summary. Protect SPECIALIZE work when trimming for shared time/fatigue capacity; reduce it directly when that muscle's own symptoms, execution or recovery evidence warrants it. A cut to a lower-priority muscle still needs evidence that it can maintain its intended outcome.
 - Each decision may contain ZERO, ONE, or TWO active options. KEEP AS IS is always separately available.
 - If KEEP AS IS is clearly best, it may be the preferred recommendation and the active options may be empty or only include a credible alternative worth considering.
 - The two active options, when present, must be materially different (for example: increase via isolation vs reallocate existing volume toward a better movement pattern).
@@ -755,7 +757,7 @@ CURRENT TASK
 - Use the current prescribed movement dose to check removals, not the amount completed in a recent window. Prefer a feasible existing slot. If no slot can implement it, describe the structural need in the assessment and keep the current plan; do not create an unusable option.
 - No more than +4/-6 effective sets per muscle and +12/-16 physical sets across the block can be approved in a rolling seven days. Recent selections and their actual effects are provided. Do not repeat a previous adjustment before observing its response.
 - Keep proposed targets inside the evidence-based range returned in the assessment. If the current target is outside the new range, take only a staged step toward it.
-- For priority muscles, use EARLIER_IF_LOGICAL when added work should be protected from overlapping fatigue; otherwise KEEP_CURRENT.
+- For priority muscles, use EARLIER_IF_LOGICAL when work should be protected from overlapping fatigue; otherwise KEEP_CURRENT. Review existing placement as well as newly added work: if specialization exercises are consistently late and performance or execution suffers, call out a sensible earlier placement even when the weekly dose stays unchanged.
 - Placement is advisory: this layer changes set counts inside existing slots and does not reorder exercises. Explain any proposed order change as a separate future implementation consideration, not an effect of approving a dose option.
 - Do not recommend exact workout/template edits yet. The deterministic planner will handle legal implementation later.
 - Do not recommend global deloads.

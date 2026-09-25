@@ -41,7 +41,18 @@ export type PreWorkoutSlotCandidate = {
   defaultExerciseId: string;
   allowedExerciseIds: string[];
   prescribedSetTypeIds: string[];
+  primaryMuscleIds?: string[];
 };
+
+export type CoachMusclePriority = { muscleId: string; priority: "SPECIALIZE" | "GROW" | "MAINTAIN" | "INDIRECT_ONLY" };
+
+const PRIORITY_RANK: Record<CoachMusclePriority["priority"], number> = {
+  SPECIALIZE: 3, GROW: 2, MAINTAIN: 1, INDIRECT_ONLY: 0,
+};
+
+function slotPriorityRank(slot: PreWorkoutSlotCandidate, priorities: Map<string, number>) {
+  return Math.max(-1, ...(slot.primaryMuscleIds ?? []).map((id) => priorities.get(id) ?? -1));
+}
 
 export type CoachSetType = { id: string; name: string; slug: string; multiplier: number; isIntensifier: boolean };
 export type CoachExercise = { id: string; movementGroupName: string; primaryMuscleIds: string[]; secondaryMuscleIds: string[] };
@@ -282,12 +293,15 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
   setTypes: CoachSetType[];
   exercises: CoachExercise[];
   secondaryContribution: number;
+  musclePriorities?: CoachMusclePriority[];
+  athleteConstraints?: string;
 }) {
   const errors: string[] = [];
   const slotById = new Map(config.slots.map((slot) => [slot.id, slot]));
   const localByMovement = new Map(config.localizedReadiness.map((item) => [item.movementGroupId, item]));
   const typeById = new Map(config.setTypes.map((type) => [type.id, type]));
   const exerciseById = new Map(config.exercises.map((exercise) => [exercise.id, exercise]));
+  const priorityByMuscle = new Map((config.musclePriorities ?? []).map((entry) => [entry.muscleId, PRIORITY_RANK[entry.priority]]));
   if (!config.templateIds.includes(plan.baseTemplateId)) errors.push("Unknown base template.");
   const seen = new Set<string>();
   let totalSets = 0;
@@ -365,6 +379,48 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
   const dose = preWorkoutVolume(plan, config.slots, config.setTypes);
   if (dose.proposed.effective > dose.baseline.effective + 0.001) errors.push("Pre-session coaching cannot increase the base template's total effective sets.");
   if (newlyIntroducedIntensifiers > 1) errors.push("At most one new intensifier may be proposed for this workout.");
+  // An explicit constraint or local caution can require reducing a priority exercise directly.
+  // In an otherwise routine trim, preserve higher-priority primary work while lower-priority
+  // slots still retain their full baseline effective dose.
+  const specificConstraint = /\b(pain\w*|sore\w*|injur\w*|irritat\w*|unavail\w*|broken|equipment|avoid|occupied|out of order|no access)\b/i.test(config.athleteConstraints ?? "");
+  if (!specificConstraint && priorityByMuscle.size > 0) {
+    const bySlot = new Map(plan.items.map((item) => [item.sourceSlotId, item]));
+    const baseSlots = config.slots.filter((slot) => slot.templateId === plan.baseTemplateId);
+    for (const slot of baseSlots) {
+      const rank = slotPriorityRank(slot, priorityByMuscle);
+      if (rank < 1 || ["CAUTION", "RECOVERING"].includes(localByMovement.get(slot.movementGroupId)?.status ?? "")) continue;
+      const original = slot.prescribedSetTypeIds.reduce((sum, id) => sum + (typeById.get(id)?.multiplier ?? 0), 0);
+      const proposed = bySlot.get(slot.id)?.setTypeIds.reduce((sum, id) => sum + (typeById.get(id)?.multiplier ?? 0), 0) ?? 0;
+      if (proposed >= original - 0.001) continue;
+      const untouchedLower = baseSlots.some((other) => {
+        if (slotPriorityRank(other, priorityByMuscle) >= rank) return false;
+        const lowerOriginal = other.prescribedSetTypeIds.reduce((sum, id) => sum + (typeById.get(id)?.multiplier ?? 0), 0);
+        const lowerProposed = bySlot.get(other.id)?.setTypeIds.reduce((sum, id) => sum + (typeById.get(id)?.multiplier ?? 0), 0) ?? 0;
+        return lowerOriginal > 0 && lowerProposed >= lowerOriginal - 0.001;
+      });
+      if (untouchedLower) errors.push("Reduce lower-priority work before cutting a higher-priority exercise, unless its local evidence or today's constraints justify an exception.");
+    }
+  }
+  // Preserve favorable relative placement already present in the base template.
+  // A coach may move priority work earlier; a reordering must not bury it behind a
+  // lower-priority slot that previously followed it.
+  if (priorityByMuscle.size > 0) {
+    const baseSlots = config.slots.filter((slot) => slot.templateId === plan.baseTemplateId).sort((a, b) => a.sortOrder - b.sortOrder);
+    const proposedPositions = new Map(plan.items.map((item, index) => [item.sourceSlotId, index]));
+    for (const [index, higher] of baseSlots.entries()) {
+      const higherPosition = proposedPositions.get(higher.id);
+      if (higherPosition === undefined) continue;
+      for (const lower of baseSlots.slice(index + 1)) {
+        const lowerPosition = proposedPositions.get(lower.id);
+        if (lowerPosition !== undefined && higherPosition > lowerPosition &&
+            slotPriorityRank(higher, priorityByMuscle) > slotPriorityRank(lower, priorityByMuscle) &&
+            slotPriorityRank(higher, priorityByMuscle) >= 2) {
+          errors.push("A reorder cannot move higher-priority work behind a lower-priority slot it previously preceded.");
+          break;
+        }
+      }
+    }
+  }
   for (const [id, effective] of movementDose) {
     if (effective > (baselineMovementDose.get(id) ?? 0) + 1.001) errors.push("A movement cannot gain more than one effective set in a pre-workout adjustment.");
     if (localByMovement.get(id)?.status === "CAUTION" && effective > (baselineMovementDose.get(id) ?? 0) + 0.001) errors.push("A locally cautioned movement cannot gain effective volume through imported slots.");

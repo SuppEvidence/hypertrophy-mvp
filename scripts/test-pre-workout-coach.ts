@@ -271,4 +271,58 @@ check("a substituted exercise cannot inherit an unsuitable template intensifier"
   }
 });
 
+const prioritized = {
+  ...config,
+  slots: slots.map((slot) => ({ ...slot, primaryMuscleIds: slot.id === "s1" ? ["quads"] : slot.id === "s2" ? ["hamstrings"] : [] })),
+  musclePriorities: [
+    { muscleId: "quads", priority: "SPECIALIZE" as const },
+    { muscleId: "hamstrings", priority: "MAINTAIN" as const },
+  ],
+};
+
+check("routine trims keep specialization work until lower-priority work is reduced", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].sets = 2;
+  plan.items[0].setTypeIds = ["normal", "normal"];
+  assert.ok(validatePreWorkoutPlan(plan, prioritized).errors.some((error) => error.includes("lower-priority work")));
+  plan.items[1].sets = 1;
+  plan.items[1].setTypeIds = ["normal"];
+  assert.equal(validatePreWorkoutPlan(plan, prioritized).ok, true);
+});
+
+check("local caution permits a priority exercise to be reduced first", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].sets = 2;
+  plan.items[0].setTypeIds = ["normal", "normal"];
+  const caution = prioritized.localizedReadiness.map((row) => row.movementGroupId === "mg1" ? { ...row, status: "CAUTION" as const } : row);
+  assert.equal(validatePreWorkoutPlan(plan, { ...prioritized, localizedReadiness: caution }).ok, true);
+});
+
+check("a stated equipment constraint can justify reducing otherwise protected work", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].sets = 2;
+  plan.items[0].setTypeIds = ["normal", "normal"];
+  assert.equal(validatePreWorkoutPlan(plan, { ...prioritized, athleteConstraints: "Squat machine unavailable." }).ok, true);
+});
+
+check("a general time constraint still trims lower-priority work first", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].sets = 2;
+  plan.items[0].setTypeIds = ["normal", "normal"];
+  assert.ok(validatePreWorkoutPlan(plan, { ...prioritized, athleteConstraints: "Only 40 minutes today." }).errors.some((error) => error.includes("lower-priority work")));
+});
+
+check("a priority exercise can move earlier but cannot be moved behind lower-priority work", () => {
+  const reversed = { ...structuredClone(keep), decision: "ADJUST" as const, items: [...keep.items].reverse() };
+  assert.ok(validatePreWorkoutPlan(reversed, prioritized).errors.some((error) => error.includes("reorder cannot")));
+  const lowerFirst = {
+    ...prioritized,
+    musclePriorities: [
+      { muscleId: "quads", priority: "MAINTAIN" as const },
+      { muscleId: "hamstrings", priority: "SPECIALIZE" as const },
+    ],
+  };
+  assert.equal(validatePreWorkoutPlan(reversed, lowerFirst).ok, true);
+});
+
 console.log(`${checks} pre-workout coaching policy checks passed.`);
