@@ -115,6 +115,7 @@ export async function buildProgramPrescription(
         movementGroup: { select: { id: true, name: true, sortOrder: true } },
         primaryMuscles: { select: { muscleId: true, muscle: { select: { name: true, sortOrder: true } } } },
         secondaryMuscles: { select: { muscleId: true, muscle: { select: { name: true, sortOrder: true } } } },
+        coachingProfiles: { where: { userId }, select: { preference: true }, take: 1 },
       },
     }),
   ]);
@@ -135,6 +136,7 @@ export async function buildProgramPrescription(
               : priority.priority === "GROW"
                 ? 1
                 : 0,
+          priority: priority.priority,
         }))
       : activeMesocycle.volumeTargets.map((target) => ({
           muscleId: target.muscleId,
@@ -242,7 +244,9 @@ export async function buildProgramPrescription(
       isIntensifier: setType.isIntensifier,
       sortOrder: setType.sortOrder,
     })),
-    movementDefaults: movementDefaults.map((exercise) => ({
+    movementDefaults: movementDefaults.filter((exercise) => exercise.coachingProfiles[0]?.preference !== "AVOID")
+      .sort((a, b) => Number(b.coachingProfiles[0]?.preference === "PREFERRED") - Number(a.coachingProfiles[0]?.preference === "PREFERRED"))
+      .map((exercise) => ({
       exerciseId: exercise.id,
       exerciseName: exercise.name,
       movementGroupId: exercise.movementGroupId,

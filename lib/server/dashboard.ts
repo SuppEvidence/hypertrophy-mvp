@@ -3,6 +3,7 @@ import { ensureProgramTemplates } from "@/lib/server/templates";
 import { phaseLabels, programTypeLabels, volumeWindowLabels } from "@/lib/programs/options";
 import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
 import { parseStoredWeeklyPlan } from "@/lib/templates/weeklyPlan";
+import { getEnergyPhaseContext } from "@/lib/server/energy-phases";
 import {
   buildBodyMetricContext,
   buildFatigueTrend,
@@ -391,6 +392,8 @@ export async function getDashboardData(userId: string) {
       flags: [],
       completedSessionsCount: 0,
       mesocycle: null,
+      declaredEnergyPhase: await getEnergyPhaseContext(userId),
+      priorityAssignments: [],
     };
   }
 
@@ -401,7 +404,7 @@ export async function getDashboardData(userId: string) {
   // The factual dashboard table still uses the exact selected window below.
   const coachLookbackStart = addDays(windowStart, -2);
 
-  const [templates, sessions, metrics, mesocycle] = await Promise.all([
+  const [templates, sessions, metrics, mesocycle, declaredEnergyPhase] = await Promise.all([
     ensureProgramTemplates(activeProgram.id, userId, activeProgram),
     prisma.workoutSession.findMany({
       where: {
@@ -478,7 +481,13 @@ export async function getDashboardData(userId: string) {
       },
     }),
     getDashboardMesocycle(activeProgram.id, userId),
+    getEnergyPhaseContext(userId),
   ]);
+
+  const priorityAssignments = mesocycle?.status === "Current"
+    ? await prisma.mesocycleMusclePriority.findMany({
+      where: { mesocycleId: mesocycle.id }, include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } },
+    }) : [];
 
   const suggestedTemplate = await getSuggestedTemplate(
     activeProgram,
@@ -528,7 +537,10 @@ export async function getDashboardData(userId: string) {
     activeProgram,
     coachSessions,
   );
-  const priorityRows = volumeRows.filter((row) => row.isPriority);
+  const priorityRows = priorityAssignments.length
+    ? volumeRows.filter((row) => priorityAssignments.some((entry) => entry.muscleId === row.muscleId &&
+        (entry.priority === "SPECIALIZE" || entry.priority === "GROW")))
+    : volumeRows.filter((row) => row.isPriority);
   const fatigueTrend = buildFatigueTrend(metrics);
   const performanceTrend = buildPerformanceTrend(strictSessions);
   const intensifiers = buildIntensifierSummary(strictSessions);
@@ -581,5 +593,7 @@ export async function getDashboardData(userId: string) {
     flags,
     completedSessionsCount: strictSessions.length,
     mesocycle,
+    declaredEnergyPhase,
+    priorityAssignments: priorityAssignments.map((row) => ({ muscleId: row.muscleId, muscleName: row.muscle.name, priority: row.priority })),
   };
 }

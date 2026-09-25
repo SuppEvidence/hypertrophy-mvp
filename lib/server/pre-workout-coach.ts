@@ -28,6 +28,7 @@ import { loadCoachingHistory as loadHistory, summarizeMovementReadiness, coachin
 import { prisma } from "@/lib/db/prisma";
 import type { Prisma } from "@prisma/client";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
+import { getEnergyPhaseContext, getEnergyPhaseTimeline } from "@/lib/server/energy-phases";
 
 export const PreWorkoutCoachRequestSchema = z.object({
   programId: z.string().uuid(),
@@ -124,7 +125,7 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
   if (!requestedTemplate) throw new Error("Workout template not found.");
   const items = planItems(prescription);
   const movementGroups = [...new Map(items.map((item) => [item.movementGroupId, { id: item.movementGroupId, name: item.movementGroupName }])).values()];
-  const [catalog, history, metrics, analyzedSessions, interventions] = await Promise.all([
+  const [catalog, history, metrics, analyzedSessions, interventions, energyPhase, energyPhaseTimeline] = await Promise.all([
     prisma.exercise.findMany({
       where: {
         movementGroupId: { in: movementGroups.map((movement) => movement.id) },
@@ -157,8 +158,12 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
       orderBy: { createdAt: "desc" }, take: 8,
       select: { createdAt: true, status: true, proposal: true, outcome: true },
     }),
+    getEnergyPhaseContext(userId, now),
+    getEnergyPhaseTimeline(userId, now),
   ]);
-  const bodyComposition = inferBodyCompositionTrend(metrics.map((metric) => ({
+  const bodyComposition = inferBodyCompositionTrend(metrics
+    .filter((metric) => !energyPhase || metric.loggedAt.toISOString().slice(0, 10) >= energyPhase.startDate)
+    .map((metric) => ({
     loggedAt: metric.loggedAt,
     bodyweight: numberOrNull(metric.bodyweight),
     waist: numberOrNull(metric.waist),
@@ -240,7 +245,7 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
   const exerciseById = new Map(catalog.map((exercise) => [exercise.id, exercise]));
   return {
     now, input, prescription, templates, requestedTemplate, items, candidates, itemBySlot, candidateBySlot,
-    catalog, exerciseById, history, recentAnalyses, bodyComposition, globalRecovery, localizedReadiness, interventions,
+    catalog, exerciseById, history, recentAnalyses, bodyComposition, energyPhase, energyPhaseTimeline, globalRecovery, localizedReadiness, interventions,
   };
 }
 
@@ -332,6 +337,8 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
       weeklyPlan: context.prescription.generated.weeklyPlan,
     },
     bodyComposition: context.bodyComposition,
+    declaredEnergyPhase: context.energyPhase,
+    energyPhaseTimeline: context.energyPhaseTimeline,
     globalRecovery: context.globalRecovery,
     localizedReadiness: context.localizedReadiness,
     recentWorkoutAnalyses: context.recentAnalyses,
@@ -384,6 +391,7 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
 const SYSTEM_INSTRUCTIONS = `${TRAINING_PROGRAMMING_POLICY}
 
 T2 PRE-SESSION COACHING RULES
+- Respect the athlete's dated cutting/maintaining/gaining selection as intent, not proof of the current energy balance. Following a change, expect measurement and performance signals to lag; compare trends across the phase boundary and avoid premature adjustments.
 - Treat historical numeric volume prescriptions as context for what was planned; they are not physiological bounds or new quotas. Use current T3 priorities, observed completed work and local recovery when reasoning about today.
 - EDT is a cluster-style set and may be labeled as a base set in the catalog. Do not infer ordinary straight-set performance or unlimited recovery from that flag. You may introduce EDT only where its exercise profile explicitly selects it and the supplied eligible set types include it; never introduce it on compound squats or unsupported movements.
 - Construct one proposed workout for today. KEEP the requested template by default.

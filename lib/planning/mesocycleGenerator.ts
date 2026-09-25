@@ -81,6 +81,7 @@ export type GeneratorMesocycle =
         minimumSets?: unknown;
         maximumSets?: unknown;
         priorityLevel?: number;
+        priority?: "SPECIALIZE" | "GROW" | "MAINTAIN" | "INDIRECT_ONLY";
       }>;
       repPolicies: Array<{ repBucket: string; minReps: number; maxReps: number }>;
       movementRepPolicies?: Array<{ movementGroupId: string; minReps: number; maxReps: number }>;
@@ -273,12 +274,6 @@ function contributionFactor(item: GeneratorTemplateExercise, muscleId: string, s
   if (item.primaryMuscles.some((link) => link.muscleId === muscleId)) return 1;
   if (item.secondaryMuscles.some((link) => link.muscleId === muscleId)) return secondaryContribution;
   return 0;
-}
-
-function contributionToMuscle(item: GeneratedPrescriptionItem, muscleId: string, sets: number, secondaryContribution: number) {
-  const factor = contributionFactor(item, muscleId, secondaryContribution);
-  if (factor <= 0) return 0;
-  return plannedEffectiveForSets(item, sets) * factor;
 }
 
 function setBounds(item: GeneratorTemplateExercise) {
@@ -667,14 +662,17 @@ function structuralAddProposal(args: {
   templates: GeneratorTemplate[];
   movementDefaults: GeneratorMovementExerciseDefault[];
   setTypes: GeneratorSetType[];
+  preferredMuscleId?: string;
 }) : MesocycleStructureProposal | null {
   if (args.movementRow.target === null || args.movementRow.planned >= args.movementRow.target - 0.1) return null;
   const remainingWindow = args.movementRow.target - args.movementRow.planned;
   const currentMovementItems = args.items.filter(
     (item) => item.movementGroupId === args.movementRow.movementGroupId && !item.isMesocycleSuppressed,
   );
-  const source = currentMovementItems.find((item) => !item.isMesocycleVirtualSlot) ?? currentMovementItems[0] ?? null;
-  const fallback = args.movementDefaults.find((row) => row.movementGroupId === args.movementRow.movementGroupId) ?? null;
+  const source = currentMovementItems.find((item) => (!args.preferredMuscleId || item.primaryMuscles.some((link) => link.muscleId === args.preferredMuscleId)) &&
+    !item.isMesocycleVirtualSlot && (!args.preferredMuscleId || args.movementDefaults.some((exercise) => exercise.exerciseId === item.exerciseId))) ?? null;
+  const fallback = args.movementDefaults.find((row) => row.movementGroupId === args.movementRow.movementGroupId &&
+    (!args.preferredMuscleId || row.primaryMuscles.some((link) => link.muscleId === args.preferredMuscleId))) ?? null;
   if (!source && !fallback) return null;
 
   const template = [...args.templates].sort((a, b) => {
@@ -796,7 +794,9 @@ function structuralAddProposal(args: {
     projectedEffectiveSets: round(args.movementRow.planned + recommendedEffectiveWindow),
     physicalSets: synthetic.adjustedPlannedSets,
     setTypeSummary: setTypeSummary || null,
-    reason: `Existing ${args.movementRow.movementGroupName} slots are already at their allowed set capacity.`,
+    reason: args.preferredMuscleId
+      ? `More primary-muscle work is needed than existing compatible slots can provide. Exercise selection uses the primary-muscle links for this movement pattern.`
+      : `Existing ${args.movementRow.movementGroupName} slots are already at their allowed set capacity.`,
     action,
   };
 }
@@ -852,6 +852,96 @@ function structuralRemoveProposal(args: {
     reason: `The new target no longer needs every ${selected.item.movementGroupName} slot. The base template remains unchanged.`,
     action,
   };
+}
+
+function priorityStructureProposals(args: {
+  mesocycle: NonNullable<GeneratorMesocycle>;
+  volumeRows: GeneratedVolumeRow[];
+  items: GeneratedPrescriptionItem[];
+  templates: GeneratorTemplate[];
+  movementDefaults: GeneratorMovementExerciseDefault[];
+  setTypes: GeneratorSetType[];
+  program: GeneratorProgram;
+}) {
+  const proposals: MesocycleStructureProposal[] = [];
+  const explicitPatterns = new Set((args.mesocycle.movementVolumeTargets ?? []).map((row) => row.movementGroupId));
+  const byMuscle = new Map(args.volumeRows.map((row) => [row.muscleId, row]));
+  const contributions = (item: GeneratedPrescriptionItem) => plannedEffectiveForSets(item, item.adjustedPlannedSets) * occurrence(item);
+  const targets = args.mesocycle.volumeTargets.filter((row) => row.explicitTarget && row.priority);
+  for (const target of targets.filter((row) => row.priority === "SPECIALIZE" || row.priority === "GROW")
+    .sort((a, b) => Number(b.priority === "SPECIALIZE") - Number(a.priority === "SPECIALIZE"))) {
+    const muscle = byMuscle.get(target.muscleId);
+    if (!muscle || muscle.target === null) continue;
+    const hasPrimarySlot = args.items.some((item) => !item.isMesocycleSuppressed && item.adjustedPlannedSets > 0 &&
+      item.primaryMuscles.some((link) => link.muscleId === target.muscleId));
+    const deficit = Math.max(0, muscle.target - muscle.planned);
+    if (deficit < 0.5 && (hasPrimarySlot || muscle.target <= 0)) continue;
+    const groups = [...new Map(args.movementDefaults
+      .filter((exercise) => exercise.primaryMuscles.some((link) => link.muscleId === target.muscleId))
+      .map((exercise) => [exercise.movementGroupId, exercise])).values()]
+      .filter((exercise) => !explicitPatterns.has(exercise.movementGroupId))
+      .sort((a, b) => {
+        const aCoverage = args.items.filter((item) => item.movementGroupId === a.movementGroupId && !item.isMesocycleSuppressed &&
+          item.primaryMuscles.some((link) => link.muscleId === target.muscleId)).length;
+        const bCoverage = args.items.filter((item) => item.movementGroupId === b.movementGroupId && !item.isMesocycleSuppressed &&
+          item.primaryMuscles.some((link) => link.muscleId === target.muscleId)).length;
+        return aCoverage - bCoverage || a.movementGroupSortOrder - b.movementGroupSortOrder;
+      });
+    for (const exercise of groups) {
+      const row = movementRows({ program: args.program, mesocycle: args.mesocycle, items: args.items }).get(exercise.movementGroupId);
+      const current = row?.planned ?? 0;
+      const proposal = structuralAddProposal({
+        mesocycle: args.mesocycle,
+        movementRow: {
+          movementGroupId: exercise.movementGroupId, movementGroupName: exercise.movementGroupName,
+          sortOrder: exercise.movementGroupSortOrder, base: row?.base ?? 0, planned: current, delta: row?.delta ?? 0,
+          target: current + Math.max(deficit, hasPrimarySlot ? 0 : 1.5 * args.program.volumeWindowDays / 7),
+        },
+        items: args.items, templates: args.templates, movementDefaults: args.movementDefaults,
+        setTypes: args.setTypes, preferredMuscleId: target.muscleId,
+      });
+      if (proposal) { proposals.push(proposal); break; }
+    }
+  }
+
+  for (const target of [...targets].sort((a, b) =>
+    ({ INDIRECT_ONLY: 0, MAINTAIN: 1, GROW: 2, SPECIALIZE: 3 }[a.priority!] -
+      { INDIRECT_ONLY: 0, MAINTAIN: 1, GROW: 2, SPECIALIZE: 3 }[b.priority!]))) {
+    const muscle = byMuscle.get(target.muscleId);
+    if (!muscle || muscle.target === null || muscle.planned <= muscle.target + 0.5) continue;
+    const currentGap = Math.abs(muscle.planned - muscle.target);
+    const candidates = args.items.filter((item) => !item.isMesocycleSuppressed && !item.isMesocycleVirtualSlot &&
+      item.adjustedPlannedSets > 0 && item.primaryMuscles.some((link) => link.muscleId === target.muscleId) &&
+      !explicitPatterns.has(item.movementGroupId))
+      .map((item) => {
+        const dose = contributions(item);
+        const projected = muscle.planned - dose;
+        const safeOtherMuscles = [...item.primaryMuscles.map((link) => ({ id: link.muscleId, factor: 1 })),
+          ...item.secondaryMuscles.map((link) => ({ id: link.muscleId, factor: toNumber(args.program.secondaryContribution, 0.5) }))]
+          .every(({ id, factor }) => id === target.muscleId || (() => {
+            const other = byMuscle.get(id);
+            return !other || other.target === null || other.planned - dose * factor >= other.target - 0.1;
+          })());
+        return { item, projected, gap: Math.abs(projected - muscle.target!), safeOtherMuscles };
+      })
+      .filter((entry) => entry.safeOtherMuscles && entry.gap + 0.05 < currentGap)
+      .sort((a, b) => a.gap - b.gap || removeScore(a.item) - removeScore(b.item));
+    const selected = candidates[0];
+    if (!selected) continue;
+    const row = movementRows({ program: args.program, mesocycle: args.mesocycle, items: args.items }).get(selected.item.movementGroupId)!;
+    const actionId = `remove:${args.mesocycle.id}:${selected.item.id}`;
+    proposals.push({
+      id: actionId, type: "REMOVE_SLOT", movementGroupId: row.movementGroupId,
+      movementGroupName: row.movementGroupName, templateId: selected.item.templateId,
+      templateName: selected.item.templateName, targetEffectiveSets: round(muscle.target),
+      currentEffectiveSets: round(muscle.planned), projectedEffectiveSets: round(selected.projected),
+      physicalSets: selected.item.adjustedPlannedSets, setTypeSummary: null,
+      reason: `This slot can be removed for the lower-priority muscle without dropping another planned muscle below its current coaching dose. The base template stays intact.`,
+      action: { id: actionId, type: "REMOVE_SLOT", templateId: selected.item.templateId,
+        movementGroupId: selected.item.movementGroupId, templateExerciseId: selected.item.id },
+    });
+  }
+  return proposals;
 }
 
 export function generateMesocyclePrescription(args: {
@@ -1025,6 +1115,14 @@ export function generateMesocyclePrescription(args: {
         proposal = structuralRemoveProposal({ mesocycle: args.mesocycle, movementRow: row, items });
       }
       if (proposal && !approvedIds.has(proposal.id)) structureProposals.push(proposal);
+    }
+    const inferred = priorityStructureProposals({ mesocycle: args.mesocycle, volumeRows: Array.from(volumeRows.values()),
+      items, templates, movementDefaults, setTypes, program: args.program });
+    const seen = new Set([...approvedIds, ...structureProposals.map((proposal) => proposal.id)]);
+    for (const proposal of inferred) {
+      if (seen.has(proposal.id)) continue;
+      structureProposals.push(proposal);
+      seen.add(proposal.id);
     }
   }
 

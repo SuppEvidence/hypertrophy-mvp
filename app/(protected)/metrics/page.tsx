@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MetricsForm } from "@/components/metrics/MetricsForm";
+import { EnergyPhaseHistory } from "@/components/metrics/EnergyPhaseHistory";
 import { getMetricsPageData } from "@/lib/server/metrics";
 import { getUserSettingsForMetrics } from "@/lib/server/settings";
 
@@ -16,15 +17,15 @@ function valueOrDash(value: number | string | null | undefined, suffix = "") {
 export default async function MetricsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ saved?: string; draft?: string; logType?: string; date?: string }>;
+  searchParams?: Promise<{ saved?: string; draft?: string; phaseSaved?: string; logType?: string; date?: string }>;
 }) {
   const params = await searchParams;
   const [metricsData, metricVisibility] = await Promise.all([getMetricsPageData(), getUserSettingsForMetrics()]);
-  const { logs, draft } = metricsData;
+  const { logs, draft, phases } = metricsData;
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Metrics" description="Daily bodyweight/waist plus mesocycle start/end circumference check-ins." />
+      <PageHeader title="Metrics" description="Bodyweight, waist, recovery and your declared energy phase." />
 
       {params?.saved ? (
         <div className="rounded-2xl border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-100">Metrics saved.</div>
@@ -33,6 +34,12 @@ export default async function MetricsPage({
       {params?.draft ? (
         <div className="rounded-2xl border border-sky-900 bg-sky-950/40 p-3 text-sm text-sky-100">Metrics draft saved.</div>
       ) : null}
+
+      {params?.phaseSaved ? (
+        <div className="rounded-2xl border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-100">Energy phase updated.</div>
+      ) : null}
+
+      <EnergyPhaseHistory entries={phases} />
 
       {draft ? (
         <div className="rounded-2xl border border-amber-900 bg-amber-950/30 p-3 text-sm text-amber-100">You have an active metrics draft. The form below is prefilled from it.</div>

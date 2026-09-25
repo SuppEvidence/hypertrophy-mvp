@@ -338,9 +338,9 @@ function MesocycleStructurePlan({ mesocycle }: { mesocycle: Mesocycle }) {
         </p>
       </div>
 
-      {!hasMovementTargets ? (
+      {!hasMovementTargets && plan.proposals.length === 0 ? (
         <p className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-500">
-          No approved T3 dose change currently requires a movement-level implementation. If one does, the coach can propose it here; adding or removing a slot still requires your approval.
+          Current priorities and approved coaching doses fit the existing slots. If a priority change needs a different movement pattern, an approval-required slot suggestion appears here.
         </p>
       ) : null}
 
@@ -390,7 +390,7 @@ function MesocycleStructurePlan({ mesocycle }: { mesocycle: Mesocycle }) {
                   </p>
                   <p className="mt-1 text-xs leading-5 text-slate-500">{proposal.reason}</p>
                   <p className="mt-1 text-xs text-slate-400">
-                    Target {proposal.targetEffectiveSets} · current {proposal.currentEffectiveSets} · projected {proposal.projectedEffectiveSets} effective sets
+                    Coaching reference {proposal.targetEffectiveSets} · current {proposal.currentEffectiveSets} · projected {proposal.projectedEffectiveSets} effective sets
                   </p>
                   {proposal.type === "ADD_SLOT" ? (
                     <p className="mt-1 text-xs text-slate-500">

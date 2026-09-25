@@ -85,9 +85,10 @@ export async function createMetricLog(formData: FormData) {
 
 export async function getMetricsPageData() {
   const userId = await requireUserId();
-  const [logs, draft] = await Promise.all([
+  const [logs, draft, phases] = await Promise.all([
     prisma.metricLog.findMany({ where: { userId, isDraft: false }, orderBy: { loggedAt: "desc" }, take: 10 }),
     prisma.metricLog.findFirst({ where: { userId, isDraft: true }, orderBy: { updatedAt: "desc" } }),
+    prisma.energyPhase.findMany({ where: { userId }, orderBy: { startDate: "desc" }, take: 30, select: { id: true, phase: true, startDate: true } }),
   ]);
   const mapLog = (log: any) => ({
     id: log.id,
@@ -118,7 +119,8 @@ export async function getMetricsPageData() {
       sorenessJointIrritation: log.sorenessJointIrritation,
     }),
   });
-  return { logs: logs.map(mapLog), draft: draft ? mapLog(draft) : null };
+  return { logs: logs.map(mapLog), draft: draft ? mapLog(draft) : null,
+    phases: phases.map((row) => ({ id: row.id, phase: row.phase, startDate: row.startDate.toISOString().slice(0, 10) })) };
 }
 
 export async function getLatestMetricContext(userId: string) {

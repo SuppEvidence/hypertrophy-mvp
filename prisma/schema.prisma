@@ -41,6 +41,12 @@ enum ProgramPhase {
   OTHER
 }
 
+enum EnergyPhaseType {
+  CUTTING
+  MAINTAINING
+  GAINING
+}
+
 enum WorkoutSessionStatus {
   DRAFT
   COMPLETED
@@ -135,6 +141,7 @@ model Profile {
   workoutCoachActions WorkoutCoachAction[]
   exerciseCoachingProfiles ExerciseCoachingProfile[]
   coachingInterventions CoachingIntervention[]
+  energyPhases EnergyPhase[]
 
   @@map("profiles")
 }
@@ -152,6 +159,21 @@ model UserSettings {
   user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_settings")
+}
+
+model EnergyPhase {
+  id        String          @id @default(uuid()) @db.Uuid
+  userId    String          @db.Uuid @map("user_id")
+  phase     EnergyPhaseType
+  startDate DateTime        @db.Date @map("start_date")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, startDate])
+  @@index([userId, startDate])
+  @@map("energy_phases")
 }
 
 model Muscle {

@@ -19,6 +19,7 @@ import {
 } from "@/lib/ai/workout-analysis-schema";
 import { prisma } from "@/lib/db/prisma";
 import { getStimulusContribution } from "@/lib/workouts/stimulus";
+import { getEnergyPhaseContext, getEnergyPhaseTimeline } from "@/lib/server/energy-phases";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -330,7 +331,7 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
   );
   const now = new Date();
 
-  const [sessions, metrics, priorMesocycles] = await Promise.all([
+  const [sessions, metrics, priorMesocycles, candidateExercises] = await Promise.all([
     prisma.workoutSession.findMany({
       where: {
         userId,
@@ -433,6 +434,12 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
         },
       },
     }),
+    prisma.exercise.findMany({
+      where: { isActive: true, isArchived: false, OR: [{ isSeed: true, userId: null }, { userId }] },
+      select: { name: true, movementGroup: { select: { name: true } },
+        primaryMuscles: { select: { muscle: { select: { name: true } } } },
+        coachingProfiles: { where: { userId }, select: { preference: true }, take: 1 } },
+    }),
   ]);
 
   const effectiveNow = mesocycle.actualEndDate && mesocycle.actualEndDate < now
@@ -489,8 +496,24 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
         ? "LIMITED_HISTORY"
         : "ESTABLISHED_HISTORY";
 
+  const declaredEnergyPhase = await getEnergyPhaseContext(userId, now);
+  const energyPhaseTimeline = await getEnergyPhaseTimeline(userId, now);
+  const primaryPatternMap = new Map<string, { primaryMuscle: string; movementPatternName: string; availableExerciseCount: number; exampleExercises: string[]; preferredExamples: string[] }>();
+  for (const exercise of candidateExercises.filter((entry) => entry.coachingProfiles[0]?.preference !== "AVOID")) {
+    for (const link of exercise.primaryMuscles) {
+      const key = `${link.muscle.name}:${exercise.movementGroup.name}`;
+      const row = primaryPatternMap.get(key) ?? { primaryMuscle: link.muscle.name,
+        movementPatternName: exercise.movementGroup.name, availableExerciseCount: 0, exampleExercises: [], preferredExamples: [] };
+      row.availableExerciseCount += 1;
+      if (row.exampleExercises.length < 3) row.exampleExercises.push(exercise.name);
+      if (exercise.coachingProfiles[0]?.preference === "PREFERRED" && row.preferredExamples.length < 2) row.preferredExamples.push(exercise.name);
+      primaryPatternMap.set(key, row);
+    }
+  }
   const context = {
     policy: TRAINING_PROGRAMMING_POLICY,
+    declaredEnergyPhase,
+    energyPhaseTimeline,
     historyMode,
     historyInterpretation:
       historyMode === "FIRST_MESOCYCLE"
@@ -599,6 +622,7 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
       })),
       hasStoredAiRecommendation: Boolean(prior.aiRecommendation),
     })),
+    availablePrimaryMovementPatterns: [...primaryPatternMap.values()],
   };
 
   return { context, mesocycleId: mesocycle.id };
@@ -615,6 +639,7 @@ function createRuntimeMesocycleSchema(context: Awaited<ReturnType<typeof buildMe
       ...context.workoutEvidence.flatMap((workout) =>
         workout.movementPatterns.map((row) => row.movementPatternName),
       ),
+      ...context.availablePrimaryMovementPatterns.map((row) => row.movementPatternName),
     ]),
   ];
 
@@ -651,7 +676,9 @@ Decision rules:
 - HOLD is the default when evidence is mixed, sparse, or already productive.
 - T3 owns in-block numeric dose assessment and adjustment proposals. This next-block review recommends outcome priorities and qualitative movement/template implications only. Do not prescribe exact weekly set targets or independently redo T3's volume decisions.
 - Legacy numeric mesocycle targets and prior coach-owned dose estimates are historical context, not a ceiling or a required target for the next block. Prefer observed completed work and response, interpreted with body metrics, recovery, symptoms and execution quality.
+- Treat a dated cutting, maintaining or gaining phase as athlete intent. Phase starts do not imply immediate visible changes in waist, weight or gym performance; interpret trends with a transition lag and with actual measurements.
 - Movement-pattern actions may keep, shift emphasis, or review an exercise implementation for the NEXT block; they do not authorize a numeric volume change or edit a template.
+- For a promoted priority with insufficient direct coverage, consult the supplied exercise-to-primary-muscle movement map. You may identify a currently unused movement pattern and suitable exercise as a structural implication. An actual slot addition or zero-slot removal comes from the deterministic mesocycle planner and requires the athlete's approval.
 - Each priority suggestion must name its current and suggested priority. KEEP means identical priorities; PROMOTE means more direct focus; DEMOTE means less direct focus. The athlete decides whether to adopt it for the next block.
 - Priority status alone is not evidence that volume must increase.
 - Current movement-pattern quality and historical response outrank generic volume theory.

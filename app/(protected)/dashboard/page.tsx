@@ -29,26 +29,6 @@ function progressWidth(value: number | null | undefined) {
   return `${safeValue}%`;
 }
 
-function volumeProgress(
-  effective: number,
-  target: number | null | undefined,
-) {
-  if (!target || target <= 0) return "0%";
-  return `${Math.min(Math.max((effective / target) * 100, 0), 100)}%`;
-}
-
-function statusClass(status: string) {
-  if (status === "Below target")
-    return "border-amber-400/20 bg-amber-500/10 text-amber-200";
-  if (status === "Above target")
-    return "border-sky-400/20 bg-sky-500/10 text-sky-200";
-  if (status === "Excessive")
-    return "border-red-400/20 bg-red-500/10 text-red-200";
-  if (status === "On target")
-    return "border-emerald-400/20 bg-emerald-500/10 text-emerald-200";
-  return "border-slate-700 bg-slate-800/60 text-slate-300";
-}
-
 function coachClass(severity: "neutral" | "watch" | "high") {
   if (severity === "high")
     return "border-red-400/20 bg-red-500/[0.08]";
@@ -112,9 +92,12 @@ export default async function DashboardPage() {
     );
   }
 
-  const neutralCoach =
-    dashboard.flags.length === 1 &&
-    dashboard.flags[0]?.severity === "neutral";
+  const actionableFlags = dashboard.flags.filter((flag) => flag.severity !== "neutral" &&
+    !["PRIORITY_EFFECTIVE_VOLUME_LOW", "PRIORITY_EFFECTIVE_VOLUME_HIGH", "MISSED_TEMPLATE_UNDEREXPOSURE"].includes(flag.type) &&
+    !(flag.type === "WAIST_TREND_UP" && (dashboard.declaredEnergyPhase?.transitionCaution || dashboard.declaredEnergyPhase?.phase === "GAINING")));
+  const highlightedMuscles = dashboard.priorityAssignments.length
+    ? dashboard.priorityAssignments.filter((row) => row.priority === "SPECIALIZE" || row.priority === "GROW").map((row) => row.muscleName)
+    : dashboard.activeProgram.priorityMuscles;
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -187,8 +170,8 @@ export default async function DashboardPage() {
           )}
 
           <div className="mt-4 flex flex-wrap gap-2">
-            {dashboard.activeProgram.priorityMuscles.length > 0 ? (
-              dashboard.activeProgram.priorityMuscles.map((muscle) => (
+            {highlightedMuscles.length > 0 ? (
+              highlightedMuscles.map((muscle) => (
                 <span
                   key={muscle}
                   className="rounded-full border border-orange-400/15 bg-orange-500/[0.08] px-2.5 py-1 text-xs font-medium text-orange-200"
@@ -220,17 +203,15 @@ export default async function DashboardPage() {
         </div>
       </Card>
 
-      <section
+      {actionableFlags.length > 0 ? <section
         className={`rounded-2xl border p-4 ${coachClass(
-          dashboard.flags[0]?.severity ?? "neutral",
+          actionableFlags[0]?.severity ?? "neutral",
         )}`}
       >
         <div className="flex items-start gap-3">
           <div
             className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-              neutralCoach
-                ? "bg-emerald-400"
-                : dashboard.flags.some((flag) => flag.severity === "high")
+              actionableFlags.some((flag) => flag.severity === "high")
                   ? "bg-red-400"
                   : "bg-amber-400"
             }`}
@@ -239,9 +220,8 @@ export default async function DashboardPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
               Coach
             </p>
-            {dashboard.flags.length > 0 ? (
-              <div className={neutralCoach ? "mt-1" : "mt-2 space-y-3"}>
-                {dashboard.flags.map((flag) => (
+            <div className="mt-2 space-y-3">
+                {actionableFlags.map((flag) => (
                   <div key={`${flag.type}-${flag.title}`}>
                     <p className="font-semibold text-slate-100">{flag.title}</p>
                     <p className="mt-1 text-sm leading-5 text-slate-400">
@@ -250,14 +230,9 @@ export default async function DashboardPage() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <p className="mt-1 text-sm text-slate-400">
-                No Coach signal available yet.
-              </p>
-            )}
           </div>
         </div>
-      </section>
+      </section> : null}
 
       <Card>
         <div className="flex items-center justify-between gap-3">
@@ -266,7 +241,7 @@ export default async function DashboardPage() {
               Priority volume
             </p>
             <p className="mt-1 text-sm text-slate-400">
-              Effective volume in the current reporting window.
+              Completed effective sets in the current {dashboard.windowDays}-day window. Review dose in T3.
             </p>
           </div>
           <Link
@@ -285,35 +260,14 @@ export default async function DashboardPage() {
                   <p className="font-semibold text-slate-100">
                     {row.muscleName}
                   </p>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm tabular-nums text-slate-300">
-                      {formatNumber(row.effective)}{" "}
-                      <span className="text-slate-600">/</span>{" "}
-                      {formatNumber(row.target)}
-                    </p>
-                    <span
-                      className={`hidden rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide sm:inline-flex ${statusClass(
-                        row.status,
-                      )}`}
-                    >
-                      {row.status}
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
-                  <div
-                    className="h-full rounded-full bg-slate-300"
-                    style={{
-                      width: volumeProgress(row.effective, row.target),
-                    }}
-                  />
+                  <p className="text-sm tabular-nums text-slate-300">{formatNumber(row.effective)} effective sets</p>
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <p className="mt-4 text-sm text-slate-400">
-            No priority muscles configured.
+            No high-priority or grow muscles in this block.
           </p>
         )}
       </Card>
@@ -331,7 +285,12 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-4 divide-x divide-white/[0.06]">
+        {dashboard.declaredEnergyPhase ? <p className="mt-3 text-xs text-slate-400">
+          {dashboard.declaredEnergyPhase.phase.toLowerCase()} since {dashboard.declaredEnergyPhase.startDate}
+          {dashboard.declaredEnergyPhase.transitionCaution ? " · early transition; trends can lag" : ""}
+        </p> : <p className="mt-3 text-xs text-slate-500">Set a cutting, maintaining or gaining phase in Metrics to add context to coaching.</p>}
+
+        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
           <TrendItem
             label="Bodyweight"
             value={formatNumber(
@@ -343,7 +302,7 @@ export default async function DashboardPage() {
               " kg",
             )}
           />
-          <div className="pl-4">
+          <div>
             <TrendItem
               label="Waist"
               value={formatNumber(
@@ -358,7 +317,7 @@ export default async function DashboardPage() {
               )}
             />
           </div>
-          <div className="pl-4">
+          <div>
             <TrendItem
               label="Fatigue"
               value={dashboard.fatigueTrend.latest?.category ?? "—"}
@@ -373,13 +332,6 @@ export default async function DashboardPage() {
         </div>
       </Card>
 
-      <Link
-        href="/progress"
-        className="flex min-h-12 items-center justify-between rounded-2xl border border-white/[0.07] bg-slate-900/[0.45] px-4 text-sm font-semibold text-slate-300 transition hover:border-slate-700 hover:bg-slate-900/70 hover:text-slate-100"
-      >
-        <span>View full training progress</span>
-        <span className="text-slate-600">→</span>
-      </Link>
     </div>
   );
 }

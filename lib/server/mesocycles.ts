@@ -233,7 +233,13 @@ export async function updateMesocycleMusclePriorities(
       const existing = existingByMuscle.get(row.muscleId);
       const planned = plannedByMuscle.get(row.muscleId) ?? 0;
       const baseline = existing ? toNumber(existing.baselineWeeklySets) : planned;
-      const coachTarget = existing ? toNumber(existing.coachTargetWeeklySets) : planned;
+      // A newly selected growth priority with no direct prescription needs a small
+      // provisional implementation dose so the structural planner can offer a slot.
+      // This is a starting trial, never an inferred physiological range.
+      const promotedFromZero = (row.priority === "SPECIALIZE" || row.priority === "GROW") &&
+        (existing?.priority === "INDIRECT_ONLY" || !existing) &&
+        (existing ? toNumber(existing.coachTargetWeeklySets) : planned) <= 0;
+      const coachTarget = promotedFromZero ? 2 : existing ? toNumber(existing.coachTargetWeeklySets) : planned;
       const range =
         existing && existing.priority === row.priority
           ? {
@@ -262,6 +268,7 @@ export async function updateMesocycleMusclePriorities(
         },
         update: {
           priority: row.priority as MusclePriority,
+          ...(promotedFromZero ? { coachTargetWeeklySets: coachTarget } : {}),
           rangeMinimumSets: range.minimum,
           rangeMaximumSets: range.maximum,
           coachingStatus: existing?.priority === row.priority ? existing.coachingStatus : "BASELINE",
