@@ -1,5 +1,6 @@
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
+import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 import {
   deriveExerciseType,
   summarizeExerciseExposure,
@@ -83,7 +84,7 @@ export async function buildTrainingAdvisorContext() {
                 rir: true,
                 isCompleted: true,
                 painFlag: true,
-                setType: { select: { multiplier: true, isIntensifier: true } },
+                setType: { select: { name: true, slug: true, multiplier: true, isIntensifier: true } },
               },
             },
           },
@@ -127,13 +128,14 @@ export async function buildTrainingAdvisorContext() {
         performedAt: session.performedAt,
         sets: item.sets.map((set) => ({
           setNumber: set.setNumber,
-          weight: set.weight,
-          reps: set.reps,
-          rir: set.rir,
+          weight: isEdtSetType(set.setType) ? null : set.weight,
+          reps: isEdtSetType(set.setType) ? null : set.reps,
+          rir: isEdtSetType(set.setType) ? null : set.rir,
           isCompleted: set.isCompleted,
           painFlag: set.painFlag,
           setTypeMultiplier: set.setType.multiplier,
           isIntensifier: set.setType.isIntensifier,
+          setTypeName: set.setType.name,
         })),
       };
 
@@ -205,6 +207,7 @@ export async function buildTrainingAdvisorContext() {
         observedRir: numberOrNull(set.rir),
         setTypeMultiplier: numberOrNull(set.setTypeMultiplier) ?? 1,
         isIntensifier: Boolean(set.isIntensifier),
+        setTypeName: set.setTypeName ?? null,
         painFlag: Boolean(set.painFlag),
       })),
     })),

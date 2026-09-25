@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { evaluateLiveCoachEligibility } from "@/lib/coaching/live-coaching";
+import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 
 const EXERCISE_HISTORY_LIMIT = 8;
 const CROSS_CONTEXT_DAYS = 7;
@@ -154,7 +155,8 @@ export async function buildLiveExerciseCoachingContext(params: {
 
   const completedSets = current.sets.filter((set) => set.isCompleted);
   const usableHistory = exerciseHistory.filter((exposure) =>
-    exposure.sets.some((set) => performanceIndex(set.weight, set.reps, set.rir) !== null),
+    exposure.sets.some((set) => !set.setType.isIntensifier && !isEdtSetType(set.setType) &&
+      !details(set.intensifierDetails).executionCompromised && performanceIndex(set.weight, set.reps, set.rir) !== null),
   );
   const eligibility = evaluateLiveCoachEligibility({
     sessionStatus: current.session.status,
@@ -162,6 +164,7 @@ export async function buildLiveExerciseCoachingContext(params: {
     completedSetCount: completedSets.length,
     triggerSetCompleted: triggerSet.isCompleted,
     triggerSetHasUsablePerformance:
+      !triggerSet.setType.isIntensifier && !isEdtSetType(triggerSet.setType) &&
       performanceIndex(triggerSet.weight, triggerSet.reps, triggerSet.rir) !== null,
     triggerSetPain: triggerSet.painFlag || current.painFlag,
     triggerSetExecutionCompromised: details(triggerSet.intensifierDetails).executionCompromised,
@@ -194,7 +197,8 @@ export async function buildLiveExerciseCoachingContext(params: {
   };
 
   const historicalDecay = usableHistory.flatMap((exposure) => {
-    const indices = exposure.sets.map((set) => performanceIndex(set.weight, set.reps, set.rir));
+    const indices = exposure.sets.map((set) => set.setType.isIntensifier || isEdtSetType(set.setType) ||
+      details(set.intensifierDetails).executionCompromised ? null : performanceIndex(set.weight, set.reps, set.rir));
     const first = indices.find((value) => value !== null) ?? null;
     if (first === null || first <= 0) return [];
     return indices.slice(1).flatMap((value) =>
@@ -248,7 +252,9 @@ export async function buildLiveExerciseCoachingContext(params: {
       rir: numberOrNull(set.rir),
       setTypeId: set.setTypeId,
       isIntensifier: set.setType.isIntensifier,
-      performanceIndex: performanceIndex(set.weight, set.reps, set.rir),
+      isEdt: isEdtSetType(set.setType),
+      performanceIndex: set.setType.isIntensifier || isEdtSetType(set.setType) ||
+        details(set.intensifierDetails).executionCompromised ? null : performanceIndex(set.weight, set.reps, set.rir),
       pain: set.painFlag,
       ...details(set.intensifierDetails),
     })),
@@ -259,6 +265,7 @@ export async function buildLiveExerciseCoachingContext(params: {
         id: set.id, setNumber: set.setNumber, weight: numberOrNull(set.weight),
         reps: set.reps, rir: numberOrNull(set.rir), setTypeId: set.setTypeId,
         isIntensifier: set.setType.isIntensifier, pain: set.painFlag || exposure.painFlag,
+        isEdt: isEdtSetType(set.setType),
         ...details(set.intensifierDetails),
       }))),
       performanceExposureCount: usableHistory.length,

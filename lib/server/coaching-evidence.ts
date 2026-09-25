@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { summarizeExerciseHistory, type ExerciseExposureInput } from "@/lib/calculations/training-analytics";
 import { inferLocalReadiness, summarizeGlobalRecovery } from "@/lib/coaching/pre-workout-coach-policy";
+import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 
 function numberOrNull(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
@@ -30,7 +31,7 @@ export async function loadCoachingHistory(userId: string, programId: string, sin
         where: { isCompleted: true }, orderBy: { setNumber: "asc" },
         select: {
           setNumber: true, weight: true, reps: true, rir: true, painFlag: true, intensifierDetails: true,
-          setType: { select: { multiplier: true, isIntensifier: true } },
+          setType: { select: { multiplier: true, isIntensifier: true, slug: true, name: true } },
         },
       },
     },
@@ -41,7 +42,7 @@ export function coachingExposure(row: HistoryRow): ExerciseExposureInput {
   return {
     performedAt: row.session.performedAt,
     sets: row.sets.map((set) => {
-      const comparable = !set.setType.isIntensifier && !executionCompromised(set.intensifierDetails);
+      const comparable = !set.setType.isIntensifier && !isEdtSetType(set.setType) && !executionCompromised(set.intensifierDetails);
       return {
         setNumber: set.setNumber,
         weight: comparable ? set.weight : null,
@@ -92,7 +93,9 @@ export function summarizeMovementReadiness(args: {
       hoursSinceLastExposure: latest ? Math.max(0, (args.now.getTime() - latest.getTime()) / 3_600_000) : null,
       effectiveSetsLast48h: effectiveSetsSince(cutoff48),
       effectiveSetsLast72h: effectiveSetsSince(cutoff72),
-      performanceExposureCount: rows.filter((row) => row.sets.some((set) => numberOrNull(set.weight) !== null && set.reps !== null)).length,
+      performanceExposureCount: rows.filter((row) => row.sets.some((set) =>
+        !set.setType.isIntensifier && !isEdtSetType(set.setType) && !executionCompromised(set.intensifierDetails) &&
+        numberOrNull(set.weight) !== null && set.reps !== null)).length,
       downwardExerciseSignals,
       recentPainSets: 0,
       recentPainExposures: recent.filter((row) => row.painFlag || row.sets.some((set) => set.painFlag)).length,

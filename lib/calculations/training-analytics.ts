@@ -11,6 +11,7 @@ export type HistoricalSetInput = {
   painFlag?: boolean | null;
   setTypeMultiplier?: unknown;
   isIntensifier?: boolean | null;
+  setTypeName?: string | null;
 };
 
 export type ExerciseExposureInput = {

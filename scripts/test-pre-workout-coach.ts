@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { isEdtSetType } from "../lib/coaching/set-type-classification";
 import {
   inferBodyCompositionTrend,
   inferLocalReadiness,
@@ -135,6 +136,7 @@ const config = { requestedTemplateId: "ta", templateIds: ["ta", "tb"], slots, lo
     { id: "normal", slug: "normal", name: "Normal", multiplier: 1, isIntensifier: false },
     { id: "partials", slug: "lengthened-partials", name: "Lengthened partials", multiplier: 1.2, isIntensifier: true },
     { id: "myo", slug: "myo-reps", name: "Myo-reps", multiplier: 1.3, isIntensifier: true },
+    { id: "edt", slug: "edt", name: "EDT", multiplier: 1.2, isIntensifier: false },
   ],
   exercises: [
     { id: "e1", movementGroupName: "Squat pattern", primaryMuscleIds: ["quads"], secondaryMuscleIds: ["glutes"] },
@@ -258,6 +260,30 @@ check("selected intensifier profile remains subject to movement safety", () => {
   const squatSelected = config.exercises.map((exercise) => exercise.id === "e1"
     ? { ...exercise, intensifierPreference: "ONLY_SELECTED" as const, allowedIntensifierIds: ["partials"] } : exercise);
   assert.ok(validatePreWorkoutPlan(squat, { ...config, exercises: squatSelected }).errors.some((error) => error.includes("unsuitable")));
+});
+
+check("EDT classification recognizes custom names without marking every extended set", () => {
+  assert.equal(isEdtSetType({ slug: "edt", name: "EDT" }), true);
+  assert.equal(isEdtSetType({ slug: "extended-density-training", name: "Extended Density Training" }), true);
+  assert.equal(isEdtSetType({ slug: "extended-set", name: "Extended set" }), false);
+});
+
+check("EDT remains a base set but requires explicit opt-in and a suitable movement", () => {
+  const plan = { ...structuredClone(keep), decision: "ADJUST" as const };
+  plan.items[0].sets = 2;
+  plan.items[0].setTypeIds = ["normal", "normal"];
+  plan.items[1].setTypeIds[1] = "edt";
+  assert.ok(validatePreWorkoutPlan(plan, config).errors.some((error) => error.includes("unsuitable")));
+  const optedIn = config.exercises.map((exercise) => exercise.id === "e3"
+    ? { ...exercise, intensifierPreference: "ONLY_SELECTED" as const, allowedIntensifierIds: ["edt"] } : exercise);
+  assert.equal(validatePreWorkoutPlan(plan, { ...config, exercises: optedIn }).ok, true);
+  const squat = { ...structuredClone(keep), decision: "ADJUST" as const };
+  squat.items[0].setTypeIds[0] = "edt";
+  squat.items[1].sets = 1;
+  squat.items[1].setTypeIds = ["normal"];
+  const squatOptIn = config.exercises.map((exercise) => exercise.id === "e1"
+    ? { ...exercise, intensifierPreference: "ONLY_SELECTED" as const, allowedIntensifierIds: ["edt"] } : exercise);
+  assert.ok(validatePreWorkoutPlan(squat, { ...config, exercises: squatOptIn }).errors.some((error) => error.includes("unsuitable")));
 });
 
 check("local caution forbids an intensifier even if another set is removed", () => {

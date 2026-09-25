@@ -5,6 +5,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { getOpenAIClient } from "@/lib/ai/openai";
+import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
 import {
   ExerciseAssessmentSchema,
@@ -129,7 +130,8 @@ function isExecutionCompromised(set: CompletedSet) {
 }
 
 function performanceIndexForTrend(set: CompletedSet) {
-  return isExecutionCompromised(set) ? null : estimatedPerformanceIndex(set);
+  return isExecutionCompromised(set) || set.setType.isIntensifier || isEdtSetType(set.setType)
+    ? null : estimatedPerformanceIndex(set);
 }
 
 function serializeExposureSets(sets: CompletedSet[]) {
@@ -138,7 +140,8 @@ function serializeExposureSets(sets: CompletedSet[]) {
     ordered.map(performanceIndexForTrend).find((value) => value !== null) ?? null;
 
   return ordered.map((set, index) => {
-    const performanceIndex = estimatedPerformanceIndex(set);
+    const performanceIndex = set.setType.isIntensifier || isEdtSetType(set.setType)
+      ? null : estimatedPerformanceIndex(set);
     const trendPerformanceIndex = performanceIndexForTrend(set);
     const previous = index > 0 ? ordered[index - 1] : null;
     const intensifier = normalizeIntensifierDetails(set.intensifierDetails);

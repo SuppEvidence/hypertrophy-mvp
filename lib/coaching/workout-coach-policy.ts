@@ -28,7 +28,7 @@ export function readPrescription(value: unknown): CoachPrescription {
 
 export type CoachSet = {
   id: string; setNumber: number; weight: number | null; reps: number | null;
-  rir: number | null; setTypeId: string; isIntensifier: boolean;
+  rir: number | null; setTypeId: string; isIntensifier: boolean; isEdt?: boolean;
   pain: boolean; executionCompromised: boolean;
 };
 
@@ -55,7 +55,7 @@ export function buildAllowedLoadOptions(
 }
 
 function index(set: CoachSet): number | null {
-  if (set.isIntensifier || set.pain || set.executionCompromised ||
+  if (set.isIntensifier || set.isEdt || set.pain || set.executionCompromised ||
       set.weight === null || set.weight <= 0 || set.reps === null || set.reps < 1 ||
       set.reps > 20 || set.rir === null || set.rir < 0 || set.rir > 4) return null;
   return set.weight * (1 + (set.reps + set.rir) / 30);

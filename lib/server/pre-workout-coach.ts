@@ -385,6 +385,7 @@ const SYSTEM_INSTRUCTIONS = `${TRAINING_PROGRAMMING_POLICY}
 
 T2 PRE-SESSION COACHING RULES
 - Treat historical numeric volume prescriptions as context for what was planned; they are not physiological bounds or new quotas. Use current T3 priorities, observed completed work and local recovery when reasoning about today.
+- EDT is a cluster-style set and may be labeled as a base set in the catalog. Do not infer ordinary straight-set performance or unlimited recovery from that flag. You may introduce EDT only where its exercise profile explicitly selects it and the supplied eligible set types include it; never introduce it on compound squats or unsupported movements.
 - Construct one proposed workout for today. KEEP the requested template by default.
 - A different existing template may be the base when current localized evidence or the athlete's stated constraints make it materially better today.
 - You may omit or reorder slots, import at most two compatible slots from other templates, substitute only an allowed exercise within the same movement pattern, reduce/redistribute sets, or shift rep/RIR targets within the supplied limits.

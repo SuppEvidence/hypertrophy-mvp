@@ -1,4 +1,5 @@
 import { calculateFatigueSummary, type FatigueInput } from "@/lib/metrics/fatigue";
+import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 import type {
   BodyCompositionTrend,
   GlobalRecoveryContext,
@@ -76,8 +77,9 @@ const INTRODUCIBLE_INTENSIFIERS: Record<string, string[]> = {
 export function canIntroduceSetType(exercise: CoachExercise, type: CoachSetType) {
   if (exercise.preference === "AVOID" || exercise.intensifierPreference === "NONE") return false;
   if (exercise.intensifierPreference === "ONLY_SELECTED" && !exercise.allowedIntensifierIds?.includes(type.id)) return false;
+  if (isEdtSetType(type) && (exercise.intensifierPreference !== "ONLY_SELECTED" || !exercise.allowedIntensifierIds?.includes(type.id))) return false;
   return exercise.primaryMuscleIds.length === 1 && exercise.secondaryMuscleIds.length === 0 &&
-    Boolean(INTRODUCIBLE_INTENSIFIERS[exercise.movementGroupName.toLowerCase()]?.includes(type.slug));
+    Boolean(INTRODUCIBLE_INTENSIFIERS[exercise.movementGroupName.toLowerCase()]?.includes(isEdtSetType(type) ? "myo-reps" : type.slug));
 }
 
 export function preWorkoutVolume(plan: Pick<PreWorkoutCoachModelPlan, "baseTemplateId" | "items">, slots: PreWorkoutSlotCandidate[], setTypes: CoachSetType[]) {
@@ -349,7 +351,7 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
       }
       if (id === originalId && item.exerciseId === slot.defaultExerciseId) continue;
       // Reverting a prescribed intensifier to a normal set is always a conservative option.
-      if (!type.isIntensifier && Math.abs(type.multiplier - 1) < 0.001) continue;
+      if (!type.isIntensifier && !isEdtSetType(type) && Math.abs(type.multiplier - 1) < 0.001) continue;
       const exercise = exerciseById.get(item.exerciseId);
       const permitted = exercise && canIntroduceSetType(exercise, type);
       if (!permitted || type.multiplier > 1.35 || slot.targetRir === null || slot.targetRir > 2 ||
@@ -357,7 +359,7 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
           ["CAUTION", "RECOVERING"].includes(localByMovement.get(slot.movementGroupId)?.status ?? "")) {
         errors.push(`Set type ${type.name} is unsuitable for this exercise or prescription.`);
       }
-      if (!typeById.get(originalId ?? "")?.isIntensifier) newlyIntroducedIntensifiers += 1;
+      if (!typeById.get(originalId ?? "")?.isIntensifier && !isEdtSetType(typeById.get(originalId ?? ""))) newlyIntroducedIntensifiers += 1;
     }
     if ((item.minReps === null) !== (item.maxReps === null) || (item.minReps !== null && item.maxReps !== null && item.minReps > item.maxReps)) {
       errors.push(`Invalid rep range for slot ${item.sourceSlotId}.`);

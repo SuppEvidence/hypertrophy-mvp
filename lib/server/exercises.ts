@@ -8,13 +8,14 @@ import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/data/seedCatalog";
 import { exerciseSchema } from "@/lib/validations/exercise";
 import { z } from "zod";
+import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 
 export async function getExerciseReferenceData() {
   const userId = await requireUserId();
   const [muscles, movementGroups, setTypes] = await Promise.all([
     prisma.muscle.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.movementGroup.findMany({ orderBy: { sortOrder: "asc" } }),
-    prisma.setType.findMany({ where: { isActive: true, OR: [{ userId: null }, { userId }] }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, isIntensifier: true } }),
+    prisma.setType.findMany({ where: { isActive: true, OR: [{ userId: null }, { userId }] }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, slug: true, isIntensifier: true } }),
   ]);
 
   return { muscles, movementGroups, setTypes };
@@ -113,10 +114,12 @@ export async function saveExerciseCoachingProfile(exerciseId: string, formData: 
   });
   const requested = [...new Set(formData.getAll("allowedIntensifierIds").map(String))];
   const available = await prisma.setType.findMany({
-    where: { id: { in: requested }, isActive: true, isIntensifier: true, OR: [{ userId: null }, { userId }] },
-    select: { id: true },
+    where: { id: { in: requested }, isActive: true, OR: [{ userId: null }, { userId }] },
+    select: { id: true, name: true, slug: true, isIntensifier: true },
   });
-  if (available.length !== requested.length) throw new Error("Select active set types from your catalog.");
+  if (available.length !== requested.length || available.some((type) => !type.isIntensifier && !isEdtSetType(type))) {
+    throw new Error("Select active intensifiers or EDT set types from your catalog.");
+  }
   if (input.intensifierPreference === "ONLY_SELECTED" && !requested.length) throw new Error("Select at least one permitted intensifier.");
   const data = {
     preference: input.preference,
