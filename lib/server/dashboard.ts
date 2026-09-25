@@ -125,6 +125,12 @@ async function getDashboardMesocycle(programId: string, userId: string) {
       ? 100
       : Math.round((elapsedDays / totalDays) * 100),
     notes: selected.notes ?? "",
+    t3EvaluationStatus: selected.t3EvaluationStatus,
+    t3Activated: Boolean(selected.t3ActivatedAt),
+    t3GenerationId: typeof selected.t3Assessment === "object" && selected.t3Assessment !== null && !Array.isArray(selected.t3Assessment) && typeof (selected.t3Assessment as Record<string, unknown>).generationId === "string"
+      ? (selected.t3Assessment as Record<string, unknown>).generationId as string
+      : null,
+    nextBlockReviewReady: Boolean(selected.aiRecommendation),
   };
 }
 
@@ -372,7 +378,6 @@ export async function getDashboardData(userId: string) {
       windowStart: null,
       suggestedTemplate: null,
       volumeRows: [],
-      priorityRows: [],
       fatigueTrend,
       performanceTrend: {
         status: "Insufficient data" as const,
@@ -392,8 +397,8 @@ export async function getDashboardData(userId: string) {
       flags: [],
       completedSessionsCount: 0,
       mesocycle: null,
+      t3PendingDecisions: 0,
       declaredEnergyPhase: await getEnergyPhaseContext(userId),
-      priorityAssignments: [],
     };
   }
 
@@ -484,16 +489,20 @@ export async function getDashboardData(userId: string) {
     getEnergyPhaseContext(userId),
   ]);
 
-  const priorityAssignments = mesocycle?.status === "Current"
-    ? await prisma.mesocycleMusclePriority.findMany({
-      where: { mesocycleId: mesocycle.id }, include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } },
-    }) : [];
-
-  const suggestedTemplate = await getSuggestedTemplate(
-    activeProgram,
-    userId,
-    templates,
-  );
+  const [suggestedTemplate, t3PendingDecisions] = await Promise.all([
+    getSuggestedTemplate(activeProgram, userId, templates),
+    mesocycle?.status === "Current" && mesocycle.t3EvaluationStatus === "COMPLETE" && mesocycle.t3GenerationId
+      ? prisma.aiProgrammingDecision.count({
+          where: {
+            userId,
+            mesocycleId: mesocycle.id,
+            generationId: mesocycle.t3GenerationId,
+            decisionType: "T3_MUSCLE_VOLUME",
+            status: "PENDING",
+          },
+        })
+      : Promise.resolve(0),
+  ]);
 
   // Keep the dashboard's factual analytics strict.
   const strictSessions = sessions.filter(
@@ -537,10 +546,6 @@ export async function getDashboardData(userId: string) {
     activeProgram,
     coachSessions,
   );
-  const priorityRows = priorityAssignments.length
-    ? volumeRows.filter((row) => priorityAssignments.some((entry) => entry.muscleId === row.muscleId &&
-        (entry.priority === "SPECIALIZE" || entry.priority === "GROW")))
-    : volumeRows.filter((row) => row.isPriority);
   const fatigueTrend = buildFatigueTrend(metrics);
   const performanceTrend = buildPerformanceTrend(strictSessions);
   const intensifiers = buildIntensifierSummary(strictSessions);
@@ -584,7 +589,6 @@ export async function getDashboardData(userId: string) {
       ? { id: suggestedTemplate.id, name: suggestedTemplate.name }
       : null,
     volumeRows,
-    priorityRows,
     fatigueTrend,
     performanceTrend,
     intensifiers,
@@ -593,7 +597,7 @@ export async function getDashboardData(userId: string) {
     flags,
     completedSessionsCount: strictSessions.length,
     mesocycle,
+    t3PendingDecisions,
     declaredEnergyPhase,
-    priorityAssignments: priorityAssignments.map((row) => ({ muscleId: row.muscleId, muscleName: row.muscle.name, priority: row.priority })),
   };
 }

@@ -79,7 +79,7 @@ export default async function DashboardPage() {
           </h2>
           <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
             Activate a program to bring your next workout, mesocycle status,
-            priority volume, and Coach signals onto Home.
+            and Coach signals onto Home.
           </p>
           <Link
             href="/programs"
@@ -95,15 +95,12 @@ export default async function DashboardPage() {
   const actionableFlags = dashboard.flags.filter((flag) => flag.severity !== "neutral" &&
     !["PRIORITY_EFFECTIVE_VOLUME_LOW", "PRIORITY_EFFECTIVE_VOLUME_HIGH", "MISSED_TEMPLATE_UNDEREXPOSURE"].includes(flag.type) &&
     !(flag.type === "WAIST_TREND_UP" && (dashboard.declaredEnergyPhase?.transitionCaution || dashboard.declaredEnergyPhase?.phase === "GAINING")));
-  const highlightedMuscles = dashboard.priorityAssignments.length
-    ? dashboard.priorityAssignments.filter((row) => row.priority === "SPECIALIZE" || row.priority === "GROW").map((row) => row.muscleName)
-    : dashboard.activeProgram.priorityMuscles;
 
   return (
     <div className="space-y-4 sm:space-y-5">
       <PageHeader
         title="Home"
-        description="Next session, current block, priority volume, and anything that actually needs attention."
+        description="Next session, current block, and anything that needs attention."
       />
 
       <Card className="relative overflow-hidden border-orange-400/15 bg-gradient-to-br from-slate-900 via-slate-900 to-orange-950/20">
@@ -169,23 +166,6 @@ export default async function DashboardPage() {
             </div>
           )}
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {highlightedMuscles.length > 0 ? (
-              highlightedMuscles.map((muscle) => (
-                <span
-                  key={muscle}
-                  className="rounded-full border border-orange-400/15 bg-orange-500/[0.08] px-2.5 py-1 text-xs font-medium text-orange-200"
-                >
-                  {muscle}
-                </span>
-              ))
-            ) : (
-              <span className="text-xs text-slate-500">
-                No priority muscles set
-              </span>
-            )}
-          </div>
-
           <div className="mt-5 flex gap-2">
             <Link
               href="/plan/mesocycle"
@@ -202,6 +182,46 @@ export default async function DashboardPage() {
           </div>
         </div>
       </Card>
+
+      {dashboard.mesocycle?.status === "Current" && (
+        dashboard.t3PendingDecisions > 0 ||
+        (dashboard.mesocycle.t3Activated && dashboard.mesocycle.t3EvaluationStatus === "FAILED") ||
+        dashboard.mesocycle.nextBlockReviewReady
+      ) ? (
+        <Card>
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+            Coach follow-up
+          </p>
+          <div className="mt-3 space-y-3">
+            {dashboard.t3PendingDecisions > 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-slate-300">
+                  {dashboard.t3PendingDecisions} volume {dashboard.t3PendingDecisions === 1 ? "decision" : "decisions"} to review for this block.
+                </p>
+                <Link href="/ai-analysis/volume" className="text-xs font-semibold text-orange-300 hover:text-orange-200">
+                  Review volume
+                </Link>
+              </div>
+            ) : null}
+            {dashboard.mesocycle.t3Activated && dashboard.mesocycle.t3EvaluationStatus === "FAILED" ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-slate-300">The latest volume review failed.</p>
+                <Link href="/ai-analysis/volume" className="text-xs font-semibold text-orange-300 hover:text-orange-200">
+                  Retry review
+                </Link>
+              </div>
+            ) : null}
+            {dashboard.mesocycle.nextBlockReviewReady ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-slate-300">Your next-block review is ready.</p>
+                <Link href="/ai-analysis/mesocycle" className="text-xs font-semibold text-orange-300 hover:text-orange-200">
+                  Read review
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
 
       {actionableFlags.length > 0 ? <section
         className={`rounded-2xl border p-4 ${coachClass(
@@ -233,44 +253,6 @@ export default async function DashboardPage() {
           </div>
         </div>
       </section> : null}
-
-      <Card>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-              Priority volume
-            </p>
-            <p className="mt-1 text-sm text-slate-400">
-              Completed effective sets in the current {dashboard.windowDays}-day window. Review dose in T3.
-            </p>
-          </div>
-          <Link
-            href="/progress"
-            className="shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-200"
-          >
-            Full progress
-          </Link>
-        </div>
-
-        {dashboard.priorityRows.length > 0 ? (
-          <div className="mt-4 space-y-4">
-            {dashboard.priorityRows.map((row) => (
-              <div key={row.muscleId}>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold text-slate-100">
-                    {row.muscleName}
-                  </p>
-                  <p className="text-sm tabular-nums text-slate-300">{formatNumber(row.effective)} effective sets</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-4 text-sm text-slate-400">
-            No high-priority or grow muscles in this block.
-          </p>
-        )}
-      </Card>
 
       <Card>
         <div className="flex items-center justify-between gap-3">
