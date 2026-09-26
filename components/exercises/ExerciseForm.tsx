@@ -105,7 +105,7 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
       <Card>
         <div className="mb-4">
           <h2 className="text-base font-semibold text-slate-100">Primary muscles</h2>
-          <p className="mt-1 text-sm text-slate-400">Direct set exposure. At least one primary muscle is required.</p>
+          <p className="mt-1 text-sm text-slate-400">Direct set exposure. Incline and low-to-high patterns default to Upper chest, flat presses to Mid chest, and decline/dip presses to Lower chest. Other movements need a primary muscle; classify Chest fly manually. Chest (unclassified) preserves older or ambiguous exercises.</p>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
           {muscles.map((muscle: any) => (

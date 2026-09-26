@@ -43,6 +43,7 @@ type Mesocycle = {
     confidence: string | null;
     rationale: string | null;
   }>;
+  plannedMuscleSets: Array<{ muscleId: string; weeklySets: number }>;
   volumeTargets: Array<{
     muscleId: string;
     targetSets: number;
@@ -252,6 +253,7 @@ function MesocyclePrioritiesForm({ mesocycle, muscles, programTargets, programPr
   const priorityMap = new Map(mesocycle.musclePriorities.map((target) => [target.muscleId, target]));
   const legacyMap = new Map(mesocycle.volumeTargets.map((target) => [target.muscleId, target.targetSets]));
   const programTargetMap = new Map(programTargets.map((target) => [target.muscleId, target.weeklyTargetSets]));
+  const plannedMap = new Map(mesocycle.plannedMuscleSets.map((row) => [row.muscleId, row.weeklySets]));
   const programPrioritySet = new Set(programPriorityMuscleIds);
 
   return (
@@ -266,7 +268,8 @@ function MesocyclePrioritiesForm({ mesocycle, muscles, programTargets, programPr
         {muscles.map((muscle) => {
           const target = priorityMap.get(muscle.id);
           const fallback = legacyMap.get(muscle.id) ?? programTargetMap.get(muscle.id) ?? 0;
-          const defaultPriority = target?.priority ?? (programPrioritySet.has(muscle.id) ? "SPECIALIZE" : fallback > 0 ? "GROW" : "INDIRECT_ONLY");
+          const planned = plannedMap.get(muscle.id) ?? 0;
+          const defaultPriority = target?.priority ?? (programPrioritySet.has(muscle.id) ? "SPECIALIZE" : fallback > 0 ? "GROW" : planned > 0 ? "MAINTAIN" : "INDIRECT_ONLY");
           return (
             <div key={muscle.id} className="grid gap-2 rounded-xl border border-slate-800 bg-slate-950/55 p-2 md:grid-cols-[1fr_180px] md:items-center">
               <div>
@@ -274,7 +277,7 @@ function MesocyclePrioritiesForm({ mesocycle, muscles, programTargets, programPr
                 <p className="mt-1 text-xs text-slate-500">
                   {target
                     ? `Baseline ${target.baselineWeeklySets} · coach target ${target.coachTargetWeeklySets} sets/wk · ${target.coachingStatus.toLowerCase().replaceAll("_", " ")}`
-                    : `Current prescription (~${fallback} sets/wk) will be captured as baseline`}
+                    : `Current prescription (~${planned} effective sets/wk) will be captured as baseline`}
                 </p>
               </div>
               <label className="block space-y-1">

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
+import { chestRegionForMovement, classifyChestPrimary } from "@/lib/coaching/chest-regions";
 import { slugify } from "@/lib/data/seedCatalog";
 import { exerciseSchema } from "@/lib/validations/exercise";
 import { z } from "zod";
@@ -161,11 +162,24 @@ function parseExerciseForm(formData: FormData) {
     (muscleId) => !primaryMuscleIds.includes(muscleId),
   );
 
-  if (primaryMuscleIds.length === 0) {
-    throw new Error("At least one primary muscle is required.");
-  }
-
   return { input, tags: parseTags(input.tags), primaryMuscleIds, secondaryMuscleIds };
+}
+
+async function resolveChestMuscles(movementGroupId: string, primaryMuscleIds: string[], secondaryMuscleIds: string[]) {
+  const movement = await prisma.movementGroup.findUnique({ where: { id: movementGroupId }, select: { name: true } });
+  if (!movement) throw new Error("Movement group not found.");
+  const regionName = chestRegionForMovement[movement.name];
+  const matches = regionName ? await prisma.muscle.findMany({
+    where: { slug: { in: ["chest", "upper-chest", "mid-chest", "lower-chest"] } },
+    select: { id: true, name: true, slug: true },
+  }) : [];
+  const chestId = matches.find((row) => row.slug === "chest")?.id;
+  const primary = classifyChestPrimary({ movementName: movement.name, primaryIds: primaryMuscleIds,
+    chestId,
+    regionId: matches.find((row) => row.name === regionName)?.id,
+    chestRegionIds: matches.filter((row) => row.slug !== "chest").map((row) => row.id) });
+  if (primary.length === 0) throw new Error("At least one primary muscle is required.");
+  return { primary, secondary: secondaryMuscleIds.filter((id) => !primary.includes(id) && (!regionName || id !== chestId)) };
 }
 
 function userCatalogKey(userId: string, name: string) {
@@ -199,6 +213,7 @@ async function replaceMuscleLinks(
 export async function createExercise(formData: FormData) {
   const userId = await requireUserId();
   const { input, tags, primaryMuscleIds, secondaryMuscleIds } = parseExerciseForm(formData);
+  const muscles = await resolveChestMuscles(input.movementGroupId, primaryMuscleIds, secondaryMuscleIds);
 
   await prisma.$transaction(async (tx) => {
     const created = await tx.exercise.create({
@@ -219,7 +234,7 @@ export async function createExercise(formData: FormData) {
       },
     });
 
-    await replaceMuscleLinks(created.id, primaryMuscleIds, secondaryMuscleIds, tx);
+    await replaceMuscleLinks(created.id, muscles.primary, muscles.secondary, tx);
     return created;
   });
 
@@ -237,6 +252,7 @@ export async function saveExercise(exerciseId: string, formData: FormData) {
   if (!existing) redirect("/exercises");
 
   const { input, tags, primaryMuscleIds, secondaryMuscleIds } = parseExerciseForm(formData);
+  const muscles = await resolveChestMuscles(input.movementGroupId, primaryMuscleIds, secondaryMuscleIds);
 
   const saved = await prisma.$transaction(async (tx) => {
     if (existing.isSeed) {
@@ -257,7 +273,7 @@ export async function saveExercise(exerciseId: string, formData: FormData) {
           isArchived: input.isArchived,
         },
       });
-      await replaceMuscleLinks(copy.id, primaryMuscleIds, secondaryMuscleIds, tx);
+      await replaceMuscleLinks(copy.id, muscles.primary, muscles.secondary, tx);
       const coachingProfile = await tx.exerciseCoachingProfile.findUnique({
         where: { userId_exerciseId: { userId, exerciseId: existing.id } },
       });
@@ -289,7 +305,7 @@ export async function saveExercise(exerciseId: string, formData: FormData) {
         isArchived: input.isArchived,
       },
     });
-    await replaceMuscleLinks(updated.id, primaryMuscleIds, secondaryMuscleIds, tx);
+    await replaceMuscleLinks(updated.id, muscles.primary, muscles.secondary, tx);
     return updated;
   });
 

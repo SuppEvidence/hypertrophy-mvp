@@ -22,10 +22,11 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   for (const [index, name] of defaultMuscles.entries()) {
+    const slug = name === "Chest (unclassified)" ? "chest" : slugify(name);
     await prisma.muscle.upsert({
-      where: { slug: slugify(name) },
+      where: { slug },
       update: { name, sortOrder: index + 1 },
-      create: { name, slug: slugify(name), sortOrder: index + 1 },
+      create: { name, slug, sortOrder: index + 1 },
     });
   }
 

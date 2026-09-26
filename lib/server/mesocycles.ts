@@ -197,6 +197,7 @@ export async function updateMesocycleMusclePriorities(
   if (!mesocycle) redirect("/programs");
 
   const muscles = await prisma.muscle.findMany({
+    where: { slug: { not: "chest" } },
     orderBy: { sortOrder: "asc" },
     select: { id: true },
   });
@@ -513,7 +514,7 @@ export async function getMesocyclePanelData(programId: string) {
         prescription: await buildProgramPrescription(program.id, userId, { mesocycleId, includeWeeklyPlan: false }),
       })),
     ),
-    prisma.muscle.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.muscle.findMany({ where: { slug: { not: "chest" } }, orderBy: { sortOrder: "asc" } }),
     prisma.movementGroup.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
   const prescriptionByMesocycle = new Map(
@@ -614,6 +615,9 @@ export async function getMesocyclePanelData(programId: string) {
           coachingStatus: priority.coachingStatus,
           confidence: priority.confidence,
           rationale: priority.rationale,
+        })),
+        plannedMuscleSets: (prescriptionByMesocycle.get(mesocycle.id)?.generated.volumeRows ?? []).map((row) => ({
+          muscleId: row.muscleId, weeklySets: round(row.planned * structureDisplayScale),
         })),
         volumeTargets: mesocycle.volumeTargets.map((target: any) => ({
           muscleId: target.muscleId,

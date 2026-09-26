@@ -69,7 +69,7 @@ export function defaultProgramValues(programType: ProgramType) {
         volumeWindowType: "WEEKLY" as VolumeWindowType,
         customWindowDays: null,
         secondaryContribution: 0.5,
-        priorityMuscles: ["Chest", "Lats", "Hamstrings"],
+        priorityMuscles: ["Upper chest", "Lats", "Hamstrings"],
       };
     case "BRO_SPLIT":
       return {
@@ -79,7 +79,7 @@ export function defaultProgramValues(programType: ProgramType) {
         volumeWindowType: "WEEKLY" as VolumeWindowType,
         customWindowDays: null,
         secondaryContribution: 0.25,
-        priorityMuscles: ["Chest", "Upper back", "Biceps", "Triceps"],
+        priorityMuscles: ["Upper chest", "Upper back", "Biceps", "Triceps"],
       };
     case "TORSO_LIMBS":
       return {

@@ -745,7 +745,7 @@ async function buildProgrammingContext(userId: string) {
       globalRecovery,
       localizedReadiness,
       rawExerciseEvidence,
-      evidenceCautions: "AI stimulus/readiness and set multipliers are estimates. Completed volume is not prescribed capacity. Circumference is not direct proof of hypertrophy. Consider adherence, recent changes and measurement noise. Low confidence defaults to HOLD, except a modest protective reduction for observed symptoms.",
+      evidenceCautions: "AI stimulus/readiness and set multipliers are estimates. Completed volume is not prescribed capacity. Circumference is not direct proof of hypertrophy. Legacy Chest (unclassified) priorities and targets predate the upper/mid/lower split; never treat them as region-specific history. Mapped exercise exposures can provide provisional regional dose history, but their old classification was less precise. Consider adherence, recent changes and measurement noise. Low confidence defaults to HOLD, except a modest protective reduction for observed symptoms.",
       recentAiEvidence,
       historicalDoseResponse,
       decisionMemory,
@@ -778,6 +778,7 @@ ${TRAINING_PROGRAMMING_POLICY}
 
 CURRENT TASK
 - Assess EVERY configured muscle against its outcome priority: SPECIALIZE, GROW, MAINTAIN, or INDIRECT_ONLY.
+- Upper, Mid, and Lower chest are separate coaching targets. Their exercise classification is an emphasis proxy, not exclusive anatomical recruitment or three independent recovery budgets. Chest (unclassified) is legacy or manually unassigned work; do not add it to a chest-region dose or infer that old total-chest targets prove a region-specific response.
 - Infer an individualized useful dose RANGE from current execution, stimulus, symptoms, recovery, body-composition context, historical response, and evidence quality. The range is coach-owned—not a user-set quota.
 - Previous estimated ranges and the activation baseline are evidence, NOT hard bounds. Revise the estimates when justified. The 0–60 validation ceiling is an application sanity check, not a physiological recommendation. Changing an estimate does not change training.
 - Produce 0 to 5 decision cards only where user approval is useful. Do not create a card merely to say that a muscle is on track; record that in assessments instead.

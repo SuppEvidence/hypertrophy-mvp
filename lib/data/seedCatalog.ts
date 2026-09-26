@@ -1,5 +1,8 @@
 export const defaultMuscles = [
-  "Chest",
+  "Chest (unclassified)",
+  "Upper chest",
+  "Mid chest",
+  "Lower chest",
   "Lats",
   "Upper back",
   "Front delts",
@@ -80,7 +83,7 @@ export const defaultExercises: SeedExercise[] = [
   {
     name: "Incline DB Press",
     movementGroup: "Incline press",
-    primary: ["Chest"],
+    primary: ["Upper chest"],
     secondary: ["Front delts", "Triceps"],
     defaultMinReps: 6,
     defaultMaxReps: 10,
@@ -89,7 +92,7 @@ export const defaultExercises: SeedExercise[] = [
   {
     name: "Incline Machine Press",
     movementGroup: "Incline press",
-    primary: ["Chest"],
+    primary: ["Upper chest"],
     secondary: ["Front delts", "Triceps"],
     defaultMinReps: 8,
     defaultMaxReps: 12,
@@ -98,7 +101,7 @@ export const defaultExercises: SeedExercise[] = [
   {
     name: "DB Chest Press",
     movementGroup: "Flat press",
-    primary: ["Chest"],
+    primary: ["Mid chest"],
     secondary: ["Front delts", "Triceps"],
     defaultMinReps: 6,
     defaultMaxReps: 10,

@@ -48,7 +48,7 @@ export async function getProgramForEdit(programId: string) {
 export async function getProgramFormReferenceData() {
   const userId = await requireUserId();
   const [muscles, defaultSecondaryContribution] = await Promise.all([
-    prisma.muscle.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.muscle.findMany({ where: { slug: { not: "chest" } }, orderBy: { sortOrder: "asc" } }),
     getDefaultSecondaryContribution(userId),
   ]);
   return { muscles, defaultSecondaryContribution };
