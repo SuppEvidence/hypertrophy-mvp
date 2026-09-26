@@ -62,18 +62,6 @@ export function SettingsForm({ settings, setTypes }: SettingsFormProps) {
             </select>
           </label>
 
-          <Field
-            label="Default secondary contribution"
-            name="defaultSecondaryContribution"
-            type="number"
-            step="0.05"
-            min="0"
-            max="1"
-            inputMode="decimal"
-            defaultValue={settings.defaultSecondaryContribution}
-            hint="Used as the default when creating future programs. Existing programs keep their own value."
-          />
-
         </Card>
 
         <Card className="mt-5 space-y-4">

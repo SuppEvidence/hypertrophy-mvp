@@ -72,6 +72,7 @@ enum MetricLogType {
   DAILY
   MESOCYCLE_START
   MESOCYCLE_END
+  MESOCYCLE_CHECKIN
   OPTIONAL_CHECKIN
 }
 
@@ -302,12 +303,35 @@ model ExercisePrimaryMuscle {
 model ExerciseSecondaryMuscle {
   exerciseId String @db.Uuid @map("exercise_id")
   muscleId   String @db.Uuid @map("muscle_id")
+  contributionEstimate Decimal? @map("contribution_estimate") @db.Decimal(3, 2)
+  assessmentRationale String? @map("assessment_rationale")
+  assessedAt DateTime? @map("assessed_at")
+  assessmentModel String? @map("assessment_model")
+  assessmentVersion Int @default(0) @map("assessment_version")
 
   exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
   muscle   Muscle   @relation(fields: [muscleId], references: [id], onDelete: Restrict)
+  reviews ExerciseSecondaryContributionReview[]
 
   @@id([exerciseId, muscleId])
   @@map("exercise_secondary_muscles")
+}
+
+model ExerciseSecondaryContributionReview {
+  id String @id @default(uuid()) @db.Uuid
+  exerciseId String @db.Uuid @map("exercise_id")
+  muscleId String @db.Uuid @map("muscle_id")
+  mesocycleId String @db.Uuid @map("mesocycle_id")
+  previousEstimate Decimal @map("previous_estimate") @db.Decimal(3, 2)
+  newEstimate Decimal @map("new_estimate") @db.Decimal(3, 2)
+  rationale String
+  evidence Json
+  model String
+  reviewedAt DateTime @default(now()) @map("reviewed_at")
+  link ExerciseSecondaryMuscle @relation(fields: [exerciseId, muscleId], references: [exerciseId, muscleId], onDelete: Cascade)
+
+  @@unique([exerciseId, muscleId, mesocycleId])
+  @@map("exercise_secondary_contribution_reviews")
 }
 
 model Program {

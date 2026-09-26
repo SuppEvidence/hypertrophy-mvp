@@ -103,9 +103,10 @@ export async function getUserSettingsForMetrics() {
 
 export async function updateUserSettings(formData: FormData) {
   const userId = await requireUserId();
+  const existing = await prisma.userSettings.findUnique({ where: { userId }, select: { defaultSecondaryContribution: true } });
   const parsed = settingsSchema.parse({
     preferredUnit: formData.get("preferredUnit"),
-    defaultSecondaryContribution: formData.get("defaultSecondaryContribution"),
+    defaultSecondaryContribution: existing?.defaultSecondaryContribution ?? 0,
     advancedMuscleMode: false,
     metricVisibility: {
       bodyweight: true,

@@ -1,3 +1,4 @@
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
@@ -119,7 +120,6 @@ export async function buildTrainingAdvisorContext() {
 
   const muscleEffectiveSets = new Map<string, number>();
   const movementEffectiveSets = new Map<string, number>();
-  const secondaryContribution = numberOrNull(program.secondaryContribution) ?? 0.5;
   const sevenDayStart = daysAgo(7);
 
   for (const session of sessions) {
@@ -166,7 +166,7 @@ export async function buildTrainingAdvisorContext() {
         for (const link of item.exercise.secondaryMuscles) {
           muscleEffectiveSets.set(
             link.muscle.id,
-            (muscleEffectiveSets.get(link.muscle.id) ?? 0) + effectiveSets * secondaryContribution,
+            (muscleEffectiveSets.get(link.muscle.id) ?? 0) + effectiveSets * secondaryContributionFor(link),
           );
         }
       }
@@ -219,7 +219,7 @@ export async function buildTrainingAdvisorContext() {
       id: program.id,
       name: program.name,
       phase: program.activePhase,
-      secondaryContribution,
+      secondaryContributionPolicy: "PER_EXERCISE_MUSCLE",
     },
     mesocycle: mesocycle
       ? {

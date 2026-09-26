@@ -96,11 +96,12 @@ function validationEvidence(context: Awaited<ReturnType<typeof buildContext>>) {
       movementGroupName: context.items.find((item) => item.movementGroupId === exercise.movementGroupId)?.movementGroupName ?? "",
       primaryMuscleIds: exercise.primaryMuscles.map((link) => link.muscle.id),
       secondaryMuscleIds: exercise.secondaryMuscles.map((link) => link.muscle.id),
+      secondaryContributionByMuscle: Object.fromEntries(exercise.secondaryMuscles.map((link) => [link.muscle.id, Number(link.contributionEstimate ?? 0)])),
       preference: exercise.coachingProfiles[0]?.preference ?? "NEUTRAL",
       intensifierPreference: exercise.coachingProfiles[0]?.intensifierPreference ?? "DEFAULT",
       allowedIntensifierIds: exercise.coachingProfiles[0]?.allowedIntensifierIds ?? [],
     })),
-    secondaryContribution: Number(context.prescription.program.secondaryContribution),
+    secondaryContribution: 0, // Per-link estimates in exercises drive the dose validator.
     musclePriorities: context.prescription.activeMesocycle?.musclePriorities.map((row) => ({
       muscleId: row.muscleId, priority: row.priority,
     })) ?? [],
@@ -135,7 +136,7 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
       select: {
         id: true, name: true, movementGroupId: true, setupNotes: true, tags: true,
         primaryMuscles: { select: { muscle: { select: { id: true, name: true } } } },
-        secondaryMuscles: { select: { muscle: { select: { id: true, name: true } } } },
+        secondaryMuscles: { select: { contributionEstimate: true, muscle: { select: { id: true, name: true } } } },
         coachingProfiles: { where: { userId }, select: { preference: true, intensifierPreference: true, allowedIntensifierIds: true, notes: true }, take: 1 },
       },
     }),
@@ -379,7 +380,7 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
       id: exercise.id, name: exercise.name, movementGroupId: exercise.movementGroupId,
       setupNotes: exercise.setupNotes, tags: exercise.tags,
       primaryMuscles: exercise.primaryMuscles.map((link) => link.muscle.name),
-      secondaryMuscles: exercise.secondaryMuscles.map((link) => link.muscle.name),
+      secondaryMuscles: exercise.secondaryMuscles.map((link) => ({ name: link.muscle.name, estimatedFraction: link.contributionEstimate === null ? null : Number(link.contributionEstimate) })),
       eligibleNewIntensifierSetTypeIds: eligibleByExercise.get(exercise.id) ?? [],
       coachingPreference: exercise.coachingProfiles[0]?.preference ?? "NEUTRAL",
       coachingNotes: exercise.coachingProfiles[0]?.notes ?? null,

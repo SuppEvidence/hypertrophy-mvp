@@ -104,7 +104,8 @@ async function main() {
     });
 
     await prisma.exercisePrimaryMuscle.deleteMany({ where: { exerciseId: saved.id } });
-    await prisma.exerciseSecondaryMuscle.deleteMany({ where: { exerciseId: saved.id } });
+    const desiredSecondaryIds = exercise.secondary.map((name) => muscleByName.get(name));
+    await prisma.exerciseSecondaryMuscle.deleteMany({ where: { exerciseId: saved.id, muscleId: { notIn: desiredSecondaryIds.filter((id): id is string => Boolean(id)) } } });
 
     for (const muscleName of exercise.primary) {
       const muscleId = muscleByName.get(muscleName);
@@ -115,7 +116,7 @@ async function main() {
     for (const muscleName of exercise.secondary) {
       const muscleId = muscleByName.get(muscleName);
       if (!muscleId) throw new Error(`Missing secondary muscle: ${muscleName}`);
-      await prisma.exerciseSecondaryMuscle.create({ data: { exerciseId: saved.id, muscleId } });
+      await prisma.exerciseSecondaryMuscle.upsert({ where: { exerciseId_muscleId: { exerciseId: saved.id, muscleId } }, create: { exerciseId: saved.id, muscleId }, update: {} });
     }
   }
 }

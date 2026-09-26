@@ -86,7 +86,6 @@ export default async function ProgramsPage() {
                 <p><span className="text-slate-500">Templates:</span> {program.templateCount}</p>
                 <p><span className="text-slate-500">Rotation:</span> {rotationStyleLabels[program.rotationStyle]}</p>
                 <p><span className="text-slate-500">Window:</span> {volumeWindowLabels[program.volumeWindowType]} ({volumeWindowDays(program.volumeWindowType, program.customWindowDays)}d)</p>
-                <p><span className="text-slate-500">Secondary:</span> {percent(program.secondaryContribution)}</p>
                 <p><span className="text-slate-500">Targets:</span> {targetCount} muscles</p>
               </div>
               <p className="mt-3 text-sm text-slate-400"><span className="text-slate-500">Priority:</span> {priorityMuscles}</p>

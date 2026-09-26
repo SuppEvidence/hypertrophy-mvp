@@ -1,5 +1,7 @@
 "use server";
 
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
+
 import { Prisma, type MusclePriority, type ProgramPhase } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -663,7 +665,6 @@ async function buildMesocycleReview(
   const prescription = prescriptionOverride ?? await buildProgramPrescription(program.id, userId, { mesocycleId: mesocycle.id, includeWeeklyPlan: false });
   const windowDays = volumeWindowDays(program.volumeWindowType, program.customWindowDays ?? null);
   const planMultiplier = days / windowDays;
-  const secondaryContribution = toNumber(program.secondaryContribution, 0.5);
 
   type MuscleRow = {
     muscleId: string;
@@ -886,7 +887,7 @@ async function buildMesocycleReview(
         status: "on",
         isPriority: priorityIds.has(link.muscleId),
       };
-      row.productive += productiveEquivalent * secondaryContribution;
+      row.productive += productiveEquivalent * secondaryContributionFor(link);
       muscleRows.set(link.muscleId, row);
     }
   }
@@ -978,7 +979,7 @@ async function buildMesocycleReview(
     preferredLogType: "MESOCYCLE_START" | "MESOCYCLE_END",
   ) {
     const withValue = boundaryMetrics.filter((metric) => metricNumber(metric[field]) !== null);
-    const preferred = withValue.filter((metric) => metric.logType === preferredLogType);
+    const preferred = withValue.filter((metric) => (metric.logType === preferredLogType || metric.logType === "MESOCYCLE_CHECKIN"));
     const candidates = preferred.length > 0 ? preferred : withValue;
     const nearest = [...candidates].sort(
       (left, right) => Math.abs(left.loggedAt.getTime() - boundaryDate.getTime()) - Math.abs(right.loggedAt.getTime() - boundaryDate.getTime()),

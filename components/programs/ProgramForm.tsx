@@ -25,8 +25,8 @@ function toInputNumber(value: unknown, fallback = "") {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export function ProgramForm({ muscles, program, action, defaultSecondaryContribution = 0.5 }: Props) {
-  const fallback = { ...defaultProgramValues("CUSTOM"), secondaryContribution: defaultSecondaryContribution };
+export function ProgramForm({ muscles, program, action }: Props) {
+  const fallback = defaultProgramValues("CUSTOM");
   const priorityIds = new Set(program?.priorityMuscles.map((link: any) => link.muscleId) ?? []);
   const targetMap = new Map(program?.volumeTargets.map((target: any) => [target.muscleId, toInputNumber(target.weeklyTargetSets)]) ?? []);
 
@@ -36,7 +36,7 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">Program foundation</p>
           <h2 className="mt-1 text-lg font-semibold text-slate-100">Reusable training structure</h2>
-          <p className="mt-1 text-sm text-slate-400">These settings remain in place across mesocycles: templates, rotation, calculation window, and contribution rules.</p>
+          <p className="mt-1 text-sm text-slate-400">These settings remain in place across mesocycles: templates, rotation, and calculation window.</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Program name" name="name" defaultValue={program?.name ?? fallback.name} required />
@@ -90,17 +90,6 @@ export function ProgramForm({ muscles, program, action, defaultSecondaryContribu
             max={60}
             defaultValue={program?.customWindowDays ?? ""}
             hint="Used only when volume window is Custom."
-          />
-
-          <Field
-            label="Secondary contribution"
-            name="secondaryContribution"
-            type="number"
-            min={0}
-            max={1}
-            step="0.05"
-            defaultValue={program ? toInputNumber(program.secondaryContribution, "0.5") : fallback.secondaryContribution}
-            required
           />
 
           <input type="hidden" name="activePhase" value={program?.activePhase ?? "PUSH"} />

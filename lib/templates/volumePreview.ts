@@ -1,3 +1,4 @@
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import type { VolumeWindowType } from "@/lib/types/domain";
 import { volumeWindowDays } from "@/lib/programs/options";
 
@@ -19,7 +20,7 @@ type VolumePreviewTemplateExercise = {
   setPlans?: Array<{ setNumber: number; setType: { multiplier: unknown } }>;
   exercise: {
     primaryMuscles: Array<{ muscleId: string; muscle: { name: string; sortOrder: number } }>;
-    secondaryMuscles: Array<{ muscleId: string; muscle: { name: string; sortOrder: number } }>;
+    secondaryMuscles: Array<{ muscleId: string; contributionEstimate?: unknown; muscle: { name: string; sortOrder: number } }>;
   };
 };
 
@@ -48,8 +49,6 @@ export function buildTemplateVolumePreview(args: {
   program: VolumePreviewProgram;
   templateExercises: VolumePreviewTemplateExercise[];
 }) {
-  const secondaryContribution = Number(args.program.secondaryContribution);
-  const safeSecondaryContribution = Number.isFinite(secondaryContribution) ? secondaryContribution : 0;
   const rows = new Map<string, TemplateVolumePreviewRow>();
   const targets = new Map<string, number>(
     (args.program.volumeTargets ?? []).map((target) => [target.muscleId, Number(target.weeklyTargetSets)]),
@@ -85,7 +84,7 @@ export function buildTemplateVolumePreview(args: {
         effective: 0,
         target: targets.has(link.muscleId) ? ((targets.get(link.muscleId) ?? 0) * windowDays) / 7 : null,
       };
-      row.effective += effectiveSetTotal * safeSecondaryContribution;
+      row.effective += effectiveSetTotal * secondaryContributionFor(link);
       rows.set(link.muscleId, row);
     }
   }

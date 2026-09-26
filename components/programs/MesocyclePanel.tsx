@@ -535,7 +535,7 @@ function MesocycleItem({ mesocycle, data }: { mesocycle: Mesocycle; data: Props[
               {" "}The review below uses the effective duration.
             </p>
             <Link
-              href={`/metrics?logType=MESOCYCLE_END&date=${mesocycle.endDate}`}
+              href={`/metrics?logType=MESOCYCLE_CHECKIN&date=${mesocycle.endDate}`}
               className="mt-2 inline-flex text-xs font-semibold text-orange-300 hover:text-orange-200"
             >
               Open Metrics for end check-in

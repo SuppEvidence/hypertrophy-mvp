@@ -112,7 +112,7 @@ function parseProgramForm(formData: FormData) {
     rotationStyle: formData.get("rotationStyle"),
     volumeWindowType: formData.get("volumeWindowType"),
     customWindowDays: numberOrNull(formData.get("customWindowDays")),
-    secondaryContribution: formData.get("secondaryContribution"),
+    secondaryContribution: 0, // Legacy column retained; exercise links carry assessed coefficients.
     activePhase: formData.get("activePhase"),
     advancedMuscleMode: formData.get("advancedMuscleMode") === "on",
   });
@@ -152,7 +152,7 @@ export async function createProgram(formData: FormData) {
         rotationStyle: input.rotationStyle as RotationStyle,
         volumeWindowType: input.volumeWindowType as VolumeWindowType,
         customWindowDays: input.volumeWindowType === "CUSTOM" ? input.customWindowDays : null,
-        secondaryContribution: input.secondaryContribution,
+        secondaryContribution: 0,
         activePhase: input.activePhase as ProgramPhase,
         advancedMuscleMode: input.advancedMuscleMode,
         isActive: !existingActive,
@@ -184,7 +184,7 @@ export async function updateProgram(programId: string, formData: FormData) {
         rotationStyle: input.rotationStyle as RotationStyle,
         volumeWindowType: input.volumeWindowType as VolumeWindowType,
         customWindowDays: input.volumeWindowType === "CUSTOM" ? input.customWindowDays : null,
-        secondaryContribution: input.secondaryContribution,
+        secondaryContribution: existing.secondaryContribution,
         activePhase: input.activePhase as ProgramPhase,
         advancedMuscleMode: input.advancedMuscleMode,
       },

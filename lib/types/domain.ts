@@ -56,5 +56,5 @@ export type ExerciseFormExercise = {
   isActive: boolean;
   isArchived: boolean;
   primaryMuscles: Array<{ muscleId: string; muscle: ReferenceMuscle }>;
-  secondaryMuscles: Array<{ muscleId: string; muscle: ReferenceMuscle }>;
+  secondaryMuscles: Array<{ muscleId: string; muscle: ReferenceMuscle; contributionEstimate?: unknown; assessmentRationale?: string | null }>;
 };

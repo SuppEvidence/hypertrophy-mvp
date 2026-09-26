@@ -1,3 +1,4 @@
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import {
   parseMesocycleStructureOverrides,
   type MesocycleStructureAction,
@@ -54,11 +55,12 @@ export type GeneratorMovementExerciseDefault = {
   defaultMinReps?: number | null;
   defaultMaxReps?: number | null;
   primaryMuscles: Array<{ muscleId: string; muscleName: string; sortOrder: number }>;
-  secondaryMuscles: Array<{ muscleId: string; muscleName: string; sortOrder: number }>;
+  secondaryMuscles: Array<{ muscleId: string; muscleName: string; sortOrder: number; contributionEstimate?: unknown }>;
 };
 
 export type GeneratorProgram = {
-  secondaryContribution: unknown;
+  /** Kept for older serialized fixture shapes; never used for volume accounting. */
+  secondaryContribution?: unknown;
   volumeWindowDays: number;
   volumeTargets: Array<{
     muscleId: string;
@@ -124,7 +126,7 @@ export type GeneratorTemplateExercise = {
   repBucket?: string | null;
   autoAdjustable?: boolean;
   primaryMuscles: Array<{ muscleId: string; muscleName: string; sortOrder: number }>;
-  secondaryMuscles: Array<{ muscleId: string; muscleName: string; sortOrder: number }>;
+  secondaryMuscles: Array<{ muscleId: string; muscleName: string; sortOrder: number; contributionEstimate?: unknown }>;
 };
 
 export type MesocycleAddedSetPlan = {
@@ -270,9 +272,10 @@ function occurrence(item: GeneratorTemplateExercise) {
   return Math.max(0, toNumber(item.expectedOccurrences, 1));
 }
 
-function contributionFactor(item: GeneratorTemplateExercise, muscleId: string, secondaryContribution: number) {
+function contributionFactor(item: GeneratorTemplateExercise, muscleId: string) {
   if (item.primaryMuscles.some((link) => link.muscleId === muscleId)) return 1;
-  if (item.secondaryMuscles.some((link) => link.muscleId === muscleId)) return secondaryContribution;
+  const secondaryLink = item.secondaryMuscles.find((link) => link.muscleId === muscleId);
+  if (secondaryLink) return secondaryContributionFor(secondaryLink);
   return 0;
 }
 
@@ -330,7 +333,7 @@ function targetRows(program: GeneratorProgram, mesocycle: GeneratorMesocycle) {
   return rows;
 }
 
-function addContributions(rows: Map<string, GeneratedVolumeRow>, item: GeneratedPrescriptionItem, sets: number, secondaryContribution: number, key: "base" | "planned") {
+function addContributions(rows: Map<string, GeneratedVolumeRow>, item: GeneratedPrescriptionItem, sets: number, key: "base" | "planned") {
   const effective = key === "base" ? baseEffectiveForSets(item, sets) : plannedEffectiveForSets(item, sets);
   const primaryContribution = effective * occurrence(item);
   for (const link of item.primaryMuscles) {
@@ -348,7 +351,6 @@ function addContributions(rows: Map<string, GeneratedVolumeRow>, item: Generated
     rows.set(link.muscleId, row);
   }
 
-  const secondaryContributionValue = primaryContribution * secondaryContribution;
   for (const link of item.secondaryMuscles) {
     const row = rows.get(link.muscleId) ?? {
       muscleId: link.muscleId,
@@ -360,7 +362,7 @@ function addContributions(rows: Map<string, GeneratedVolumeRow>, item: Generated
       delta: 0,
       priorityLevel: 0,
     };
-    row[key] += secondaryContributionValue;
+    row[key] += primaryContribution * secondaryContributionFor(link);
     rows.set(link.muscleId, row);
   }
 }
@@ -917,7 +919,7 @@ function priorityStructureProposals(args: {
         const dose = contributions(item);
         const projected = muscle.planned - dose;
         const safeOtherMuscles = [...item.primaryMuscles.map((link) => ({ id: link.muscleId, factor: 1 })),
-          ...item.secondaryMuscles.map((link) => ({ id: link.muscleId, factor: toNumber(args.program.secondaryContribution, 0.5) }))]
+          ...item.secondaryMuscles.map((link) => ({ id: link.muscleId, factor: secondaryContributionFor(link) }))]
           .every(({ id, factor }) => id === target.muscleId || (() => {
             const other = byMuscle.get(id);
             return !other || other.target === null || other.planned - dose * factor >= other.target - 0.1;
@@ -952,7 +954,6 @@ export function generateMesocyclePrescription(args: {
   setTypes?: GeneratorSetType[];
   movementDefaults?: GeneratorMovementExerciseDefault[];
 }) {
-  const secondaryContribution = toNumber(args.program.secondaryContribution, 0.5);
   const setTypes = args.setTypes ?? [];
   const templates = args.templates ?? [];
   const movementDefaults = args.movementDefaults ?? [];
@@ -988,8 +989,8 @@ export function generateMesocyclePrescription(args: {
     const updateRows = () => {
       const rows = targetRows(args.program, args.mesocycle);
       for (const item of items) {
-        addContributions(rows, item, item.basePlannedSets, secondaryContribution, "base");
-        addContributions(rows, item, item.isMesocycleSuppressed ? 0 : item.adjustedPlannedSets, secondaryContribution, "planned");
+        addContributions(rows, item, item.basePlannedSets, "base");
+        addContributions(rows, item, item.isMesocycleSuppressed ? 0 : item.adjustedPlannedSets, "planned");
       }
       for (const row of rows.values()) row.delta = row.planned - row.base;
       return rows;
@@ -1008,12 +1009,12 @@ export function generateMesocyclePrescription(args: {
         const remaining = Math.max(0, (target.target ?? 0) - current);
         const candidates = items
           .filter((item) => !item.isMesocycleSuppressed)
-          .filter((item) => contributionFactor(item, target.muscleId, secondaryContribution) > 0)
+          .filter((item) => contributionFactor(item, target.muscleId) > 0)
           .filter((item) => item.adjustedPlannedSets < setBounds(item).max)
           .sort((a, b) => addScore(a) - addScore(b) || a.adjustmentDelta - b.adjustmentDelta || templatePhysicalLoad(items, a.templateId) - templatePhysicalLoad(items, b.templateId) || a.templateSequenceIndex - b.templateSequenceIndex || a.sortOrder - b.sortOrder);
         const selected = candidates[0];
         if (!selected) break;
-        const factor = contributionFactor(selected, target.muscleId, secondaryContribution);
+        const factor = contributionFactor(selected, target.muscleId);
         const desired = remaining / Math.max(0.1, occurrence(selected) * factor);
         if (!addOneSet({ item: selected, desiredEffectivePerOccurrence: desired, setTypes, reason: `+1 for ${target.muscleName}` })) break;
         rows = updateRows();
@@ -1030,7 +1031,7 @@ export function generateMesocyclePrescription(args: {
         guard += 1;
         const candidates = items
           .filter((item) => !item.isMesocycleSuppressed)
-          .filter((item) => contributionFactor(item, target.muscleId, secondaryContribution) > 0)
+          .filter((item) => contributionFactor(item, target.muscleId) > 0)
           .filter((item) => item.adjustedPlannedSets > setBounds(item).min)
           .sort((a, b) => removeScore(a) - removeScore(b) || a.adjustmentDelta - b.adjustmentDelta || b.templateSequenceIndex - a.templateSequenceIndex || b.sortOrder - a.sortOrder);
         const selected = candidates[0];
@@ -1089,8 +1090,8 @@ export function generateMesocyclePrescription(args: {
 
   const volumeRows = targetRows(args.program, args.mesocycle);
   for (const item of items) {
-    addContributions(volumeRows, item, item.basePlannedSets, secondaryContribution, "base");
-    addContributions(volumeRows, item, item.isMesocycleSuppressed ? 0 : item.adjustedPlannedSets, secondaryContribution, "planned");
+    addContributions(volumeRows, item, item.basePlannedSets, "base");
+    addContributions(volumeRows, item, item.isMesocycleSuppressed ? 0 : item.adjustedPlannedSets, "planned");
   }
 
   const movementVolumeRows = Array.from(movementRows({ program: args.program, mesocycle: args.mesocycle, items }).values())

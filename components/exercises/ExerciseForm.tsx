@@ -15,7 +15,8 @@ const selectClass =
 
 export function ExerciseForm({ exercise, muscles, movementGroups, action }: Props) {
   const primaryIds = new Set(exercise?.primaryMuscles.map((link: any) => link.muscleId) ?? []);
-  const secondaryIds = new Set(exercise?.secondaryMuscles.map((link: any) => link.muscleId) ?? []);
+  const secondaryIds = new Set(exercise?.secondaryMuscles.map((link) => link.muscleId) ?? []);
+  const estimatedSecondary = new Map(exercise?.secondaryMuscles.map((link) => [link.muscleId, link]) ?? []);
   const isSeed = exercise?.isSeed ?? false;
 
   return (
@@ -126,7 +127,7 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
       <Card>
         <div className="mb-4">
           <h2 className="text-base font-semibold text-slate-100">Secondary muscles</h2>
-          <p className="mt-1 text-sm text-slate-400">Indirect effective-volume exposure. Primary selections override secondary duplicates.</p>
+          <p className="mt-1 text-sm text-slate-400">Select anatomical secondary muscles. The coach estimates each exercise’s indirect contribution once, then uses the saved estimate throughout planning and reviews. Until assessed, indirect work counts as zero.</p>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
           {muscles.map((muscle: any) => (
@@ -138,7 +139,7 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
                 defaultChecked={secondaryIds.has(muscle.id)}
                 className="h-5 w-5"
               />
-              <span>{muscle.name}</span>
+              <span>{muscle.name}{estimatedSecondary.get(muscle.id) ? (estimatedSecondary.get(muscle.id)?.contributionEstimate == null ? " · assessment pending" : ` · ${Number(estimatedSecondary.get(muscle.id)?.contributionEstimate) * 100}% estimated indirect`) : ""}</span>
             </label>
           ))}
         </div>

@@ -37,7 +37,7 @@ const reduced = generateMesocyclePrescription({ ...base, mesocycle: { ...base.me
 assert.ok(reduced.some((entry) => entry.type === "REMOVE_SLOT" && entry.movementGroupId === "press"));
 
 const stillNeeded = generateMesocyclePrescription({ ...base,
-  templateExercises: [{ ...base.templateExercises[0], secondaryMuscles: [muscle("quad", "Quads")] }],
+  templateExercises: [{ ...base.templateExercises[0], secondaryMuscles: [{ ...muscle("quad", "Quads"), contributionEstimate: 0.5 }] }],
   movementDefaults: [],
   mesocycle: { ...base.mesocycle, volumeTargets: [
     { ...muscle("quad", "Quads"), targetSets: 1.5, explicitTarget: true, priority: "MAINTAIN" as const },

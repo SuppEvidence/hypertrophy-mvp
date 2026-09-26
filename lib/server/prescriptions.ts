@@ -114,7 +114,7 @@ export async function buildProgramPrescription(
         defaultMaxReps: true,
         movementGroup: { select: { id: true, name: true, sortOrder: true } },
         primaryMuscles: { select: { muscleId: true, muscle: { select: { name: true, sortOrder: true } } } },
-        secondaryMuscles: { select: { muscleId: true, muscle: { select: { name: true, sortOrder: true } } } },
+        secondaryMuscles: { select: { muscleId: true, contributionEstimate: true, muscle: { select: { name: true, sortOrder: true } } } },
         coachingProfiles: { where: { userId }, select: { preference: true }, take: 1 },
       },
     }),
@@ -192,12 +192,12 @@ export async function buildProgramPrescription(
         muscleId: link.muscleId,
         muscleName: link.muscle.name,
         sortOrder: link.muscle.sortOrder,
+        contributionEstimate: link.contributionEstimate,
       })),
     })),
   );
   const generationInput: Parameters<typeof generateMesocyclePrescription>[0] = {
     program: {
-      secondaryContribution: program.secondaryContribution,
       volumeWindowDays: volumeWindowDays(program.volumeWindowType, program.customWindowDays ?? null),
       volumeTargets: program.volumeTargets.map((target) => ({
         muscleId: target.muscleId,
@@ -263,6 +263,7 @@ export async function buildProgramPrescription(
         muscleId: link.muscleId,
         muscleName: link.muscle.name,
         sortOrder: link.muscle.sortOrder,
+        contributionEstimate: link.contributionEstimate,
       })),
     })),
   };

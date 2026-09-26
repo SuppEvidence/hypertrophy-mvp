@@ -1,5 +1,8 @@
 "use server";
 
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
+
+import { after } from "next/server";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
@@ -40,7 +43,7 @@ async function checkinsForMesocycle(userId: string, row: { programId: string; st
       where: { userId, isDraft: false, loggedAt: {
         gte: new Date(row.startDate.getTime() - 14 * DAY_MS),
         lte: new Date(Math.min(now.getTime(), endDate.getTime() + 8 * DAY_MS - 1)),
-      }, logType: { in: ["MESOCYCLE_START", "MESOCYCLE_END"] } },
+      }, logType: { in: ["MESOCYCLE_START", "MESOCYCLE_END", "MESOCYCLE_CHECKIN"] } },
       orderBy: { loggedAt: "asc" },
       select: { loggedAt: true, updatedAt: true, logType: true, chest: true, shoulders: true, arms: true, thighs: true, glutes: true, calves: true,
         bodyweight: true, waist: true },
@@ -397,7 +400,7 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
                   select: { muscleId: true, muscle: { select: { name: true } } },
                 },
                 secondaryMuscles: {
-                  select: { muscleId: true, muscle: { select: { name: true } } },
+                  select: { muscleId: true, contributionEstimate: true, muscle: { select: { name: true } } },
                 },
               },
             },
@@ -480,7 +483,7 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
         totals.set(
           link.muscleId,
           (totals.get(link.muscleId) ?? 0) +
-            contribution.productiveEquivalent * Number(program.secondaryContribution),
+            contribution.productiveEquivalent * secondaryContributionFor(link),
         );
       }
     }
@@ -770,6 +773,15 @@ export async function generateMesocycleRecommendationForUser(userId: string, req
       aiRecommendationModel: model,
       aiRecommendedAt: new Date(),
     },
+  });
+
+  after(async () => {
+    try {
+      const { reconsiderSecondaryContributionsAtT3 } = await import("@/lib/server/secondary-contribution-revision");
+      await reconsiderSecondaryContributionsAtT3(userId, mesocycleId);
+    } catch (error) {
+      console.error("T3 secondary contribution reassessment failed", error);
+    }
   });
 
   return parsed;

@@ -226,7 +226,7 @@ export async function buildLiveExerciseCoachingContext(params: {
       movementPatternName: current.exercise.movementGroup.name,
       exerciseType: current.exercise.secondaryMuscles.length > 0 ? "COMPOUND" : "ISOLATION",
       primaryMuscles: current.exercise.primaryMuscles.map((link) => ({ id: link.muscleId, name: link.muscle.name })),
-      secondaryMuscles: current.exercise.secondaryMuscles.map((link) => ({ id: link.muscleId, name: link.muscle.name })),
+      secondaryMuscles: current.exercise.secondaryMuscles.map((link) => ({ id: link.muscleId, name: link.muscle.name, estimatedFraction: link.contributionEstimate === null ? null : Number(link.contributionEstimate) })),
     },
     prescription: {
       plannedSets: current.sets.length,

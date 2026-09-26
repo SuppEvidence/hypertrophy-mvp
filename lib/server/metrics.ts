@@ -78,7 +78,7 @@ export async function createMetricLog(formData: FormData) {
     await prisma.metricLog.create({ data });
   }
 
-  if (!data.isDraft && ["MESOCYCLE_START", "MESOCYCLE_END"].includes(data.logType) &&
+  if (!data.isDraft && ["MESOCYCLE_START", "MESOCYCLE_END", "MESOCYCLE_CHECKIN"].includes(data.logType) &&
       process.env.AUTO_MESOCYCLE_REVIEW_ENABLED !== "false") {
     after(async () => {
       try {

@@ -1,3 +1,4 @@
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import type { VolumeWindowType } from "@/lib/types/domain";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { calculateFatigueSummary, type FatigueSummary } from "@/lib/metrics/fatigue";
@@ -48,7 +49,7 @@ export type DashboardSessionExerciseInput = {
     name: string;
     movementGroup: { id: string; name: string; sortOrder: number };
     primaryMuscles: Array<{ muscleId: string; muscle: { name: string; sortOrder: number } }>;
-    secondaryMuscles: Array<{ muscleId: string; muscle: { name: string; sortOrder: number } }>;
+    secondaryMuscles: Array<{ muscleId: string; contributionEstimate?: unknown; muscle: { name: string; sortOrder: number } }>;
   };
   sets: DashboardSetInput[];
 };
@@ -181,7 +182,6 @@ export function selectedWindowStart(now: Date, days: number) {
 }
 
 export function buildMuscleVolumeRows(program: DashboardProgramInput, sessions: DashboardSessionInput[]): MuscleVolumeRow[] {
-  const secondaryContribution = Number(program.secondaryContribution || 0);
   const windowDays = selectedWindowDays(program);
   const priorityIds = new Set(program.priorityMuscles.map((link) => link.muscleId));
   const targets = new Map(
@@ -233,7 +233,7 @@ export function buildMuscleVolumeRows(program: DashboardProgramInput, sessions: 
           direct: 0,
           effective: 0,
         };
-        row.effective += contribution.productiveEquivalent * secondaryContribution;
+        row.effective += contribution.productiveEquivalent * secondaryContributionFor(link);
         rows.set(link.muscleId, row);
       }
     }

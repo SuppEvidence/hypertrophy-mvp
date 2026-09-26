@@ -1,3 +1,4 @@
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import { calculateFatigueSummary, type FatigueInput } from "@/lib/metrics/fatigue";
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 import type {
@@ -56,7 +57,7 @@ function slotPriorityRank(slot: PreWorkoutSlotCandidate, priorities: Map<string,
 }
 
 export type CoachSetType = { id: string; name: string; slug: string; multiplier: number; isIntensifier: boolean };
-export type CoachExercise = { id: string; movementGroupName: string; primaryMuscleIds: string[]; secondaryMuscleIds: string[];
+export type CoachExercise = { id: string; movementGroupName: string; primaryMuscleIds: string[]; secondaryMuscleIds: string[]; secondaryContributionByMuscle?: Record<string, number>;
   preference?: "NEUTRAL" | "PREFERRED" | "AVOID";
   intensifierPreference?: "DEFAULT" | "NONE" | "ONLY_SELECTED";
   allowedIntensifierIds?: string[];
@@ -324,7 +325,7 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
     const exercise = exerciseById.get(exerciseId);
     if (exercise) {
       for (const id of exercise.primaryMuscleIds) muscles.set(id, (muscles.get(id) ?? 0) + dose);
-      for (const id of exercise.secondaryMuscleIds) muscles.set(id, (muscles.get(id) ?? 0) + dose * config.secondaryContribution);
+      for (const id of exercise.secondaryMuscleIds) muscles.set(id, (muscles.get(id) ?? 0) + dose * secondaryContributionFor({ contributionEstimate: exercise.secondaryContributionByMuscle?.[id] }));
     }
   };
   for (const slot of config.slots.filter((slot) => slot.templateId === plan.baseTemplateId)) {

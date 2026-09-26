@@ -1,5 +1,7 @@
 "use server";
 
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
+
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -110,7 +112,7 @@ async function movementGroupsForUser(userId: string) {
         select: { id: true, name: true, sortOrder: true },
       },
       primaryMuscles: { select: { muscleId: true } },
-      secondaryMuscles: { select: { muscleId: true } },
+      secondaryMuscles: { select: { muscleId: true, contributionEstimate: true } },
     },
   });
 
@@ -141,7 +143,7 @@ async function movementGroupsForUser(userId: string) {
     for (const link of exercise.primaryMuscles)
       current.muscleIds.add(link.muscleId);
     for (const link of exercise.secondaryMuscles)
-      current.muscleIds.add(link.muscleId);
+      if (secondaryContributionFor(link) > 0) current.muscleIds.add(link.muscleId);
   }
 
   return Array.from(groups.values()).sort(
@@ -246,7 +248,7 @@ export async function getCurrentMesocycleAdjustmentData() {
 
       const sourceMuscleIds = new Set([
         ...slot.exercise.primaryMuscles.map((link) => link.muscleId),
-        ...slot.exercise.secondaryMuscles.map((link) => link.muscleId),
+        ...slot.exercise.secondaryMuscles.filter((link) => secondaryContributionFor(link) > 0).map((link) => link.muscleId),
       ]);
       const relatedMovementGroupIds = movementGroups
         .filter((group) =>

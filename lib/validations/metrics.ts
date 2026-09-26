@@ -18,7 +18,7 @@ const optionalScale = optionalInt.refine((value) => value === null || (value >= 
 
 export const metricLogSchema = z.object({
   loggedAt: z.string().min(1),
-  logType: z.enum(["DAILY", "MESOCYCLE_START", "MESOCYCLE_END", "OPTIONAL_CHECKIN"]).default("DAILY"),
+  logType: z.enum(["DAILY", "MESOCYCLE_START", "MESOCYCLE_END", "MESOCYCLE_CHECKIN", "OPTIONAL_CHECKIN"]).default("DAILY"),
   bodyweight: optionalNumber,
   waist: optionalNumber,
   chest: optionalNumber,

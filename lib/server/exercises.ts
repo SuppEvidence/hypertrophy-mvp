@@ -2,6 +2,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
@@ -69,6 +70,13 @@ export async function listExercises(searchParams?: {
       ],
     });
   }
+
+  after(async () => {
+    try {
+      const { assessPendingSecondaryContributions } = await import("@/lib/server/secondary-contribution-assessment");
+      await assessPendingSecondaryContributions(userId);
+    } catch (error) { console.error("Secondary contribution backfill failed", error); }
+  });
 
   return prisma.exercise.findMany({
     where: { AND: andFilters },
@@ -191,9 +199,10 @@ async function replaceMuscleLinks(
   primaryMuscleIds: string[],
   secondaryMuscleIds: string[],
   tx: Prisma.TransactionClient,
+  reassessExisting = false,
 ) {
   await tx.exercisePrimaryMuscle.deleteMany({ where: { exerciseId } });
-  await tx.exerciseSecondaryMuscle.deleteMany({ where: { exerciseId } });
+  await tx.exerciseSecondaryMuscle.deleteMany({ where: { exerciseId, muscleId: { notIn: secondaryMuscleIds } } });
 
   if (primaryMuscleIds.length > 0) {
     await tx.exercisePrimaryMuscle.createMany({
@@ -207,7 +216,23 @@ async function replaceMuscleLinks(
       data: secondaryMuscleIds.map((muscleId) => ({ exerciseId, muscleId })),
       skipDuplicates: true,
     });
+    if (reassessExisting) {
+      await tx.exerciseSecondaryMuscle.updateMany({ where: { exerciseId, muscleId: { in: secondaryMuscleIds } }, data: {
+        contributionEstimate: null, assessmentRationale: null, assessedAt: null, assessmentModel: null, assessmentVersion: { increment: 1 },
+      } });
+    }
   }
+}
+
+function scheduleContributionAssessment(exerciseId: string) {
+  after(async () => {
+    try {
+      const { assessExerciseSecondaryContributions } = await import("@/lib/server/secondary-contribution-assessment");
+      await assessExerciseSecondaryContributions(exerciseId);
+    } catch (error) {
+      console.error("Exercise secondary contribution assessment failed", error);
+    }
+  });
 }
 
 export async function createExercise(formData: FormData) {
@@ -215,7 +240,7 @@ export async function createExercise(formData: FormData) {
   const { input, tags, primaryMuscleIds, secondaryMuscleIds } = parseExerciseForm(formData);
   const muscles = await resolveChestMuscles(input.movementGroupId, primaryMuscleIds, secondaryMuscleIds);
 
-  await prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     const created = await tx.exercise.create({
       data: {
         userId,
@@ -238,6 +263,7 @@ export async function createExercise(formData: FormData) {
     return created;
   });
 
+  scheduleContributionAssessment(created.id);
   revalidatePath("/exercises");
   redirect("/exercises");
 }
@@ -305,10 +331,14 @@ export async function saveExercise(exerciseId: string, formData: FormData) {
         isArchived: input.isArchived,
       },
     });
-    await replaceMuscleLinks(updated.id, muscles.primary, muscles.secondary, tx);
+    await replaceMuscleLinks(updated.id, muscles.primary, muscles.secondary, tx,
+      existing.name !== input.name || existing.movementGroupId !== input.movementGroupId ||
+      (existing.setupNotes ?? "") !== (input.setupNotes ?? "") ||
+      existing.primaryMuscles.map((link) => link.muscleId).sort().join(",") !== [...muscles.primary].sort().join(","));
     return updated;
   });
 
+  scheduleContributionAssessment(saved.id);
   revalidatePath("/exercises");
   revalidatePath(`/exercises/${exerciseId}`);
   redirect(`/exercises/${saved.id}`);

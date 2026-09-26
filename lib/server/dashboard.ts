@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { after } from "next/server";
 import { ensureProgramTemplates } from "@/lib/server/templates";
 import { phaseLabels, programTypeLabels, volumeWindowLabels } from "@/lib/programs/options";
 import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
@@ -14,12 +15,6 @@ import {
   selectedWindowDays,
   selectedWindowStart,
 } from "@/lib/calculations/dashboard";
-
-function toNumber(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
@@ -338,6 +333,12 @@ function buildCurrentDecisionFlags(args: {
 }
 
 export async function getDashboardData(userId: string) {
+  after(async () => {
+    try {
+      const { assessPendingSecondaryContributions } = await import("@/lib/server/secondary-contribution-assessment");
+      await assessPendingSecondaryContributions(userId);
+    } catch (error) { console.error("Secondary contribution backfill failed", error); }
+  });
   const activeProgram = await prisma.program.findFirst({
     where: { userId, isActive: true, isArchived: false },
     include: {
@@ -448,6 +449,7 @@ export async function getDashboardData(userId: string) {
                   orderBy: { muscle: { sortOrder: "asc" } },
                   select: {
                     muscleId: true,
+                    contributionEstimate: true,
                     muscle: { select: { name: true, sortOrder: true } },
                   },
                 },
@@ -577,8 +579,6 @@ export async function getDashboardData(userId: string) {
       phaseLabel: phaseLabels[activeProgram.activePhase],
       volumeWindowLabel: volumeWindowLabels[activeProgram.volumeWindowType],
       templateCount: activeProgram.templateCount,
-      secondaryContribution:
-        toNumber(activeProgram.secondaryContribution) ?? 0,
       priorityMuscles: activeProgram.priorityMuscles.map(
         (link) => link.muscle.name,
       ),

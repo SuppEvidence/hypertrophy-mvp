@@ -121,7 +121,7 @@ export default async function MesocycleRecommendationsPage({
                       : "Check-ins are ready. The review runs after a completed workout or a saved check-in."}
               </p>
               {!current.checkinStatus.comparable ? (
-                <Link href={`/metrics?logType=${current.checkinStatus.startSaved ? "MESOCYCLE_END" : "MESOCYCLE_START"}`}
+                <Link href={`/metrics?logType=${"MESOCYCLE_CHECKIN"}`}
                   className="inline-flex text-xs font-semibold text-orange-300 hover:text-orange-200">
                   Open metrics check-in
                 </Link>

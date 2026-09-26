@@ -46,7 +46,7 @@ function dateInputFromIso(value: string | null | undefined) {
   return value.slice(0, 10);
 }
 
-const allowedInitialLogTypes = new Set(["DAILY", "MESOCYCLE_START", "MESOCYCLE_END", "OPTIONAL_CHECKIN"]);
+const allowedInitialLogTypes = new Set(["DAILY", "MESOCYCLE_START", "MESOCYCLE_END", "MESOCYCLE_CHECKIN", "OPTIONAL_CHECKIN"]);
 
 function safeInitialDate(value: string | undefined) {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : todayInputValue();
@@ -63,7 +63,8 @@ export function MetricsForm({
   initialLogType?: string;
   initialDate?: string;
 }) {
-  const defaultLogType = draft?.logType ?? (initialLogType && allowedInitialLogTypes.has(initialLogType) ? initialLogType : "DAILY");
+  const requestedType = draft?.logType ?? (initialLogType && allowedInitialLogTypes.has(initialLogType) ? initialLogType : "DAILY");
+  const defaultLogType = ["MESOCYCLE_START", "MESOCYCLE_END"].includes(requestedType) ? "MESOCYCLE_CHECKIN" : requestedType;
   const defaultDate = draft ? dateInputFromIso(draft.loggedAt) : safeInitialDate(initialDate);
   return (
     <form action={createMetricLog} className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
@@ -79,8 +80,7 @@ export function MetricsForm({
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Log type</span>
           <select name="logType" defaultValue={defaultLogType} className={selectClass}>
             <option value="DAILY">Daily: bodyweight / waist</option>
-            <option value="MESOCYCLE_START">Mesocycle start check-in</option>
-            <option value="MESOCYCLE_END">Mesocycle end check-in</option>
+            <option value="MESOCYCLE_CHECKIN">Mesocycle circumference check-in</option>
             <option value="OPTIONAL_CHECKIN">Optional check-in</option>
           </select>
         </label>
@@ -95,7 +95,7 @@ export function MetricsForm({
 
       <details className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">Mesocycle circumference check-in</summary>
-        <p className="mt-2 text-xs text-slate-500">Save a start and end check-in within seven days of their block boundaries, with at least one matching circumference. The previous block’s end check-in also counts as the next block’s start when the blocks are close together; you do not need to log the same measurements twice.</p>
+        <p className="mt-2 text-xs text-slate-500">Save circumference measurements within seven days of each block boundary. The same check-in counts as the end of one block and the start of the next when their dates are close. A review needs at least one matching circumference across the block.</p>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <Field label="Chest" name="chest" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.chest ?? ""} />
           <Field label="Shoulders" name="shoulders" type="number" step="0.1" inputMode="decimal" defaultValue={draft?.shoulders ?? ""} />

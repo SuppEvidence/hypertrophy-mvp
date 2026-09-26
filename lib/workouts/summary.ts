@@ -1,3 +1,4 @@
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import { getStimulusContribution } from "@/lib/workouts/stimulus";
 
 export function estimateE1RM(
@@ -38,10 +39,12 @@ export type LoggedExerciseForSummary = {
     name: string;
     primaryMuscles: Array<{
       muscleId: string;
+      contributionEstimate?: unknown;
       muscle: { name: string; sortOrder: number };
     }>;
     secondaryMuscles: Array<{
       muscleId: string;
+      contributionEstimate?: unknown;
       muscle: { name: string; sortOrder: number };
     }>;
   };
@@ -69,7 +72,6 @@ function toNumber(value: unknown, fallback = 0) {
 }
 
 export function buildWorkoutSummary(args: {
-  secondaryContribution: number;
   sessionExercises: LoggedExerciseForSummary[];
 }) {
   const rows = new Map<
@@ -123,7 +125,7 @@ export function buildWorkoutSummary(args: {
         direct: 0,
         effective: 0,
       };
-      row.effective += effectiveEquivalent * args.secondaryContribution;
+      row.effective += effectiveEquivalent * secondaryContributionFor(link);
       rows.set(link.muscleId, row);
     }
   }

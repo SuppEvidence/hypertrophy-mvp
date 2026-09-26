@@ -1,5 +1,7 @@
 "use server";
 
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
+
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { zodTextFormat } from "openai/helpers/zod";
@@ -128,7 +130,7 @@ function closestMetric(
     (metric) => Math.abs(metric.loggedAt.getTime() - target.getTime()) <= 14 * DAY_MS,
   );
   const preferred = withinWindow.filter(
-    (metric) => metric.logType === preferredType,
+    (metric) => (metric.logType === preferredType || metric.logType === "MESOCYCLE_CHECKIN"),
   );
   const candidates = preferred.length > 0 ? preferred : withinWindow;
 
@@ -214,7 +216,7 @@ function summarizeHistoricalMesocycle(args: {
     exercises: Array<{
       exercise: {
         primaryMuscles: Array<{ muscleId: string }>;
-        secondaryMuscles: Array<{ muscleId: string }>;
+        secondaryMuscles: Array<{ muscleId: string; contributionEstimate?: unknown }>;
       };
       sets: Array<{
         setNumber: number;
@@ -223,7 +225,6 @@ function summarizeHistoricalMesocycle(args: {
       }>;
     }>;
   }>;
-  secondaryContribution: number;
   priorEndDate: Date | null;
   metrics: Array<{
     loggedAt: Date;
@@ -238,7 +239,7 @@ function summarizeHistoricalMesocycle(args: {
     calves: unknown;
   }>;
 }) {
-  const { mesocycle, sessions, secondaryContribution, metrics } = args;
+  const { mesocycle, sessions, metrics } = args;
   const totals = new Map<string, number>();
 
   for (const session of sessions) {
@@ -258,7 +259,7 @@ function summarizeHistoricalMesocycle(args: {
         totals.set(
           link.muscleId,
           (totals.get(link.muscleId) ?? 0) +
-            contribution.productiveEquivalent * secondaryContribution,
+            contribution.productiveEquivalent * secondaryContributionFor(link),
         );
       }
     }
@@ -409,7 +410,7 @@ async function buildProgrammingContext(userId: string) {
           movementGroupId: true,
           movementGroup: { select: { name: true } },
           primaryMuscles: { select: { muscleId: true } },
-          secondaryMuscles: { select: { muscleId: true } },
+          secondaryMuscles: { select: { muscleId: true, contributionEstimate: true } },
           coachingProfiles: { where: { userId }, select: { preference: true, notes: true, intensifierPreference: true }, take: 1 },
         },
       }),
@@ -461,7 +462,7 @@ async function buildProgrammingContext(userId: string) {
                 exercise: {
                   select: {
                     primaryMuscles: { select: { muscleId: true } },
-                    secondaryMuscles: { select: { muscleId: true } },
+                    secondaryMuscles: { select: { muscleId: true, contributionEstimate: true } },
                   },
                 },
                 sets: {
@@ -623,7 +624,6 @@ async function buildProgrammingContext(userId: string) {
       mesocycle: historical,
       priorEndDate: prior ? prior.actualEndDate ?? new Date(prior.startDate.getTime() + prior.lengthWeeks * 7 * DAY_MS - DAY_MS) : null,
       sessions: historicalSessions,
-      secondaryContribution: finiteNumber(program.secondaryContribution) ?? 0.5,
       metrics: historicalMetrics.map((metric) => ({
         ...metric,
         logType: String(metric.logType),
@@ -699,8 +699,7 @@ async function buildProgrammingContext(userId: string) {
       program: {
         id: program.id,
         name: program.name,
-        secondaryContribution: finiteNumber(program.secondaryContribution) ?? 0.5,
-      },
+        },
       mesocycle: {
         id: mesocycle.id,
         name: mesocycle.name,
@@ -718,6 +717,7 @@ async function buildProgrammingContext(userId: string) {
         setsPerOccurrence: row.adjustedPlannedSets, occurrencesPerWindow: Number(row.expectedOccurrences),
         minimumSets: row.minSets, maximumSets: row.maxSets, autoAdjustable: row.autoAdjustable,
         exerciseType: row.secondaryMuscles.length ? "COMPOUND" : "ISOLATION",
+        secondaryMuscleEstimates: row.secondaryMuscles.map((link) => ({ muscleId: link.muscleId, estimatedFraction: link.contributionEstimate == null ? null : Number(link.contributionEstimate) })),
       })),
       movementPatternPrimaryMuscleCoverage: [...candidatePatternsByMuscle.entries()].map(([muscleId, patterns]) => ({
         muscleId,

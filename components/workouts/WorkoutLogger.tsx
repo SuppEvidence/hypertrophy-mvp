@@ -317,7 +317,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
   }
 
   const summary = activeSession
-    ? buildWorkoutSummary({ secondaryContribution: Number(activeSession.program.secondaryContribution), sessionExercises: activeSession.exercises })
+    ? buildWorkoutSummary({ sessionExercises: activeSession.exercises })
     : null;
   const isCompletedSession = activeSession?.status === "COMPLETED";
   const isDraftSession = activeSession?.status === "DRAFT";

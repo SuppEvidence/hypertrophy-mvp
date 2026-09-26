@@ -35,18 +35,18 @@ export function selectMesocycleCheckins<T extends Checkin>(args: {
 }) {
   const eligible = args.logs.filter((row) => day(row.loggedAt) <= day(args.now));
   const hasCircumference = (row: T) => CIRCUMFERENCE_FIELDS.some((field) => row[field] !== null && row[field] !== undefined);
-  const explicitStart = closest(eligible.filter((row) => row.logType === "MESOCYCLE_START" && hasCircumference(row) && closeTo(row.loggedAt, args.startDate)), args.startDate);
+  const explicitStart = closest(eligible.filter((row) => ["MESOCYCLE_START", "MESOCYCLE_CHECKIN"].includes(row.logType) && hasCircumference(row) && closeTo(row.loggedAt, args.startDate)), args.startDate);
   const carriedStart = args.priorEndDate && closeTo(args.priorEndDate, args.startDate)
-    ? closest(eligible.filter((row) => row.logType === "MESOCYCLE_END" && hasCircumference(row) &&
+    ? closest(eligible.filter((row) => ["MESOCYCLE_END", "MESOCYCLE_CHECKIN"].includes(row.logType) && hasCircumference(row) &&
         closeTo(row.loggedAt, args.priorEndDate!) && closeTo(row.loggedAt, args.startDate)), args.startDate)
     : null;
-  const end = closest(eligible.filter((row) => row.logType === "MESOCYCLE_END" && hasCircumference(row) && closeTo(row.loggedAt, args.endDate)), args.endDate);
+  const end = closest(eligible.filter((row) => ["MESOCYCLE_END", "MESOCYCLE_CHECKIN"].includes(row.logType) && hasCircumference(row) && closeTo(row.loggedAt, args.endDate) && day(row.loggedAt) > day(args.startDate)), args.endDate);
   const shared = (start: T | null) => start && end ? CIRCUMFERENCE_FIELDS.filter((field) =>
     start[field] !== null && start[field] !== undefined && end[field] !== null && end[field] !== undefined,
   ) : [];
   const useCarried = Boolean(explicitStart && shared(explicitStart).length === 0 && shared(carriedStart).length > 0);
   const start = useCarried ? carriedStart : explicitStart ?? carriedStart;
-  const sharedFields = shared(start);
+  const sharedFields = start === end ? [] : shared(start);
   return {
     start,
     end,

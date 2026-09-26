@@ -1,3 +1,4 @@
+import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 
@@ -42,8 +43,6 @@ export async function evaluateCoachingInterventionsAfterWorkout(userId: string, 
     orderBy: { decidedAt: "asc" }, take: 5,
   });
   if (!pending.length) return;
-  const program = await prisma.program.findFirst({ where: { id: session.programId, userId }, select: { secondaryContribution: true } });
-  const secondary = Number(program?.secondaryContribution ?? 0.5);
 
   for (const entry of pending) {
     if (!entry.decidedAt || !entry.sourceDecision?.targetMuscleId) continue;
@@ -51,7 +50,7 @@ export async function evaluateCoachingInterventionsAfterWorkout(userId: string, 
     const sessions = await prisma.workoutSession.findMany({
       where: { userId, programId: entry.programId, status: "COMPLETED", performedAt: { gte: entry.decidedAt, lte: end } },
       select: { performedAt: true, exercises: { select: {
-        painFlag: true, exercise: { select: { primaryMuscles: { select: { muscleId: true } }, secondaryMuscles: { select: { muscleId: true } } } },
+        painFlag: true, exercise: { select: { primaryMuscles: { select: { muscleId: true } }, secondaryMuscles: { select: { muscleId: true, contributionEstimate: true } } } },
         sets: { where: { isCompleted: true }, select: { painFlag: true, setType: { select: { multiplier: true } } } },
       } } },
       take: 60,
@@ -63,7 +62,7 @@ export async function evaluateCoachingInterventionsAfterWorkout(userId: string, 
     for (const workout of sessions) {
       for (const row of workout.exercises) {
         const factor = row.exercise.primaryMuscles.some((link) => link.muscleId === muscleId) ? 1
-          : row.exercise.secondaryMuscles.some((link) => link.muscleId === muscleId) ? secondary : 0;
+          : secondaryContributionFor(row.exercise.secondaryMuscles.find((link) => link.muscleId === muscleId));
         if (!factor || !row.sets.length) continue;
         exposures += 1;
         effective += row.sets.reduce((sum, set) => sum + Number(set.setType.multiplier) * factor, 0);

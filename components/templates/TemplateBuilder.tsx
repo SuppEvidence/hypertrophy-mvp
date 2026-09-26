@@ -193,7 +193,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Program</p>
           <h2 className="mt-1 text-lg font-semibold text-slate-100">{typedSelectedProgram.name}</h2>
           <p className="mt-1 text-sm text-slate-400">
-            {programTypeLabels[typedSelectedProgram.programType]} · {rotationStyleLabels[typedSelectedProgram.rotationStyle]} · {volumeWindowLabels[typedSelectedProgram.volumeWindowType]} · secondary {Number(typedSelectedProgram.secondaryContribution)}
+            {programTypeLabels[typedSelectedProgram.programType]} · {rotationStyleLabels[typedSelectedProgram.rotationStyle]} · {volumeWindowLabels[typedSelectedProgram.volumeWindowType]}
           </p>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
