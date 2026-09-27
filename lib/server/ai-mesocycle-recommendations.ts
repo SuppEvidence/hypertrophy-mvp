@@ -23,7 +23,7 @@ import {
 import { prisma } from "@/lib/db/prisma";
 import { getStimulusContribution } from "@/lib/workouts/stimulus";
 import { getEnergyPhaseContext, getEnergyPhaseTimeline } from "@/lib/server/energy-phases";
-import { selectMesocycleCheckins } from "@/lib/coaching/mesocycle-checkins";
+import { checkinQueryEndExclusive, selectMesocycleCheckins } from "@/lib/coaching/mesocycle-checkins";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -42,7 +42,7 @@ async function checkinsForMesocycle(userId: string, row: { programId: string; st
     prisma.metricLog.findMany({
       where: { userId, isDraft: false, loggedAt: {
         gte: new Date(row.startDate.getTime() - 14 * DAY_MS),
-        lte: new Date(Math.min(now.getTime(), endDate.getTime() + 8 * DAY_MS - 1)),
+        lt: new Date(Math.min(checkinQueryEndExclusive(now).getTime(), endDate.getTime() + 8 * DAY_MS)),
       }, logType: { in: ["MESOCYCLE_START", "MESOCYCLE_END", "MESOCYCLE_CHECKIN"] } },
       orderBy: { loggedAt: "asc" },
       select: { loggedAt: true, updatedAt: true, logType: true, chest: true, shoulders: true, arms: true, thighs: true, glutes: true, calves: true,

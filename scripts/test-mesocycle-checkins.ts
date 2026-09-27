@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { selectMesocycleCheckins } from "../lib/coaching/mesocycle-checkins";
+import { checkinQueryEndExclusive, selectMesocycleCheckins } from "../lib/coaching/mesocycle-checkins";
 
 const d = (value: string) => new Date(`${value}T12:00:00Z`);
 const startDate = d("2026-01-08");
@@ -9,6 +9,9 @@ const prior = { loggedAt: d("2026-01-07"), logType: "MESOCYCLE_END", chest: 990 
 const end = { loggedAt: d("2026-03-02"), logType: "MESOCYCLE_END", chest: 1000 };
 const run = (logs: Array<{loggedAt: Date; logType: string; chest?: number; arms?: number}>, now = d("2026-03-04")) =>
   selectMesocycleCheckins({ logs, startDate, endDate, priorEndDate, now });
+const morning = new Date("2026-03-02T05:00:00Z");
+assert.ok(end.loggedAt < checkinQueryEndExclusive(morning), "A check-in saved for today must be queryable before noon.");
+assert.ok(new Date("2026-03-03T00:00:00Z") >= checkinQueryEndExclusive(morning), "Tomorrow's check-in must remain excluded.");
 assert.equal(run([prior, end]).ready, true);
 assert.equal(run([{ ...prior, logType: "MESOCYCLE_CHECKIN" }, { ...end, logType: "MESOCYCLE_CHECKIN" }]).ready, true);
 assert.equal(run([{ ...end, logType: "MESOCYCLE_CHECKIN" }]).ready, false);

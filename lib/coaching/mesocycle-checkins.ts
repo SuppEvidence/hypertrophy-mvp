@@ -13,6 +13,11 @@ function day(value: Date) {
   return Date.parse(value.toISOString().slice(0, 10) + "T00:00:00Z");
 }
 
+/** Metric dates represent calendar days; a morning query must include today's noon-stamped log. */
+export function checkinQueryEndExclusive(now: Date) {
+  return new Date(day(now) + DAY_MS);
+}
+
 function closeTo(value: Date, boundary: Date) {
   return Math.abs(day(value) - day(boundary)) <= WINDOW_DAYS * DAY_MS;
 }
