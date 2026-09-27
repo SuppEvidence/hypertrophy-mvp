@@ -1,11 +1,14 @@
 import { Card } from "@/components/ui/Card";
 import Link from "next/link";
+import { Button } from "@/components/ui/Button";
+import { generateAdvisorMesocycleRecommendationAction } from "@/lib/server/ai-advisor-actions";
 import { requireUserId } from "@/lib/auth/user";
 import {
   getCurrentMesocycleRecommendationForUser,
 } from "@/lib/server/ai-mesocycle-recommendations";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+export const maxDuration = 300;
 
 function label(value: string) {
   return value.toLowerCase().replaceAll("_", " ");
@@ -118,8 +121,15 @@ export default async function MesocycleRecommendationsPage({
                     ? "Save a mesocycle end circumference check-in within seven days of the block end."
                     : !current.checkinStatus.comparable
                       ? "The start and end check-ins need at least one matching circumference measurement."
-                      : "Check-ins are ready. The review runs after a completed workout or a saved check-in."}
+                      : !current.completedWorkoutsInBlock
+                        ? "Check-ins are ready, but no completed workouts were found for this program within the block dates. A workout today is not required."
+                        : `Check-ins and ${current.completedWorkoutsInBlock} completed workout${current.completedWorkoutsInBlock === 1 ? "" : "s"} from this block are ready. Run the next-block review if the automatic review did not finish.`}
               </p>
+              {current.checkinStatus.comparable && Boolean(current.completedWorkoutsInBlock) ? (
+                <form action={generateAdvisorMesocycleRecommendationAction}>
+                  <Button type="submit" pendingText="Reviewing…" variant="secondary">Run next-block review</Button>
+                </form>
+              ) : null}
               {!current.checkinStatus.comparable ? (
                 <Link href={`/metrics?logType=${"MESOCYCLE_CHECKIN"}`}
                   className="inline-flex text-xs font-semibold text-orange-300 hover:text-orange-200">

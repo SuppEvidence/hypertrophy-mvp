@@ -5,6 +5,8 @@ import { EnergyPhaseHistory } from "@/components/metrics/EnergyPhaseHistory";
 import { getMetricsPageData } from "@/lib/server/metrics";
 import { getUserSettingsForMetrics } from "@/lib/server/settings";
 
+export const maxDuration = 300;
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(value));
 }

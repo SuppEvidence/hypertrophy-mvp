@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requireUserId } from "@/lib/auth/user";
+import { generateMesocycleRecommendationForUser, getCurrentMesocycleRecommendationForUser } from "@/lib/server/ai-mesocycle-recommendations";
 
 import { analyzeWorkoutAction } from "@/lib/server/ai-workout-analysis";
 import {
@@ -40,6 +42,24 @@ export async function generateAdvisorVolumeRecommendationsAction() {
     );
   }
   redirect("/ai-analysis/volume");
+}
+
+export async function generateAdvisorMesocycleRecommendationAction() {
+  try {
+    const userId = await requireUserId();
+    const current = await getCurrentMesocycleRecommendationForUser(userId);
+    if (!current?.checkinStatus?.comparable) {
+      throw new Error("Save comparable start and end circumference check-ins near the block boundaries first.");
+    }
+    if (!current.completedWorkoutsInBlock) {
+      throw new Error("No completed workouts were found within this block's dates for the active program.");
+    }
+    await generateMesocycleRecommendationForUser(userId, current.id);
+    revalidatePath("/ai-analysis/mesocycle");
+  } catch (error) {
+    redirect(`/ai-analysis/mesocycle?error=${encodeURIComponent(errorMessage(error, "Mesocycle review failed."))}`);
+  }
+  redirect("/ai-analysis/mesocycle");
 }
 
 export async function selectAdvisorProgrammingDecisionAction(formData: FormData) {

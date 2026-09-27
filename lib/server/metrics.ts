@@ -92,6 +92,7 @@ export async function createMetricLog(formData: FormData) {
 
   revalidatePath("/metrics");
   revalidatePath("/dashboard");
+  revalidatePath("/ai-analysis/mesocycle");
   revalidatePath("/programs", "layout");
   redirect(intent === "draft" ? "/metrics?draft=1" : "/metrics?saved=1");
 }
