@@ -1,48 +1,26 @@
-# Ripped Fat Dude Hypertrophy Tracker
+# Manual review and scheduled mesocycle planning
 
-Version 1.0.3 of a mobile-first hypertrophy planning and tracking application for experienced lifters.
+Apply these files over the current T3 app after the mesocycle check-in and review reliability update. This package includes the complete versions of the changed files; preserve the listed directory paths.
 
-## Product scope
+## Changes
 
-- Program structure and reusable volume defaults
-- Movement-pattern workout templates and exercise pools
-- Mesocycle targets, movement-specific rep policies, approval-based structural overrides, and end-of-block review
-- Set-level stimulus logging with optional load, reps, and RIR
-- Set types and productive-volume multipliers
-- Weekly missed-workout redistribution
-- Daily bodyweight and waist tracking
-- Mesocycle circumference check-ins
-- Dashboard coach signals and exercise performance history
-- Supabase authentication and PostgreSQL persistence through Prisma
-- Installable PWA manifest
+- The next-block AI review runs only when you press **Run next-block review**. Saving measurements, completing workouts, and ending a mesocycle no longer launch it automatically. The automatic in-block T3 volume coaching is unaffected.
+- **Plan → Mesocycle planning** places the coach's review and the next-block form together. The complete recommendation remains available through **Read full coaching review**.
+- Creating a block saves its muscle priorities in the same operation. Suggestions from a review prefill the selectors; you can change them before saving. If there is no suggestion, priorities copy the previous block or program defaults.
+- The suggested start date is the day after the previous block ends (or today if it already ended). A block scheduled Sunday for Monday starts on Monday without ending Sunday's block early. Creation or date edits that overlap another non-archived block are rejected.
+- The existing **End active mesocycle early** action is still available for genuinely shortened blocks. No end action is needed at the normal planned boundary.
 
-## Local setup
+## Apply locally
 
-Create `.env.local` with the required Supabase and database values, then run:
+1. Extract this ZIP into the app's project root, replacing files at the listed paths.
+2. Run `npm install` only if dependencies are missing. Run `npm run typecheck`.
+3. Run `npm run dev`. Open **Plan → Mesocycle planning**. With a Sunday end date, confirm the new block defaults to Monday. Review or change the priorities, create the block, and verify Sunday's block remains active until the scheduled transition. Check that a conflicting start date is rejected. If check-ins and completed workouts are ready, press **Run next-block review** and inspect the coach suggestions.
 
-```bash
-npm install
-npx prisma generate
-npm run db:migrate
-npm run db:seed
-npm run dev
-```
+## Deploy to Vercel
 
-Open `http://localhost:3000`.
+1. Commit and push the patched files using your normal git deployment flow. Vercel should deploy that commit.
+2. Confirm the build succeeds, then open **Plan → Mesocycle planning** in production and confirm the scheduled date and manual review controls.
 
-## Verification
+There is **no schema change or migration**, and no new environment variable. Do not run `prisma migrate deploy` specifically for this patch. If other undeployed schema migrations exist in your checkout, apply those separately before deploying code that depends on them.
 
-```bash
-npm run typecheck
-npm run build
-```
-
-The production-boundary check runs automatically before typecheck and build.
-
-## Stack
-
-- Next.js and React with TypeScript
-- Tailwind CSS
-- Prisma 7 with `@prisma/adapter-pg`
-- Supabase Auth and PostgreSQL
-- Vercel deployment
+`npm run typecheck`, targeted ESLint, and `git diff --check` passed in the development workspace. No database-backed end-to-end test was run here.

@@ -4,6 +4,7 @@ import { getMesocyclePanelData } from "@/lib/server/mesocycles";
 import { ProgramForm } from "@/components/programs/ProgramForm";
 import { MesocyclePanel } from "@/components/programs/MesocyclePanel";
 import { PageHeader } from "@/components/ui/PageHeader";
+import Link from "next/link";
 
 export const maxDuration = 180;
 
@@ -32,6 +33,7 @@ export default async function EditProgramPage({
         title="Program planning"
         description="The program is the reusable foundation. Mesocycles are temporary date-bounded overlays that inherit the foundation unless you add an exception."
       />
+      {program.isActive ? <Link href="/plan/blocks" className="inline-flex rounded-xl border border-orange-500/30 px-4 py-2 text-sm font-semibold text-orange-300">Plan next mesocycle with coach →</Link> : null}
       {query?.saved ? (
         <div className="rounded-2xl border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-100">Planning changes saved.</div>
       ) : null}

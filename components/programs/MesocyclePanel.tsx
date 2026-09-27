@@ -136,6 +136,8 @@ type Props = {
   data: {
     programId: string;
     activePhase: string;
+    defaultNextStartDate: string;
+    suggestedPriorities: Array<{ muscleName: string; suggestedPriority: "SPECIALIZE" | "GROW" | "MAINTAIN" | "INDIRECT_ONLY"; rationale: string }>;
     muscles: Array<{ id: string; name: string }>;
     movementGroups: Array<{ id: string; name: string }>;
     programTargets: Array<{ muscleId: string; weeklyTargetSets: number }>;
@@ -169,8 +171,13 @@ function PhaseSelect({ defaultValue }: { defaultValue: string }) {
   );
 }
 
-function MesocycleForm({ programId, mesocycle, activePhase }: { programId: string; mesocycle?: Mesocycle; activePhase: string }) {
+function MesocycleForm({ programId, mesocycle, activePhase, data }: { programId: string; mesocycle?: Mesocycle; activePhase: string; data?: Props["data"] }) {
   const action = mesocycle ? updateMesocycle.bind(null, mesocycle.id) : createMesocycle.bind(null, programId);
+  const previous = data?.mesocycles[0];
+  const priorMap = new Map(previous?.musclePriorities.map((item) => [item.muscleId, item.priority]));
+  const suggestedMap = new Map(data?.suggestedPriorities.map((item) => [item.muscleName.toLowerCase(), item]));
+  const priorityMuscles = new Set(data?.programPriorityMuscleIds ?? []);
+  const targetMap = new Map(data?.programTargets.map((item) => [item.muscleId, item.weeklyTargetSets]));
 
   return (
     <form action={action} className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
@@ -179,21 +186,43 @@ function MesocycleForm({ programId, mesocycle, activePhase }: { programId: strin
         <p className="mt-1 text-xs text-slate-500">
           {mesocycle
             ? "Dates and phase define this temporary block. Program structure remains unchanged."
-            : "Create the date range first. Program defaults are inherited automatically."}
+            : "Plan the next block now. It takes effect on its start date; the current block stays active through its end date."}
         </p>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Mesocycle name" name="name" defaultValue={mesocycle?.name ?? "New mesocycle"} required />
         <PhaseSelect defaultValue={mesocycle?.phase ?? activePhase} />
-        <Field label="Start date" name="startDate" type="date" defaultValue={mesocycle?.startDate ?? todayInputValue()} required />
+        <Field label="Start date" name="startDate" type="date" defaultValue={mesocycle?.startDate ?? data?.defaultNextStartDate ?? todayInputValue()} required />
         <Field label="Planned length (weeks)" name="lengthWeeks" type="number" min="1" max="52" defaultValue={mesocycle?.lengthWeeks ?? 4} required />
       </div>
       <label className="block space-y-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Block notes</span>
         <textarea name="notes" defaultValue={mesocycle?.notes ?? ""} className={textareaClass} />
       </label>
+      {!mesocycle && data ? (
+        <details open className="rounded-xl border border-orange-500/20 bg-orange-500/[0.035] p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-100">Next-block muscle priorities</summary>
+          <p className="mt-2 text-xs text-slate-400">Review these before creating the block. Coach suggestions are preselected when available; you make the final choice.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {data.muscles.map((muscle) => {
+              const suggested = suggestedMap.get(muscle.name.toLowerCase());
+              const selected = suggested?.suggestedPriority ?? priorMap.get(muscle.id) ??
+                (priorityMuscles.has(muscle.id) ? "SPECIALIZE" : (targetMap.get(muscle.id) ?? 0) > 0 ? "GROW" : "INDIRECT_ONLY");
+              return (
+                <label key={muscle.id} className="block space-y-1 rounded-xl border border-slate-800 bg-slate-950/60 p-2">
+                  <span className="text-xs font-semibold text-slate-200">{muscle.name}{suggested ? " · coach suggestion" : ""}</span>
+                  <select name={`priority:${muscle.id}`} defaultValue={selected} className={selectClass}>
+                    {priorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  {suggested ? <span className="block text-xs text-slate-500">{suggested.rationale}</span> : null}
+                </label>
+              );
+            })}
+          </div>
+        </details>
+      ) : null}
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="secondary">{mesocycle ? "Save block settings" : "Create mesocycle"}</Button>
+        <Button type="submit" variant="secondary" pendingText="Saving block…">{mesocycle ? "Save block settings" : "Schedule mesocycle and priorities"}</Button>
         {mesocycle ? (
           <Button
             type="submit"
@@ -576,7 +605,7 @@ export function MesocyclePanel({ data }: Props) {
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">Mesocycle layer</p>
         <h2 className="mt-1 text-lg font-semibold text-slate-100">Temporary training block</h2>
-        <p className="mt-1 text-sm text-slate-400">A mesocycle adds dates, phase, outcome priorities, review boundaries, and optional rep-range exceptions. T3 learns the useful dose inside that block without replacing reusable templates.</p>
+        <p className="mt-1 text-sm text-slate-400">Schedule a future block and its priorities in one step. It becomes active on its start date. T3 learns the useful dose inside the block.</p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -590,14 +619,14 @@ export function MesocyclePanel({ data }: Props) {
         </div>
       </div>
 
-      <MesocycleForm programId={data.programId} activePhase={data.activePhase} />
-
       {active.length > 0 ? (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-300">Active mesocycle</h3>
           {active.map((mesocycle) => <MesocycleItem key={mesocycle.id} mesocycle={mesocycle} data={data} />)}
         </div>
       ) : null}
+
+      <MesocycleForm programId={data.programId} activePhase={data.activePhase} data={data} />
 
       {upcoming.length > 0 ? (
         <div className="space-y-3">

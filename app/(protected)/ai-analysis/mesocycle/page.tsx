@@ -54,7 +54,7 @@ export default async function MesocycleRecommendationsPage({
       <Card>
         <h2 className="font-semibold text-slate-100">No block review yet</h2>
         <p className="mt-1 text-sm leading-6 text-slate-400">
-          Configure T3 priorities for a current block. Its next-block review runs near the end once comparable start and end circumference check-ins are saved.
+          Configure T3 priorities for a current block. Near its end, save comparable circumference check-ins and run the review from mesocycle planning.
         </p>
       </Card>
     );
@@ -78,7 +78,7 @@ export default async function MesocycleRecommendationsPage({
             Next-block review
           </h2>
           <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-500">
-            An automatic transition review for next-block priorities, movement
+            A manual transition review for next-block priorities, movement
             implementation, symptom precautions, and future template changes. T3 owns current-block volume.
           </p>
         </div>
@@ -123,7 +123,7 @@ export default async function MesocycleRecommendationsPage({
                       ? "The start and end check-ins need at least one matching circumference measurement."
                       : !current.completedWorkoutsInBlock
                         ? "Check-ins are ready, but no completed workouts were found for this program within the block dates. A workout today is not required."
-                        : `Check-ins and ${current.completedWorkoutsInBlock} completed workout${current.completedWorkoutsInBlock === 1 ? "" : "s"} from this block are ready. Run the next-block review if the automatic review did not finish.`}
+                        : `Check-ins and ${current.completedWorkoutsInBlock} completed workout${current.completedWorkoutsInBlock === 1 ? "" : "s"} from this block are ready. Run the next-block review when you want to plan the next mesocycle.`}
               </p>
               {current.checkinStatus.comparable && Boolean(current.completedWorkoutsInBlock) ? (
                 <form action={generateAdvisorMesocycleRecommendationAction}>
@@ -139,7 +139,7 @@ export default async function MesocycleRecommendationsPage({
             </div>
           ) : (
             <p className="mt-3 text-xs leading-5 text-slate-500">
-              The review waits until the last week and uses saved start and end circumference check-ins. It does not modify the next block or templates automatically.
+              The review becomes available in the last week with saved start and end circumference check-ins. It runs only when you request it and does not modify the next block or templates.
             </p>
           )}
         </Card>
@@ -195,6 +195,7 @@ export default async function MesocycleRecommendationsPage({
               </p>
             ) : null}
           </Card>
+          <Link href="/plan/blocks" className="inline-flex rounded-xl border border-orange-500/30 px-4 py-2.5 text-sm font-semibold text-orange-300">Set up next mesocycle →</Link>
 
           {recommendation.symptomPrecautions.length > 0 ? (
             <Card className="border-amber-400/20 bg-amber-400/[0.04]">

@@ -786,44 +786,6 @@ export async function generateMesocycleRecommendationForUser(userId: string, req
   return parsed;
 }
 
-export async function maybeGenerateMesocycleRecommendationForUser(userId: string, requestedMesocycleId?: string, endedNow = false) {
-  if (process.env.AUTO_MESOCYCLE_REVIEW_ENABLED === "false") return null;
-  const program = await prisma.program.findFirst({
-    where: { userId, isActive: true, isArchived: false },
-    select: { id: true },
-  });
-  if (!program) return null;
-  const now = new Date();
-  const candidates = await prisma.programMesocycle.findMany({
-    where: { userId, programId: program.id, isArchived: false, startDate: { lte: now },
-      ...(requestedMesocycleId ? { id: requestedMesocycleId } : {}) },
-    orderBy: { startDate: "desc" },
-    take: 12,
-    select: { id: true, startDate: true, lengthWeeks: true, actualEndDate: true, aiRecommendedAt: true, t3ActivatedAt: true },
-  });
-  const current = candidates.find((row) => {
-    const end = mesocycleEnd(row);
-    return now.getTime() >= end.getTime() - 7 * DAY_MS &&
-      now.getTime() < end.getTime() + 8 * DAY_MS;
-  });
-  if (!current?.t3ActivatedAt) return null;
-  const checkins = await checkinsForMesocycle(userId, { ...current, programId: program.id }, now);
-  if (!checkins.ready) return null;
-  const measurementsChanged = Boolean(current.aiRecommendedAt &&
-    [checkins.start?.updatedAt, checkins.end?.updatedAt].some((changedAt) =>
-      changedAt && changedAt > current.aiRecommendedAt!));
-  if (current.aiRecommendedAt && !measurementsChanged && !endedNow &&
-    now.getTime() - current.aiRecommendedAt.getTime() < 48 * 3_600_000) return null;
-  const sessionCount = await prisma.workoutSession.count({
-    where: { ...mesocycleCompletedWorkoutWhere({ userId, programId: program.id,
-      startDate: current.startDate, endDate: mesocycleEnd(current) }),
-      ...(current.aiRecommendedAt && !measurementsChanged && !endedNow ? { completedAt: { gt: current.aiRecommendedAt } } : {}),
-    },
-  });
-  if (sessionCount === 0) return null;
-  return generateMesocycleRecommendationForUser(userId, current.id);
-}
-
 export async function getCurrentMesocycleRecommendationForUser(userId: string): Promise<{
   id: string;
   name: string;

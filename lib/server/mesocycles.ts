@@ -1,6 +1,7 @@
 "use server";
 
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
+import { MesocycleRecommendationSchema } from "@/lib/ai/mesocycle-recommendation-schema";
 
 import { Prisma, type MusclePriority, type ProgramPhase } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -81,6 +82,27 @@ export async function createMesocycle(programId: string, formData: FormData) {
   const program = await prisma.program.findFirst({ where: { id: programId, userId, isArchived: false } });
   if (!program) redirect("/programs");
   const input = parseMesocycleForm(formData);
+  const startDate = parseDateOnly(input.startDate);
+  const otherBlocks = await prisma.programMesocycle.findMany({
+    where: { programId, userId, isArchived: false },
+    select: { startDate: true, lengthWeeks: true, actualEndDate: true },
+  });
+  if (otherBlocks.some((block) => startDate <= effectiveMesocycleEndDate(block.startDate, block.lengthWeeks, block.actualEndDate) &&
+    block.startDate <= plannedMesocycleEndDate(startDate, input.lengthWeeks))) {
+    redirect("/plan/blocks?overlap=1");
+  }
+
+  const muscles = await prisma.muscle.findMany({ where: { slug: { not: "chest" } }, select: { id: true } });
+  const priorities = muscles.map((muscle) => {
+    const value = formData.get(`priority:${muscle.id}`);
+    if (!isT3Priority(value)) throw new Error("Every muscle needs a valid priority.");
+    return { muscleId: muscle.id, priority: value };
+  });
+  const prescription = await buildProgramPrescription(programId, userId, { includeWeeklyPlan: false });
+  if (!prescription) throw new Error("Could not build the new block's starting prescription.");
+  const windowDays = volumeWindowDays(program.volumeWindowType, program.customWindowDays);
+  const plannedByMuscle = new Map(prescription.generated.volumeRows.map((row) => [row.muscleId, round(row.planned * 7 / windowDays)]));
+  const now = new Date();
 
   await prisma.programMesocycle.create({
     data: {
@@ -88,14 +110,25 @@ export async function createMesocycle(programId: string, formData: FormData) {
       programId,
       name: input.name,
       phase: input.phase as ProgramPhase,
-      startDate: parseDateOnly(input.startDate),
+      startDate,
       lengthWeeks: input.lengthWeeks,
       notes: input.notes || null,
+      t3ActivatedAt: now,
+      musclePriorities: { create: priorities.map((row) => {
+        const planned = plannedByMuscle.get(row.muscleId) ?? 0;
+        const coachTarget = planned <= 0 && (row.priority === "SPECIALIZE" || row.priority === "GROW") ? 2 : planned;
+        const range = initialT3Range(row.priority, coachTarget);
+        return { muscleId: row.muscleId, priority: row.priority as MusclePriority,
+          baselineWeeklySets: planned, coachTargetWeeklySets: coachTarget,
+          rangeMinimumSets: range.minimum, rangeMaximumSets: range.maximum,
+          activatedAt: now };
+      }) },
     },
   });
 
   revalidatePath(`/programs/${programId}`);
-  redirect(`/programs/${programId}?saved=1`);
+  revalidatePath("/plan/blocks");
+  redirect("/plan/blocks?saved=1");
 }
 
 export async function updateMesocycle(mesocycleId: string, formData: FormData) {
@@ -108,6 +141,14 @@ export async function updateMesocycle(mesocycleId: string, formData: FormData) {
 
   if (mesocycle.actualEndDate && (mesocycle.actualEndDate < nextStartDate || mesocycle.actualEndDate > nextPlannedEndDate)) {
     redirect(`/programs/${mesocycle.programId}?mesocycleEndError=1`);
+  }
+  const otherBlocks = await prisma.programMesocycle.findMany({
+    where: { programId: mesocycle.programId, userId, isArchived: false, id: { not: mesocycleId } },
+    select: { startDate: true, lengthWeeks: true, actualEndDate: true },
+  });
+  const nextEnd = mesocycle.actualEndDate ?? nextPlannedEndDate;
+  if (otherBlocks.some((block) => nextStartDate <= effectiveMesocycleEndDate(block.startDate, block.lengthWeeks, block.actualEndDate) && block.startDate <= nextEnd)) {
+    redirect("/plan/blocks?overlap=1");
   }
 
   await prisma.programMesocycle.update({
@@ -122,6 +163,7 @@ export async function updateMesocycle(mesocycleId: string, formData: FormData) {
   });
 
   revalidatePath(`/programs/${mesocycle.programId}`);
+  revalidatePath("/plan/blocks");
   redirect(`/programs/${mesocycle.programId}?saved=1`);
 }
 
@@ -146,20 +188,8 @@ export async function endMesocycle(mesocycleId: string, formData: FormData) {
     data: { actualEndDate },
   });
 
-  if (process.env.AUTO_MESOCYCLE_REVIEW_ENABLED !== "false") {
-    after(async () => {
-      try {
-        const { maybeGenerateMesocycleRecommendationForUser } = await import(
-          "@/lib/server/ai-mesocycle-recommendations"
-        );
-        await maybeGenerateMesocycleRecommendationForUser(userId, mesocycle.id, true);
-      } catch (error) {
-        console.error("Automatic mesocycle review failed", error);
-      }
-    });
-  }
-
   revalidatePath(`/programs/${mesocycle.programId}`);
+  revalidatePath("/plan/blocks");
   revalidatePath("/templates");
   revalidatePath("/log");
   revalidatePath("/dashboard");
@@ -175,6 +205,7 @@ export async function archiveMesocycle(formData: FormData) {
   await prisma.programMesocycle.update({ where: { id: mesocycle.id }, data: { isArchived: true } });
 
   revalidatePath(`/programs/${mesocycle.programId}`);
+  revalidatePath("/plan/blocks");
   redirect(`/programs/${mesocycle.programId}`);
 }
 
@@ -519,6 +550,15 @@ export async function getMesocyclePanelData(programId: string) {
     prisma.muscle.findMany({ where: { slug: { not: "chest" } }, orderBy: { sortOrder: "asc" } }),
     prisma.movementGroup.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
+  const lastBlock = mesocycles.reduce<(typeof mesocycles)[number] | null>((latest, block) =>
+    !latest || effectiveMesocycleEndDate(block.startDate, block.lengthWeeks, block.actualEndDate) >
+      effectiveMesocycleEndDate(latest.startDate, latest.lengthWeeks, latest.actualEndDate) ? block : latest, null);
+  const latestReviewed = mesocycles.find((block) =>
+    MesocycleRecommendationSchema.safeParse(block.aiRecommendation).success);
+  const recommendation = latestReviewed && latestReviewed.id ===
+    mesocycles.find((block) => block.startDate <= today)?.id
+      ? MesocycleRecommendationSchema.safeParse(latestReviewed.aiRecommendation)
+      : null;
   const prescriptionByMesocycle = new Map(
     prescriptionEntries.map(({ mesocycleId, prescription }) => [mesocycleId, prescription]),
   );
@@ -566,6 +606,10 @@ export async function getMesocyclePanelData(programId: string) {
   return {
     programId,
     activePhase: program.activePhase,
+    defaultNextStartDate: lastBlock
+      ? toDateInputValue(new Date(Math.max(today.getTime(), addDays(effectiveMesocycleEndDate(lastBlock.startDate, lastBlock.lengthWeeks, lastBlock.actualEndDate), 1).getTime())))
+      : toDateInputValue(today),
+    suggestedPriorities: recommendation?.success ? recommendation.data.nextPriorities : [],
     muscles,
     movementGroups,
     programTargets: program.volumeTargets.map((target: any) => ({

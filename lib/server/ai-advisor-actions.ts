@@ -44,7 +44,8 @@ export async function generateAdvisorVolumeRecommendationsAction() {
   redirect("/ai-analysis/volume");
 }
 
-export async function generateAdvisorMesocycleRecommendationAction() {
+export async function generateAdvisorMesocycleRecommendationAction(formData: FormData) {
+  const returnTo = formData.get("returnTo") === "/plan/blocks" ? "/plan/blocks" : "/ai-analysis/mesocycle";
   try {
     const userId = await requireUserId();
     const current = await getCurrentMesocycleRecommendationForUser(userId);
@@ -56,10 +57,11 @@ export async function generateAdvisorMesocycleRecommendationAction() {
     }
     await generateMesocycleRecommendationForUser(userId, current.id);
     revalidatePath("/ai-analysis/mesocycle");
+    revalidatePath("/plan/blocks");
   } catch (error) {
-    redirect(`/ai-analysis/mesocycle?error=${encodeURIComponent(errorMessage(error, "Mesocycle review failed."))}`);
+    redirect(`${returnTo}?error=${encodeURIComponent(errorMessage(error, "Mesocycle review failed."))}`);
   }
-  redirect("/ai-analysis/mesocycle");
+  redirect(returnTo);
 }
 
 export async function selectAdvisorProgrammingDecisionAction(formData: FormData) {

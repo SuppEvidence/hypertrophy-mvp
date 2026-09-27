@@ -26,14 +26,4 @@ export async function runAutomaticPostWorkoutCoaching(
     console.error("Automatic T3 volume evaluation failed", error);
   }
 
-  if (process.env.AUTO_MESOCYCLE_REVIEW_ENABLED !== "false") {
-    try {
-      const { maybeGenerateMesocycleRecommendationForUser } = await import(
-        "@/lib/server/ai-mesocycle-recommendations"
-      );
-      await maybeGenerateMesocycleRecommendationForUser(userId);
-    } catch (error) {
-      console.error("Automatic final-week mesocycle review failed", error);
-    }
-  }
 }

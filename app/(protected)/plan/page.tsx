@@ -10,18 +10,25 @@ import { PageHeader } from "@/components/ui/PageHeader";
 
 const planItems = [
   {
+    href: "/plan/blocks",
+    title: "Mesocycle planning",
+    description: "Review the coach's next-block advice and schedule the next mesocycle and priorities ahead of time.",
+    icon: ClipboardList,
+    primary: true,
+  },
+  {
     href: "/plan/mesocycle",
     title: "Adjust current mesocycle",
     description:
       "Change movement patterns or set counts for future workouts in the current block without touching the base templates.",
     icon: SlidersHorizontal,
-    primary: true,
+    primary: false,
   },
   {
     href: "/programs",
-    title: "Programs & mesocycles",
+    title: "Program settings",
     description:
-      "Priorities, volume targets, weekly planning, mesocycle dates, and deeper programming controls.",
+      "Edit your reusable program, templates, rotation, and deeper programming controls.",
     icon: ClipboardList,
     primary: false,
   },
@@ -40,7 +47,7 @@ export default function PlanPage() {
     <div className="space-y-5">
       <PageHeader
         title="Plan"
-        description="Make ordinary in-block adjustments quickly; open the deeper programming tools only when you need them."
+        description="Schedule your next training block, adjust the current one, or edit the reusable program."
       />
 
       <div className="grid gap-3 md:grid-cols-2">
