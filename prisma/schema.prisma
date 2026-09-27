@@ -674,6 +674,7 @@ model WorkoutSessionExercise {
   sortOrder                 Int      @default(0) @map("sort_order")
   isSubstitution             Boolean  @default(false) @map("is_substitution")
   substitutedFromExerciseId  String?  @db.Uuid @map("substituted_from_exercise_id")
+  exerciseChoiceIntent      String?  @map("exercise_choice_intent")
   painFlag                  Boolean  @default(false) @map("pain_flag")
   painNote                  String?  @map("pain_note")
   painLocation              String?  @map("pain_location")

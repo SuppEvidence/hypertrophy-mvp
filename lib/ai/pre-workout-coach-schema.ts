@@ -91,12 +91,20 @@ export type PreWorkoutCoachDisplay = {
   requestedTemplateName: string;
   baseTemplateName: string;
   changeLabels: string[];
+  continuity: {
+    lastCompletedAt: string | null;
+    sameMesocycle: boolean;
+    alreadyInPrescription: string[];
+    lastWorkoutOnly: string[];
+  };
   volume: { baselinePhysical: number; proposedPhysical: number; baselineEffective: number; proposedEffective: number; baselineIntensifiers: number; proposedIntensifiers: number };
   items: Array<{
     sourceSlotId: string;
     movementGroupId: string;
     movementGroupName: string;
     exerciseName: string;
+    exerciseChanged: boolean;
+    canRememberExercise: boolean;
     sets: number;
     setTypes: string[];
     repRange: string;

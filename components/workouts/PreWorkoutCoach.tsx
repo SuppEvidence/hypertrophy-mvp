@@ -140,6 +140,17 @@ export function PreWorkoutCoach({ programId, templateId }: { programId: string; 
           </div>
 
           <p className="text-sm leading-6 text-slate-200">{result.proposal.summary}</p>
+          {result.display.continuity.lastCompletedAt ? (
+            <details className="rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-xs text-slate-400">
+              <summary className="cursor-pointer font-semibold text-slate-200">Compared with last {result.display.continuity.sameMesocycle ? "same-block" : "previous-block"} workout of this template</summary>
+              <p className="mt-2">The coach starts from the current prescription. Earlier one-session changes are context, not automatic edits.</p>
+              {result.display.continuity.alreadyInPrescription.length > 0 ? <p className="mt-2 font-semibold text-emerald-200">Already in today&apos;s plan</p> : null}
+              {result.display.continuity.alreadyInPrescription.map((line) => <p key={line}>{line}</p>)}
+              {result.display.continuity.lastWorkoutOnly.length > 0 ? <p className="mt-2 font-semibold text-amber-200">Last workout differed</p> : null}
+              {result.display.continuity.lastWorkoutOnly.map((line) => <p key={line}>{line}</p>)}
+              {result.display.continuity.alreadyInPrescription.length === 0 && result.display.continuity.lastWorkoutOnly.length === 0 ? <p className="mt-2">Last workout matches the current slot and set prescription.</p> : null}
+            </details>
+          ) : null}
           <p className="text-xs text-slate-400">Sets: {result.display.volume.baselinePhysical} → {result.display.volume.proposedPhysical} · Estimated effective sets: {result.display.volume.baselineEffective} → {result.display.volume.proposedEffective} · Intensifiers: {result.display.volume.baselineIntensifiers} → {result.display.volume.proposedIntensifiers}</p>
           <p className="text-xs leading-5 text-slate-500">{result.proposal.bodyComposition.interpretation}</p>
 
@@ -178,6 +189,12 @@ export function PreWorkoutCoach({ programId, templateId }: { programId: string; 
 
           <form action={startCoachedWorkout}>
             <input type="hidden" name="proposal" value={JSON.stringify(result.proposal)} />
+            {result.display.items.filter((item) => item.exerciseChanged && item.canRememberExercise).map((item) => (
+              <label key={item.sourceSlotId} className="mb-2 flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" name={`rememberExercise:${item.sourceSlotId.split(":")[1]}`} className="accent-orange-500" />
+                Use {item.exerciseName} next time too (otherwise this swap is for today)
+              </label>
+            ))}
             <Button className="w-full" pendingText="Starting coached workout…">
               {result.proposal.decision === "ADJUST" ? "Start coached workout" : "Start reviewed workout"}
             </Button>

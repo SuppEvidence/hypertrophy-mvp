@@ -1,26 +1,26 @@
-# Manual review and scheduled mesocycle planning
+# T2 workout continuity and exercise choice memory
 
-Apply these files over the current T3 app after the mesocycle check-in and review reliability update. This package includes the complete versions of the changed files; preserve the listed directory paths.
+Apply on top of the current T0–T3 app and the manual mesocycle planning update. The ZIP contains complete replacement files at their project-relative paths, plus one new Prisma migration. It does not contain a new `.env.local`.
 
 ## Changes
 
-- The next-block AI review runs only when you press **Run next-block review**. Saving measurements, completing workouts, and ending a mesocycle no longer launch it automatically. The automatic in-block T3 volume coaching is unaffected.
-- **Plan → Mesocycle planning** places the coach's review and the next-block form together. The complete recommendation remains available through **Read full coaching review**.
-- Creating a block saves its muscle priorities in the same operation. Suggestions from a review prefill the selectors; you can change them before saving. If there is no suggestion, priorities copy the previous block or program defaults.
-- The suggested start date is the day after the previous block ends (or today if it already ended). A block scheduled Sunday for Monday starts on Monday without ending Sunday's block early. Creation or date edits that overlap another non-archived block are rejected.
-- The existing **End active mesocycle early** action is still available for genuinely shortened blocks. No end action is needed at the normal planned boundary.
+- The pre-workout review gets the most recent completed session for the exact program/template, tagged with whether it belongs to the current mesocycle. The coach sees its exercise choices, completed sets and set types beside the current mesocycle prescription and recent coaching decisions. It is instructed to distinguish changes already in today's plan from new proposals and to avoid repeating a temporary change without a fresh reason.
+- The review UI shows a compact comparison with the last same-template workout: currently prescribed adjustments, and differences in selected exercise, completed sets, set type, or order. The main change list remains relative to today's prescription.
+- Each session exercise now records whether its exercise selection should persist or apply only to that workout. Coach swaps are temporary by default. Check **Use ... next time too** before accepting a proposed swap if you want it remembered. When changing exercise in the logger, check **Only use this exercise today** for a one-day equipment/pain workaround; otherwise it remains the slot's saved exercise.
+- Exercise memory searches completed workouts of the same program and template for the latest lasting selection for each slot, skipping temporary choices. Historic coach substitutions without this flag are treated as temporary; ordinary historic manually chosen exercises still serve as a fallback. Only active, unarchived exercises are eligible.
 
-## Apply locally
+## Development
 
-1. Extract this ZIP into the app's project root, replacing files at the listed paths.
-2. Run `npm install` only if dependencies are missing. Run `npm run typecheck`.
-3. Run `npm run dev`. Open **Plan → Mesocycle planning**. With a Sunday end date, confirm the new block defaults to Monday. Review or change the priorities, create the block, and verify Sunday's block remains active until the scheduled transition. Check that a conflicting start date is rejected. If check-ins and completed workouts are ready, press **Run next-block review** and inspect the coach suggestions.
+1. Extract this archive at the app's project root, replacing existing files.
+2. Apply the included migration to the **development database**: `npx prisma migrate deploy`.
+3. Run `npm run typecheck` and `node --import tsx scripts/test-exercise-choice-policy.ts`.
+4. Run `npm run dev`. Review a workout, accept a coach exercise swap without checking the remember option, complete it, and verify the next same-template workout returns to the saved selection. Repeat with the option checked and verify the swap persists. Try a one-day manual substitution in the logger. Inspect the comparison in the next pre-workout review.
 
-## Deploy to Vercel
+## Production deployment
 
-1. Commit and push the patched files using your normal git deployment flow. Vercel should deploy that commit.
-2. Confirm the build succeeds, then open **Plan → Mesocycle planning** in production and confirm the scheduled date and manual review controls.
+1. Apply the included migration **to production before deploying the new code**, using your existing secure production database migration method: `npx prisma migrate deploy` in an environment connected to the production `DATABASE_URL`.
+2. Commit and push the patched files to `main`; your usual Vercel deployment can build the code after the migration. Verify the new deployment and check the pre-workout review UI.
 
-There is **no schema change or migration**, and no new environment variable. Do not run `prisma migrate deploy` specifically for this patch. If other undeployed schema migrations exist in your checkout, apply those separately before deploying code that depends on them.
+The migration is additive (one nullable `exercise_choice_intent` column). No backfill, new package, or environment variable is required. Do not run the production migration against your development `.env.local` by accident.
 
-`npm run typecheck`, targeted ESLint, and `git diff --check` passed in the development workspace. No database-backed end-to-end test was run here.
+Verification in the workspace: TypeScript typecheck, production boundary check, focused exercise-choice tests, targeted ESLint, and diff whitespace check. The production database and OpenAI service were not used in these checks.

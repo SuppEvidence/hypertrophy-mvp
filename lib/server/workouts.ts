@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { ensureProgramTemplates } from "@/lib/server/templates";
 import { getTemplatePrescription } from "@/lib/server/prescriptions";
 import { resolvePreWorkoutCoachProposalForUser } from "@/lib/server/pre-workout-coach";
+import { rememberedTemplateExerciseChoices, type RememberedExerciseChoice } from "@/lib/server/exercise-choice-memory";
 import { runAutomaticPostWorkoutCoaching } from "@/lib/server/automatic-coaching";
 import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
 import { parseStoredWeeklyPlan } from "@/lib/templates/weeklyPlan";
@@ -52,46 +53,6 @@ type WeightSuggestion = {
   sourceE1rm: number | null;
   sourceSet: string | null;
 };
-
-type PreviousTemplateExerciseChoice = {
-  exerciseId: string;
-  exerciseName: string;
-  movementGroupId: string;
-};
-
-async function getPreviousCompletedTemplateExerciseChoices(
-  userId: string,
-  programId: string,
-  templateId: string,
-): Promise<Map<string, PreviousTemplateExerciseChoice>> {
-  const previousSession = await prisma.workoutSession.findFirst({
-    where: { userId, programId, templateId, status: "COMPLETED" },
-    orderBy: [{ performedAt: "desc" }, { completedAt: "desc" }, { createdAt: "desc" }],
-    select: {
-      exercises: {
-        where: { templateExerciseId: { not: null } },
-        select: {
-          templateExerciseId: true,
-          exerciseId: true,
-          exercise: {
-            select: { name: true, movementGroupId: true, isActive: true, isArchived: true },
-          },
-        },
-      },
-    },
-  });
-
-  const choices = new Map<string, PreviousTemplateExerciseChoice>();
-  for (const item of previousSession?.exercises ?? []) {
-    if (!item.templateExerciseId || !item.exercise.isActive || item.exercise.isArchived) continue;
-    choices.set(item.templateExerciseId, {
-      exerciseId: item.exerciseId,
-      exerciseName: item.exercise.name,
-      movementGroupId: item.exercise.movementGroupId,
-    });
-  }
-  return choices;
-}
 
 async function buildWeightSuggestionsForSession(
   activeSession: Awaited<ReturnType<typeof getSessionForUser>>,
@@ -234,8 +195,8 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
       ? getTemplatePrescription(selectedProgram.id, selectedTemplate.id, userId)
       : Promise.resolve(null),
     selectedProgram && selectedTemplate && !activeSession
-      ? getPreviousCompletedTemplateExerciseChoices(userId, selectedProgram.id, selectedTemplate.id)
-      : Promise.resolve(new Map<string, PreviousTemplateExerciseChoice>()),
+      ? rememberedTemplateExerciseChoices(userId, selectedProgram.id, selectedTemplate.id)
+      : Promise.resolve(new Map<string, RememberedExerciseChoice>()),
   ]);
 
   return {
@@ -405,7 +366,7 @@ export async function startWorkout(formData: FormData) {
   const template = prescription?.program.templates.find((item: any) => item.id === input.templateId) ?? null;
   if (!prescription || !template || prescription.program.id !== input.programId) redirect("/log");
 
-  const previousTemplateChoices = await getPreviousCompletedTemplateExerciseChoices(userId, input.programId, input.templateId);
+  const previousTemplateChoices = await rememberedTemplateExerciseChoices(userId, input.programId, input.templateId);
 
   const session = await prisma.$transaction(async (tx) => {
     const created = await tx.workoutSession.create({
@@ -457,6 +418,7 @@ export async function startWorkout(formData: FormData) {
         data: {
           sessionId: created.id,
           exerciseId: preferredExerciseId,
+          exerciseChoiceIntent: "PERSISTENT",
           templateExerciseId: item.isWeeklyVirtualSlot || item.isMesocycleVirtualSlot ? null : item.id,
           sortOrder: index,
           isSubstitution: false,
@@ -575,10 +537,12 @@ export async function startCoachedWorkout(formData: FormData) {
         return { setNumber, setTypeId: plan.setTypeIds[setIndex] ?? weeklyAdded?.setTypeId ?? mesocycleAdded?.setTypeId ?? planned?.setTypeId ?? item.defaultSetTypeId };
       });
       const changedExercise = plan.exerciseId !== plan.defaultExerciseId;
+      const rememberChoice = sourceBelongsToBase && changedExercise && formData.get(`rememberExercise:${item.id}`) === "on";
       const sessionExercise = await tx.workoutSessionExercise.create({
         data: {
           sessionId: created.id,
           exerciseId: plan.exerciseId,
+          exerciseChoiceIntent: sourceBelongsToBase ? changedExercise && !rememberChoice ? "TEMPORARY" : "PERSISTENT" : "TEMPORARY",
           templateExerciseId: sourceBelongsToBase ? item.id : null,
           sortOrder: index,
           isSubstitution: changedExercise || item.templateId !== template.id,
@@ -796,6 +760,7 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
     where: { id: existing.id },
     data: {
       exerciseId: input.exerciseId,
+      exerciseChoiceIntent: formData.get("exerciseChoiceIntent") === "TEMPORARY" ? "TEMPORARY" : "PERSISTENT",
       isSubstitution: input.exerciseId !== existing.exerciseId || existing.isSubstitution,
       substitutedFromExerciseId: input.exerciseId !== existing.exerciseId ? existing.exerciseId : existing.substitutedFromExerciseId,
       notes: input.notes || null,
