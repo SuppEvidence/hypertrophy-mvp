@@ -6,6 +6,7 @@ const expected = {
   T1: ["gpt-5.6-luna", "low"], T2: ["gpt-5.6-terra", "medium"],
   WORKOUT_ANALYSIS: ["gpt-5.6-terra", "medium"], T3_VOLUME: ["gpt-5.6-sol", "high"],
   T3_MESOCYCLE: ["gpt-5.6-sol", "xhigh"],
+  WEEKLY_PLAN: ["gpt-5.6-sol", "high"],
 };
 for (const workload of COACHING_WORKLOADS) {
   const { request, options } = getCoachingModelConfig(workload, { OPENAI_MODEL: "legacy-global-model" });
@@ -25,6 +26,7 @@ const files = {
   T1: "lib/server/workout-coach-engine.ts", T2: "lib/server/pre-workout-coach.ts",
   WORKOUT_ANALYSIS: "lib/server/ai-workout-analysis.ts", T3_VOLUME: "lib/server/ai-programming-decisions.ts",
   T3_MESOCYCLE: "lib/server/ai-mesocycle-recommendations.ts",
+  WEEKLY_PLAN: "lib/server/weekly-coach.ts",
 } as const;
 for (const workload of COACHING_WORKLOADS) {
   const source = readFileSync(files[workload], "utf8");
@@ -38,4 +40,5 @@ const pipeline = ["WORKOUT_ANALYSIS", "T3_VOLUME", "T3_MESOCYCLE"] as const;
 assert.ok(pipeline.reduce((sum, workload) => sum + getCoachingModelConfig(workload, {}).options.timeout, 0) + 30_000 <= duration("app/(protected)/log/page.tsx"));
 assert.ok(getCoachingModelConfig("T2", {}).options.timeout + 20_000 <= duration("app/api/pre-workout-coach/route.ts"));
 assert.ok(getCoachingModelConfig("T3_VOLUME", {}).options.timeout + 30_000 <= duration("app/(protected)/ai-analysis/volume/page.tsx"));
+assert.ok(getCoachingModelConfig("WEEKLY_PLAN", {}).options.timeout + 30_000 <= duration("app/(protected)/plan/week/page.tsx"));
 console.log("Tier routing, isolated overrides, invalid configuration and route-budget checks passed.");

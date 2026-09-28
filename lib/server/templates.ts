@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
+import { readApprovedWeek } from "@/lib/server/weekly-coach-read";
 import { defaultTemplateName } from "@/lib/templates/defaults";
 import { formatRotationSequenceText, parseRotationSequenceInput } from "@/lib/templates/rotationSequence";
 import { endOfIsoWeek, startOfIsoWeek, toDateOnly } from "@/lib/templates/weeklyPlan";
@@ -163,7 +164,7 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
   ]);
   const selectedTemplate = templates.find((template) => template.id === params?.templateId) ?? templates[0] ?? null;
 
-  const [templateExercises, allTemplateExercises, prescription] = await Promise.all([
+  const [templateExercises, allTemplateExercises, prescription, coachedWeek] = await Promise.all([
     selectedTemplate
       ? prisma.templateExercise.findMany({
           where: { templateId: selectedTemplate.id },
@@ -196,6 +197,7 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
         })
       : Promise.resolve([]),
     selectedProgram ? buildProgramPrescription(selectedProgram.id, userId) : Promise.resolve(null),
+    selectedProgram ? readApprovedWeek(userId, selectedProgram.id) : Promise.resolve(null),
   ]);
 
   const generatedTemplateItems = selectedTemplate
@@ -221,6 +223,7 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
     prescription,
     generatedTemplateItems,
     rotationSequenceText,
+    hasApprovedWeeklyPlan: Boolean(coachedWeek),
   };
 }
 
@@ -443,6 +446,8 @@ export async function updateProgramWeeklyMissedWorkouts(programId: string, formD
   const userId = await requireUserId();
   const program = await prisma.program.findFirst({ where: { id: programId, userId, isArchived: false } });
   if (!program) redirect("/templates");
+  const coachedWeek = await prisma.weeklyCoachPlan.findUnique({ where: { programId_weekStart: { programId, weekStart: startOfIsoWeek() } }, select: { status: true } });
+  if (coachedWeek?.status === "APPROVED") redirect("/plan/week");
 
   const templates = await prisma.workoutTemplate.findMany({
     where: { programId, userId, isArchived: false, isActive: true },

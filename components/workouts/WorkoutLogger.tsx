@@ -304,6 +304,8 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
   const activeSession = data.activeSession as LoggerActiveSession | null;
   const weightSuggestions = data.weightSuggestions as Record<string, LoggerWeightSuggestion>;
   const selectedTemplatePrescription = data.selectedTemplatePrescription as SelectedTemplatePrescription | null;
+  const selectedOccurrence = data.selectedOccurrence as { id: string; date: string; durationMinutes: number } | null;
+  const weeklySchedule = data.weeklySchedule as Array<{ id: string; date: string; templateId: string; missed: boolean; started: boolean }>;
   const autosaveSetTypes = toAutosaveSetTypes(setTypes);
 
   if (programs.length === 0 || !selectedProgram) {
@@ -372,6 +374,14 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
             </Link>
           ))}
         </div>
+        {weeklySchedule.length > 0 ? <div className="flex gap-2 overflow-x-auto pb-1">
+          {weeklySchedule.map((day) => {
+            const label = `${day.date} · ${templates.find((row) => row.id === day.templateId)?.name ?? "Workout"}`;
+            return day.missed || day.started ? <span key={day.id} className="shrink-0 rounded-full border border-slate-800 px-3 py-2 text-xs text-slate-500">{label} · {day.missed ? "missed" : "started"}</span> :
+              <Link key={day.id} href={`/log?programId=${selectedProgram.id}&templateId=${day.templateId}&occurrenceId=${day.id}`}
+                className={`shrink-0 rounded-full border px-3 py-2 text-xs ${day.id === selectedOccurrence?.id ? "border-orange-500 text-orange-200" : "border-slate-700 text-slate-400"}`}>{label}</Link>;
+          })}
+        </div> : null}
         {data.hasUnfinishedSession && !activeSession ? (
           <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
             An unfinished workout exists. Resume it below, or explicitly start a new workout from the selected template.
@@ -384,10 +394,11 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
         ) : selectedTemplate ? (
           <div className="space-y-3">
             {selectedTemplatePrescription ? <PrescriptionPreview prescription={selectedTemplatePrescription} /> : null}
-            <PreWorkoutCoach programId={selectedProgram.id} templateId={selectedTemplate.id} />
+            <PreWorkoutCoach programId={selectedProgram.id} templateId={selectedTemplate.id} occurrenceId={selectedOccurrence?.id} plannedMinutes={selectedOccurrence?.durationMinutes} />
             <form action={startWorkout}>
               <input type="hidden" name="programId" value={selectedProgram.id} />
               <input type="hidden" name="templateId" value={selectedTemplate.id} />
+              {selectedOccurrence ? <input type="hidden" name="occurrenceId" value={selectedOccurrence.id} /> : null}
               <Button variant="secondary" className="w-full">
                 {data.hasUnfinishedSession ? "Start template unchanged anyway" : "Start template unchanged"}
               </Button>

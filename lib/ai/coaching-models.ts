@@ -1,5 +1,5 @@
 /** Model routing is independent of the deterministic coaching/approval policy. */
-export type CoachingWorkload = "T1" | "T2" | "WORKOUT_ANALYSIS" | "T3_VOLUME" | "T3_MESOCYCLE";
+export type CoachingWorkload = "T1" | "T2" | "WORKOUT_ANALYSIS" | "T3_VOLUME" | "T3_MESOCYCLE" | "WEEKLY_PLAN";
 type Effort = "low" | "medium" | "high" | "xhigh";
 type Environment = Record<string, string | undefined>;
 
@@ -9,6 +9,7 @@ const PROFILES = {
   WORKOUT_ANALYSIS: { tier: "T2", model: "gpt-5.6-terra", effort: "medium", timeout: 60_000, maxOutputTokens: 16384 },
   T3_VOLUME: { tier: "T3", model: "gpt-5.6-sol", effort: "high", timeout: 90_000, maxOutputTokens: 24576 },
   T3_MESOCYCLE: { tier: "T3", model: "gpt-5.6-sol", effort: "xhigh", timeout: 110_000, maxOutputTokens: 32768 },
+  WEEKLY_PLAN: { tier: "T3", model: "gpt-5.6-sol", effort: "high", timeout: 225_000, maxOutputTokens: 16384 },
 } as const;
 
 export const COACHING_WORKLOADS = Object.keys(PROFILES) as CoachingWorkload[];
@@ -25,7 +26,7 @@ function configured(env: Environment, name: string, fallback: string) {
 export function getCoachingModelConfig(workload: CoachingWorkload, env: Environment = process.env) {
   const profile = PROFILES[workload];
   const modelKey = `OPENAI_${profile.tier}_MODEL`;
-  const effortKey = workload === "T3_MESOCYCLE" ? "OPENAI_T3_MESO_REASONING_EFFORT" : `OPENAI_${profile.tier}_REASONING_EFFORT`;
+  const effortKey = workload === "T3_MESOCYCLE" ? "OPENAI_T3_MESO_REASONING_EFFORT" : workload === "WEEKLY_PLAN" ? "OPENAI_WEEKLY_REASONING_EFFORT" : `OPENAI_${profile.tier}_REASONING_EFFORT`;
   // The old global OPENAI_MODEL intentionally cannot collapse the tier routing.
   const model = configured(env, modelKey, profile.model);
   const effort = configured(env, effortKey, profile.effort);
@@ -46,7 +47,7 @@ type ResponseSummary = {
 };
 
 /** Operational metadata only: never log prompts, workout content, credentials or user IDs. */
-export function logCoachingModelUsage(config: ReturnType<typeof getCoachingModelConfig>, response: ResponseSummary, startedAt: number) {
+export function logCoachingModelUsage(config: { workload: CoachingWorkload; request: { model: string; reasoning: { effort: Effort } } }, response: ResponseSummary, startedAt: number) {
   console.info("COACHING_AI", JSON.stringify({
     workload: config.workload, model: config.request.model, reasoningEffort: config.request.reasoning.effort,
     status: response.status ?? "unknown", durationMs: Date.now() - startedAt,

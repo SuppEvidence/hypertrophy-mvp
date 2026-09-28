@@ -9,6 +9,7 @@ type PageProps = {
     programId?: string;
     templateId?: string;
     sessionId?: string;
+    occurrenceId?: string;
   }>;
 };
 

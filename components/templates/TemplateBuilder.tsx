@@ -134,7 +134,7 @@ function OptionSelect({ name, defaultValue, options }: { name: string; defaultVa
   );
 }
 
-export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, movementGroups, setTypes, prescription, generatedTemplateItems, rotationSequenceText }: Props) {
+export function TemplateBuilder({ programs, selectedProgram, templates, selectedTemplate, templateExercises, allTemplateExercises, movementGroups, setTypes, prescription, generatedTemplateItems, rotationSequenceText, hasApprovedWeeklyPlan }: Props) {
   if (!selectedProgram) {
     return (
       <Card>
@@ -293,7 +293,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
         </div>
       </Card>
 
-      <Card className="space-y-3">
+      {hasApprovedWeeklyPlan ? <Card className="space-y-2"><h2 className="font-semibold text-slate-100">This week&apos;s workouts</h2><p className="text-sm text-slate-400">The approved weekly coach plan controls individual workout occurrences and missed workout redistribution.</p><Link href="/plan/week" className="text-sm font-semibold text-orange-300">View the weekly plan →</Link></Card> : <Card className="space-y-3">
         <div>
           <h2 className="text-base font-semibold text-slate-100">This week availability</h2>
           <p className="mt-1 text-sm text-slate-400">
@@ -355,7 +355,7 @@ export function TemplateBuilder({ programs, selectedProgram, templates, selected
           </p>
           <Button className="w-full sm:w-auto">Save weekly availability</Button>
         </form>
-      </Card>
+      </Card>}
 
       {selectedTemplate ? (
         <>

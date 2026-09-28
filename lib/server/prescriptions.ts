@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db/prisma";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { generateMesocyclePrescriptionWithQuickOverrides as generateMesocyclePrescription } from "@/lib/planning/mesocycleQuickOverrides";
 import { applyWeeklyMissedWorkoutPlan, endOfIsoWeek, parseStoredWeeklyPlan, startOfIsoWeek, toDateOnly } from "@/lib/templates/weeklyPlan";
+import { applyWeeklyCoachOccurrence } from "@/lib/server/weekly-coach-prescription";
+import { readApprovedOccurrence } from "@/lib/server/weekly-coach-read";
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
@@ -41,9 +43,12 @@ async function getMesocycleForPrescription(programId: string, userId: string, me
 export async function buildProgramPrescription(
   programId: string,
   userId: string,
-  options?: { mesocycleId?: string | null; includeWeeklyPlan?: boolean },
+  options?: { mesocycleId?: string | null; includeWeeklyPlan?: boolean; weeklyOccurrenceId?: string | null },
 ) {
   const includeWeeklyPlan = options?.includeWeeklyPlan !== false;
+  const approvedOccurrence = options?.weeklyOccurrenceId
+    ? await readApprovedOccurrence(userId, programId, options.weeklyOccurrenceId) : null;
+  const approvedExerciseIds = new Set(approvedOccurrence?.occurrence.items.map((item) => item.exerciseId) ?? []);
   const weekStartDate = startOfIsoWeek();
   const weekStart = toDateOnly(weekStartDate);
   const [program, activeMesocycle, completedSessions, setTypes, movementDefaults] = await Promise.all([
@@ -244,7 +249,7 @@ export async function buildProgramPrescription(
       isIntensifier: setType.isIntensifier,
       sortOrder: setType.sortOrder,
     })),
-    movementDefaults: movementDefaults.filter((exercise) => exercise.coachingProfiles[0]?.preference !== "AVOID")
+    movementDefaults: movementDefaults.filter((exercise) => exercise.coachingProfiles[0]?.preference !== "AVOID" || approvedExerciseIds.has(exercise.id))
       .sort((a, b) => Number(b.coachingProfiles[0]?.preference === "PREFERRED") - Number(a.coachingProfiles[0]?.preference === "PREFERRED"))
       .map((exercise) => ({
       exerciseId: exercise.id,
@@ -268,6 +273,14 @@ export async function buildProgramPrescription(
     })),
   };
   const generated = generateMesocyclePrescription(generationInput);
+  const occurrenceOverlay = options?.weeklyOccurrenceId ? await applyWeeklyCoachOccurrence({
+    userId, programId, occurrenceId: options.weeklyOccurrenceId,
+    mesocycleId: activeMesocycle?.id ?? null, items: generated.items,
+    movementDefaults: generationInput.movementDefaults ?? [],
+    setTypes: generationInput.setTypes ?? [],
+  }) : null;
+  if (options?.weeklyOccurrenceId && !occurrenceOverlay) throw new Error("This weekly workout is no longer available. Open the weekly plan again.");
+  const plannedItems = occurrenceOverlay?.items ?? generated.items;
   const storedWeeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan, weekStart);
   const completedTemplateIds: string[] = Array.from(
     new Set(
@@ -299,9 +312,9 @@ export async function buildProgramPrescription(
     multiplier: setType.multiplier,
     isIntensifier: setType.isIntensifier,
   }));
-  const weekly = includeWeeklyPlan
+  const weekly = includeWeeklyPlan && !occurrenceOverlay
     ? applyWeeklyMissedWorkoutPlan({
-        items: generated.items,
+        items: plannedItems,
         templates: program.templates.map((template) => ({ id: template.id, name: template.name, sequenceIndex: template.sequenceIndex })),
         setTypes: weeklySetTypes,
         completedMovementVolume: completedMovementRows,
@@ -311,7 +324,7 @@ export async function buildProgramPrescription(
         recipientExcludedTemplateIds: storedWeeklyPlan.recipientExcludedTemplateIds,
       })
     : applyWeeklyMissedWorkoutPlan({
-        items: generated.items,
+        items: plannedItems,
         templates: program.templates.map((template) => ({ id: template.id, name: template.name, sequenceIndex: template.sequenceIndex })),
         setTypes: weeklySetTypes,
         completedMovementVolume: [],
@@ -332,8 +345,8 @@ export async function buildProgramPrescription(
     },
   };
 }
-export async function getTemplatePrescription(programId: string, templateId: string, userId: string) {
-  const prescription = await buildProgramPrescription(programId, userId);
+export async function getTemplatePrescription(programId: string, templateId: string, userId: string, weeklyOccurrenceId?: string | null) {
+  const prescription = await buildProgramPrescription(programId, userId, { weeklyOccurrenceId });
   if (!prescription) return null;
   return {
     ...prescription,

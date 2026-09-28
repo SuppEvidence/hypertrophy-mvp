@@ -143,6 +143,7 @@ model Profile {
   exerciseCoachingProfiles ExerciseCoachingProfile[]
   coachingInterventions CoachingIntervention[]
   energyPhases EnergyPhase[]
+  coachedWeeks WeeklyCoachPlan[]
 
   @@map("profiles")
 }
@@ -359,10 +360,35 @@ model Program {
   templates       WorkoutTemplate[]
   workoutSessions WorkoutSession[]
   mesocycles      ProgramMesocycle[]
+  coachedWeeks    WeeklyCoachPlan[]
 
   @@index([userId, isActive])
   @@index([userId, isArchived])
   @@map("programs")
+}
+
+model WeeklyCoachPlan {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid @map("user_id")
+  programId   String    @db.Uuid @map("program_id")
+  mesocycleId String?   @db.Uuid @map("mesocycle_id")
+  weekStart   DateTime  @db.Date @map("week_start")
+  status      String    @default("PROPOSED")
+  proposal    Json
+  completedBaseline Json? @map("completed_baseline")
+  allocation  Json?
+  unallocated Int       @default(0)
+  missedIds   Json?     @map("missed_ids")
+  approvedAt  DateTime? @map("approved_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user    Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, weekStart])
+  @@index([userId, weekStart])
+  @@map("weekly_coach_plans")
 }
 
 model ProgramMesocycle {

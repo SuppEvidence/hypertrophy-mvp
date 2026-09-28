@@ -10,6 +10,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 
 const planItems = [
   {
+    href: "/plan/week", title: "Plan this week", description: "Set available days and have the coach distribute work across the entire week.", icon: ClipboardList, primary: true,
+  },
+  {
     href: "/plan/blocks",
     title: "Mesocycle planning",
     description: "Review the coach's next-block advice and schedule the next mesocycle and priorities ahead of time.",

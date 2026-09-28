@@ -73,6 +73,7 @@ export const PreWorkoutCoachProposalSchema = PreWorkoutCoachModelPlanSchema.exte
   expiresAt: z.string().datetime(),
   programId: z.string().uuid(),
   requestedTemplateId: z.string().uuid(),
+  weeklyOccurrenceId: z.string().uuid().nullable().optional(),
   availableMinutes: z.number().int().min(20).max(120),
   constraints: z.string().max(800),
   model: z.string().min(1).max(120),

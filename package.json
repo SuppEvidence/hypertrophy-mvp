@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "verify:boundaries": "node scripts/verify-production-boundaries.mjs",
-    "typecheck": "npm run verify:boundaries && tsc --noEmit",
-    "pretypecheck": "prisma generate",
+    "typecheck": "npm run verify:boundaries && tsc --noEmit -p tsconfig.typecheck.json",
+    "pretypecheck": "prisma generate && next typegen",
     "prebuild": "prisma generate",
     "build": "npm run verify:boundaries && next build",
     "start": "next start",

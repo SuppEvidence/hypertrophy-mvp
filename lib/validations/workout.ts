@@ -3,6 +3,7 @@ import { z } from "zod";
 export const startWorkoutSchema = z.object({
   programId: z.string().uuid(),
   templateId: z.string().uuid(),
+  occurrenceId: z.string().uuid().optional(),
 });
 
 export const repRangeStatusSchema = z.enum(["IN_RANGE", "TOO_LOW", "TOO_HIGH", "MIXED", "NOT_LOGGED"]);

@@ -9,6 +9,8 @@ import { ensureProgramTemplates } from "@/lib/server/templates";
 import { getTemplatePrescription } from "@/lib/server/prescriptions";
 import { resolvePreWorkoutCoachProposalForUser } from "@/lib/server/pre-workout-coach";
 import { rememberedTemplateExerciseChoices, type RememberedExerciseChoice } from "@/lib/server/exercise-choice-memory";
+import { readApprovedWeek } from "@/lib/server/weekly-coach-read";
+import { helsinkiDate } from "@/lib/coaching/weekly-coach-calendar";
 import { runAutomaticPostWorkoutCoaching } from "@/lib/server/automatic-coaching";
 import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
 import { parseStoredWeeklyPlan } from "@/lib/templates/weeklyPlan";
@@ -127,7 +129,7 @@ async function buildWeightSuggestionsForSession(
   return suggestions;
 }
 
-export async function getWorkoutLoggerData(params?: { programId?: string; templateId?: string; sessionId?: string }) {
+export async function getWorkoutLoggerData(params?: { programId?: string; templateId?: string; sessionId?: string; occurrenceId?: string }) {
   const userId = await requireUserId();
 
   const programs = await prisma.program.findMany({
@@ -183,16 +185,24 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
     params?.sessionId ? getSessionForUser(params.sessionId, userId) : Promise.resolve(null),
   ]);
 
-  const suggestedTemplate = selectedProgram ? await getSuggestedTemplate(selectedProgram, userId, templates) : null;
+  const coachedWeek = selectedProgram ? await readApprovedWeek(userId, selectedProgram.id) : null;
+  const pendingWorkouts = coachedWeek?.distribution.workouts.filter((day) => !coachedWeek.missedIds.includes(day.id) && !coachedWeek.startedIds.includes(day.id)) ?? [];
+  const today = helsinkiDate();
+  const nextOccurrence = pendingWorkouts.find((day) => day.date <= today) ?? pendingWorkouts[0];
+  const requestedOccurrence = pendingWorkouts.find((day) => day.id === params?.occurrenceId);
+  const suggestedTemplate = templates.find((template) => template.id === (requestedOccurrence ?? nextOccurrence)?.templateId) ??
+    (selectedProgram ? await getSuggestedTemplate(selectedProgram, userId, templates) : null);
   const selectedTemplate =
     templates.find((template) => template.id === params?.templateId) ?? suggestedTemplate ?? templates[0] ?? null;
+  const selectedOccurrence = selectedTemplate && (requestedOccurrence?.templateId === selectedTemplate.id ? requestedOccurrence :
+    pendingWorkouts.find((day) => day.templateId === selectedTemplate.id)) || null;
 
   const activeSession = requestedSession?.status === "DRAFT" || requestedSession?.status === "COMPLETED" ? requestedSession : null;
   const hasUnfinishedSession = draftSessions.length > 0;
   const [weightSuggestions, selectedTemplatePrescription, previousTemplateChoices] = await Promise.all([
     buildWeightSuggestionsForSession(activeSession, userId),
     selectedProgram && selectedTemplate && !activeSession
-      ? getTemplatePrescription(selectedProgram.id, selectedTemplate.id, userId)
+      ? getTemplatePrescription(selectedProgram.id, selectedTemplate.id, userId, selectedOccurrence?.id)
       : Promise.resolve(null),
     selectedProgram && selectedTemplate && !activeSession
       ? rememberedTemplateExerciseChoices(userId, selectedProgram.id, selectedTemplate.id)
@@ -205,6 +215,9 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
     templates,
     suggestedTemplate,
     selectedTemplate,
+    selectedOccurrence: selectedOccurrence ? { id: selectedOccurrence.id, date: selectedOccurrence.date, durationMinutes: selectedOccurrence.durationMinutes } : null,
+    weeklySchedule: coachedWeek?.distribution.workouts.map((day) => ({ id: day.id, date: day.date, templateId: day.templateId,
+      missed: coachedWeek.missedIds.includes(day.id), started: coachedWeek.startedIds.includes(day.id) })) ?? [],
     exercises,
     setTypes,
     draftSessions,
@@ -216,7 +229,7 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
           mesocycleName: selectedTemplatePrescription.activeMesocycle?.name ?? null,
           weekStart: selectedTemplatePrescription.generated.weeklyPlan.weekStart,
           items: selectedTemplatePrescription.templateItems.map((item) => {
-            const previousChoice = item.isWeeklyVirtualSlot || item.isMesocycleVirtualSlot ? null : previousTemplateChoices.get(item.id) ?? null;
+            const previousChoice = selectedOccurrence || item.isWeeklyVirtualSlot || item.isMesocycleVirtualSlot ? null : previousTemplateChoices.get(item.id) ?? null;
             const preferredChoice = previousChoice?.movementGroupId === item.movementGroupId ? previousChoice : null;
             return {
               id: item.id,
@@ -361,8 +374,8 @@ export async function deleteWorkoutSession(sessionId: string, _formData?: FormDa
 
 export async function startWorkout(formData: FormData) {
   const userId = await requireUserId();
-  const input = startWorkoutSchema.parse({ programId: formData.get("programId"), templateId: formData.get("templateId") });
-  const prescription = await getTemplatePrescription(input.programId, input.templateId, userId);
+  const input = startWorkoutSchema.parse({ programId: formData.get("programId"), templateId: formData.get("templateId"), occurrenceId: formData.get("occurrenceId") || undefined });
+  const prescription = await getTemplatePrescription(input.programId, input.templateId, userId, input.occurrenceId);
   const template = prescription?.program.templates.find((item: any) => item.id === input.templateId) ?? null;
   if (!prescription || !template || prescription.program.id !== input.programId) redirect("/log");
 
@@ -379,6 +392,7 @@ export async function startWorkout(formData: FormData) {
         mesocycleId: prescription.activeMesocycle?.id ?? null,
         prescriptionSummary: {
           mesocycleId: prescription.activeMesocycle?.id ?? null,
+          weeklyOccurrenceId: input.occurrenceId ?? null,
           mesocycleName: prescription.activeMesocycle?.name ?? null,
           generatedAt: new Date().toISOString(),
           weekStart: prescription.generated.weeklyPlan.weekStart,
@@ -395,7 +409,7 @@ export async function startWorkout(formData: FormData) {
     for (const [index, item] of prescription.templateItems.entries()) {
       const prescribedSets = item.isMissedThisWeek ? item.adjustedPlannedSets : item.weeklyAdjustedPlannedSets;
       const previousChoice = item.isWeeklyVirtualSlot || item.isMesocycleVirtualSlot ? null : previousTemplateChoices.get(item.id) ?? null;
-      const preferredExerciseId =
+      const preferredExerciseId = input.occurrenceId ? item.exerciseId :
         previousChoice?.movementGroupId === item.movementGroupId ? previousChoice.exerciseId : item.exerciseId;
       const prescriptionNotes = [
         item.adjustmentReason,
@@ -514,6 +528,7 @@ export async function startCoachedWorkout(formData: FormData) {
             ...resolved.proposal,
             acceptedAt: new Date().toISOString(),
           },
+          weeklyOccurrenceId: resolved.proposal.weeklyOccurrenceId ?? null,
         },
       },
     });

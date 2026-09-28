@@ -22,8 +22,8 @@ function statusClass(value: string) {
   return "border-slate-700 text-slate-400";
 }
 
-export function PreWorkoutCoach({ programId, templateId }: { programId: string; templateId: string }) {
-  const [availableMinutes, setAvailableMinutes] = useState("60");
+export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMinutes }: { programId: string; templateId: string; occurrenceId?: string; plannedMinutes?: number }) {
+  const [availableMinutes, setAvailableMinutes] = useState(String(plannedMinutes ?? 60));
   const [constraints, setConstraints] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +32,8 @@ export function PreWorkoutCoach({ programId, templateId }: { programId: string; 
   useEffect(() => {
     setResult(null);
     setError(null);
-  }, [programId, templateId]);
+    setAvailableMinutes(String(plannedMinutes ?? 60));
+  }, [programId, templateId, occurrenceId, plannedMinutes]);
 
   async function review() {
     setBusy(true);
@@ -42,7 +43,7 @@ export function PreWorkoutCoach({ programId, templateId }: { programId: string; 
       const response = await fetch("/api/pre-workout-coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ programId, templateId, availableMinutes: Number(availableMinutes), constraints }),
+        body: JSON.stringify({ programId, templateId, occurrenceId, availableMinutes: Number(availableMinutes), constraints }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Pre-workout review failed.");
