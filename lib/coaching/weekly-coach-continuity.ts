@@ -1,6 +1,7 @@
 import type { WeeklyCandidate, WeeklyCoachDelta, WeeklyCoachPlan, WeeklyExercise } from "@/lib/coaching/weekly-coach-policy";
 
-type ActualWorkout = { occurrenceId: string; items: Array<{ exerciseId: string; sourceSlotId: string | null; setTypeIds: string[] }> };
+type ActualWorkout = { occurrenceId: string; items: Array<{ exerciseId: string; sourceSlotId: string | null;
+  setTypeIds: string[]; exerciseChoiceIntent?: string | null }> };
 
 export function carryForwardWeek(input: {
   previous: WeeklyCoachPlan;
@@ -29,12 +30,31 @@ export function carryForwardWeek(input: {
     const prior = matching ?? sources[index % sources.length];
     const performed = completed.get(prior.id);
     const templateId = templates.includes(prior.templateId) ? prior.templateId : templates[index % templates.length];
-    const chosen = performed?.items.length ? performed.items : prior.items.map((item) => ({
+    const chosen = performed?.items.length ? performed.items.flatMap((item, itemIndex) => {
+      if (item.exerciseChoiceIntent !== "TEMPORARY") return [item];
+      const planned = item.sourceSlotId
+        ? prior.items.find((row) => row.sourceSlotId === item.sourceSlotId)
+        : prior.items[itemIndex];
+      // An extra exercise with no matching planned slot was used only for that day.
+      if (!planned) return [];
+      if (item.exerciseId === planned.exerciseId) return [item];
+      return [{ exerciseId: planned.exerciseId, sourceSlotId: planned.sourceSlotId,
+        setTypeIds: Array.from({ length: item.setTypeIds.length }, (_, setIndex) =>
+          planned.setTypeIds[setIndex] ?? baseType), revertedTemporary: true }];
+    }) : prior.items.map((item) => ({
       exerciseId: item.exerciseId, sourceSlotId: item.sourceSlotId, setTypeIds: item.setTypeIds,
     }));
+    // Older accepted plans or completed sessions can contain repeated exercises.
+    // Fold their work into one slot before asking the model to adjust the week.
+    const unique = new Map<string, (typeof chosen)[number]>();
+    for (const item of chosen) {
+      const earlier = unique.get(item.exerciseId);
+      if (earlier) earlier.setTypeIds.push(...item.setTypeIds);
+      else unique.set(item.exerciseId, { ...item, setTypeIds: [...item.setTypeIds] });
+    }
     const used = new Set<string>();
     let newlyIntroduced = 0;
-    const items = chosen.flatMap((item) => {
+    const items = [...unique.values()].flatMap((item) => {
       const exercise = allowed.get(item.exerciseId);
       if (!exercise || !item.setTypeIds.length) return [];
       const preferred = item.sourceSlotId ? candidatesById.get(item.sourceSlotId) : null;
@@ -53,7 +73,8 @@ export function carryForwardWeek(input: {
         return baseType;
       });
       return [{ sourceSlotId: slotId, exerciseId: exercise.id, sets: types.length, setTypeIds: types,
-        reason: performed?.items.length ? "Continued from completed training last week." : "Continued from last week's accepted plan." }];
+        reason: "revertedTemporary" in item && item.revertedTemporary ? "Previous exercise restored after a one-day swap."
+          : performed?.items.length ? "Continued from completed training last week." : "Continued from last week's accepted plan." }];
     }).slice(0, 16);
     while (items.length) {
       const total = items.reduce((sum, item) => sum + item.sets, 0);

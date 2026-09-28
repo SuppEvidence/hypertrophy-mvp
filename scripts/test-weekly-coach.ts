@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { validateWeeklyCoachPlan, weeklyExerciseIssues, type WeeklyCoachPlan } from "../lib/coaching/weekly-coach-policy";
+import { consolidateWeeklyExercises, validateWeeklyCoachPlan, weeklyExerciseIssues, type WeeklyCoachPlan } from "../lib/coaching/weekly-coach-policy";
 import { reallocateMissedWeeklyWork } from "../lib/coaching/weekly-coach-runtime";
 import { coachedWeek, helsinkiDate } from "../lib/coaching/weekly-coach-calendar";
 import { completedWeekBaseline } from "../lib/coaching/weekly-coach-baseline";
@@ -23,6 +23,16 @@ const evidence = { weekStart: plan.weekStart, availability: plan.workouts.map((w
   exercises: [{ id: exercise, movementGroupId: "quads", primaryMuscleIds: ["quads"], secondaryMuscles: [], avoided: false }],
   regularSetTypeIds: [type], multipliers: { [type]: 1 } };
 assert.equal(validateWeeklyCoachPlan(plan, evidence).ok, true);
+const duplicated: WeeklyCoachPlan = { ...plan, workouts: [{ ...plan.workouts[0],
+  items: [...plan.workouts[0].items, { ...plan.workouts[0].items[0], sourceSlotId: "slot-2" }] },
+  ...plan.workouts.slice(1)] };
+const twoSlots = { ...evidence, candidates: [...evidence.candidates, { ...evidence.candidates[0], id: "slot-2" }] };
+assert.match(validateWeeklyCoachPlan(duplicated, twoSlots).errors.join(" "), /appears in more than one slot/);
+const combined = consolidateWeeklyExercises(duplicated);
+assert.equal(combined.workouts[0].items.length, 1);
+assert.equal(combined.workouts[0].items[0].sets, 6);
+assert.equal(combined.workouts[0].items[0].setTypeIds.length, 6);
+assert.equal(validateWeeklyCoachPlan(combined, twoSlots).ok, true);
 const drop = "11111111-1111-4111-8111-111111111111";
 const edt = "22222222-2222-4222-8222-222222222222";
 const kinds = [
@@ -65,6 +75,21 @@ const carry = carryForwardWeek({ previous: plan, weekStart: "2026-10-05",
 assert.ok(carry);
 assert.equal(carry.workouts[0].items[0].sets, 2, "Reuse actual completed work rather than last week's proposed set count");
 assert.equal(carry.workouts[1].items[0].sets, 3, "Reuse the accepted Wednesday structure when it was not completed");
+const swapped = { exerciseId: b, sourceSlotId: "slot-1", setTypeIds: [type, type], exerciseChoiceIntent: "TEMPORARY" };
+const carryInput = { previous: plan, weekStart: "2026-10-05", availability: [{ id: a, date: "2026-10-05", minutes: 60 }],
+  templates: [template], candidates: evidence.candidates,
+  exercises: [...evidence.exercises, { ...evidence.exercises[0], id: b }], regularSetTypeIds: [type], missedIds: [] };
+const tempCarry = carryForwardWeek({ ...carryInput, actual: [{ occurrenceId: a, items: [swapped] }] });
+assert.equal(tempCarry?.workouts[0].items[0].exerciseId, exercise, "One-day logger swap must restore the accepted slot exercise");
+assert.equal(tempCarry?.workouts[0].items[0].sets, 2, "Restore the planned exercise while keeping the completed physical set count");
+const persistentCarry = carryForwardWeek({ ...carryInput,
+  actual: [{ occurrenceId: a, items: [{ ...swapped, exerciseChoiceIntent: "PERSISTENT" }] }] });
+assert.equal(persistentCarry?.workouts[0].items[0].exerciseId, b, "Saved logger swap carries into the next week");
+const duplicateCarry = carryForwardWeek({ ...carryInput, previous: duplicated,
+  actual: [{ occurrenceId: a, items: [{ exerciseId: exercise, sourceSlotId: "slot-1", setTypeIds: [type, type] },
+    { exerciseId: exercise, sourceSlotId: "slot-2", setTypeIds: [type, type] }] }] });
+assert.equal(duplicateCarry?.workouts[0].items.length, 1, "Prior duplicated exercises become one slot");
+assert.equal(duplicateCarry?.workouts[0].items[0].sets, 4, "Combining old duplicates preserves their physical sets");
 const changed = applyWeeklyCoachDelta(carry, { version: "WD1", weekStart: carry.weekStart, summary: "Progress warrants a small trial",
   changes: [{ date: "2026-10-07", templateId: template, rationale: "Modest increase", items: [{ ...carry.workouts[1].items[0], sets: 4,
     setTypeIds: [type, type, type, type] }] }] });

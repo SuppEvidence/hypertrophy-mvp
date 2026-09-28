@@ -39,6 +39,25 @@ export type WeeklyCoachDelta = z.infer<typeof WeeklyCoachDeltaSchema>;
 export type WeeklyCandidate = { id: string; templateId: string; movementGroupId: string; exerciseId: string; name?: string; movementGroupName?: string; sets: number; setTypeIds: string[]; primaryMuscleIds: string[]; secondaryMuscles: Array<{ muscleId: string; fraction: number }> };
 export type WeeklyExercise = { id: string; name?: string; movementGroupId: string; primaryMuscleIds: string[]; secondaryMuscles: Array<{ muscleId: string; fraction: number }>; avoided: boolean };
 
+// Preserve the proposed physical work when a model repeats an exercise in two slots.
+// Over-eight-set duplicates remain invalid so a large or ambiguous plan is reviewed again.
+export function consolidateWeeklyExercises(plan: WeeklyCoachPlan): WeeklyCoachPlan {
+  return { ...plan, workouts: plan.workouts.map((day) => {
+    const items: WeeklyCoachPlan["workouts"][number]["items"] = [];
+    for (const item of day.items) {
+      const existing = items.find((row) => row.exerciseId === item.exerciseId);
+      if (!existing || existing.sets + item.sets > 8) {
+        items.push({ ...item, setTypeIds: [...item.setTypeIds] });
+        continue;
+      }
+      existing.sets += item.sets;
+      existing.setTypeIds.push(...item.setTypeIds);
+      existing.reason = `${existing.reason.slice(0, 202)} Combined repeated slots.`;
+    }
+    return { ...day, items };
+  }) };
+}
+
 export function weeklyExerciseIssues(plan: WeeklyCoachPlan, exercises: WeeklyExercise[]) {
   const byId = new Map(exercises.map((row) => [row.id, row]));
   return plan.workouts.flatMap((day) => day.items.flatMap((item) => {
@@ -87,6 +106,7 @@ export function validateWeeklyCoachPlan(plan: WeeklyCoachPlan, input: {
     let totalSets = 0;
     let newIntensifiers = 0;
     const seenSlots = new Set<string>();
+    const seenExercises = new Set<string>();
     const sessionMuscles = new Map<string, number>();
     for (const item of workout.items) {
       const source = slots.get(item.sourceSlotId);
@@ -95,6 +115,8 @@ export function validateWeeklyCoachPlan(plan: WeeklyCoachPlan, input: {
       if (!source && !virtual) errors.push("Unknown workout slot.");
       if (seenSlots.has(item.sourceSlotId)) errors.push("Duplicate workout slot.");
       seenSlots.add(item.sourceSlotId);
+      if (seenExercises.has(item.exerciseId)) errors.push(`${workout.date}: ${exercise?.name ?? item.exerciseId} appears in more than one slot. Use one exercise slot per workout.`);
+      seenExercises.add(item.exerciseId);
       if (!exercise && !input.allowUnavailableDraft) errors.push(`${workout.date}: exercise ${item.exerciseId} is unavailable; choose an active exercise before approval.`);
       else if (exercise?.avoided && !input.allowAvoidedExerciseIds?.includes(item.exerciseId)) errors.push(`${workout.date}: ${exercise.name ?? item.exerciseId} is marked Avoid.`);
       else if (exercise && source && source.movementGroupId !== exercise.movementGroupId && source.exerciseId !== item.exerciseId) {
