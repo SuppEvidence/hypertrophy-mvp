@@ -9,7 +9,7 @@ import { requireUserId } from "@/lib/auth/user";
 import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
 import { getOpenAIClient } from "@/lib/ai/openai";
 import { prisma } from "@/lib/db/prisma";
-import { WeeklyCoachPlanSchema, WeeklyCoachDeltaSchema, consolidateWeeklyExercises, validateWeeklyCoachPlan, weeklyExerciseIssues } from "@/lib/coaching/weekly-coach-policy";
+import { WeeklyCoachPlanSchema, WeeklyCoachDeltaSchema, consolidateWeeklyExercises, normalizeWeeklySetTypes, validateWeeklyCoachPlan, weeklyExerciseIssues } from "@/lib/coaching/weekly-coach-policy";
 import { applyWeeklyCoachDelta, carryForwardWeek } from "@/lib/coaching/weekly-coach-continuity";
 import { completedWeekBaseline, parseCompletedBaseline } from "@/lib/coaching/weekly-coach-baseline";
 import { coachedWeek } from "@/lib/coaching/weekly-coach-calendar";
@@ -249,7 +249,10 @@ export async function generateWeeklyCoachAction(formData: FormData) {
       ? applyWeeklyCoachDelta(carried, WeeklyCoachDeltaSchema.parse(response.output_parsed))
       : WeeklyCoachPlanSchema.parse(response.output_parsed);
     if (!rawPlan) throw new Error("The coach changed a day outside the remaining available dates.");
-    const plan = consolidateWeeklyExercises(rawPlan);
+    const plan = normalizeWeeklySetTypes(consolidateWeeklyExercises(rawPlan), {
+      candidates, regularSetTypeIds: normalIds, introducibleSetTypeIdsByExercise: introducible,
+      multipliers: Object.fromEntries(setTypes.map((row) => [row.id, row.multiplier])),
+    });
     const validation = validateWeeklyCoachPlan(plan, { weekStart: weekStartText, availability, templateIds, candidates, exercises,
       regularSetTypeIds: normalIds, introducibleSetTypeIdsByExercise: introducible,
       multipliers: Object.fromEntries(prescription.setTypes.map((row) => [row.id, Number(row.multiplier)])),

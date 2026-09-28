@@ -58,6 +58,44 @@ export function consolidateWeeklyExercises(plan: WeeklyCoachPlan): WeeklyCoachPl
   }) };
 }
 
+// The model can propose a set type that was valid for the source slot but not
+// for its chosen exercise. Replace only that set type; keep the exercise and
+// physical workload visible in the proposal for the athlete to review.
+export function normalizeWeeklySetTypes(plan: WeeklyCoachPlan, input: {
+  candidates: WeeklyCandidate[];
+  regularSetTypeIds: string[];
+  introducibleSetTypeIdsByExercise: Record<string, string[]>;
+  multipliers: Record<string, number>;
+}): WeeklyCoachPlan {
+  const candidates = new Map(input.candidates.map((row) => [row.id, row]));
+  const regular = new Set(input.regularSetTypeIds.filter((id) =>
+    Number.isFinite(input.multipliers[id]) && input.multipliers[id] > 0));
+  const valid = (id: string) => Number.isFinite(input.multipliers[id]) && input.multipliers[id] > 0;
+  const defaultType = input.regularSetTypeIds.find((id) => regular.has(id));
+  if (!defaultType) return plan;
+  return { ...plan, workouts: plan.workouts.map((day) => {
+    let introduced = 0;
+    return { ...day, items: day.items.map((item) => {
+      const source = candidates.get(item.sourceSlotId);
+      let changed = false;
+      const setTypeIds = item.setTypeIds.map((id, index) => {
+        const retained = source?.exerciseId === item.exerciseId && source.setTypeIds[index] === id;
+        if (valid(id) && (regular.has(id) || retained)) return id;
+        if (valid(id) && introduced < 1 && input.introducibleSetTypeIdsByExercise[item.exerciseId]?.includes(id)) {
+          introduced += 1;
+          return id;
+        }
+        changed = true;
+        const sourceType = source?.exerciseId === item.exerciseId ? source.setTypeIds[index] : null;
+        return sourceType && regular.has(sourceType) ? sourceType : defaultType;
+      });
+      return changed ? { ...item, setTypeIds,
+        reason: `${item.reason.slice(0, 158)} Incompatible set types changed to regular sets.`.slice(0, 240) }
+        : item;
+    }) };
+  }) };
+}
+
 export function weeklyExerciseIssues(plan: WeeklyCoachPlan, exercises: WeeklyExercise[]) {
   const byId = new Map(exercises.map((row) => [row.id, row]));
   return plan.workouts.flatMap((day) => day.items.flatMap((item) => {
