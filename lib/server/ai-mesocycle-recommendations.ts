@@ -1,5 +1,7 @@
 "use server";
 
+import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
+
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 
 import { after } from "next/server";
@@ -587,27 +589,7 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
     workoutEvidence: analyzedSessions.slice(-10).map(({ session, analysis }) => ({
       date: dateOnly(session.performedAt),
       workoutName: session.name,
-      summary: analysis.workoutSummary,
-      overallFatigueSignal: analysis.overallFatigueSignal,
-      confidence: analysis.confidence,
-      exercises: analysis.exerciseAssessments.map((exercise) => ({
-        exerciseName: exercise.exerciseName,
-        stimulus: exercise.overallStimulus,
-        fatigueCost: exercise.overallFatigueCost,
-        performanceDecay: exercise.performanceDecay,
-        confidence: exercise.confidence,
-        notableSignals: exercise.notableSignals,
-      })),
-      movementPatterns: analysis.movementPatternAssessments.map((pattern) => ({
-        movementPatternName: pattern.movementPatternName,
-        stimulus: pattern.overallStimulus,
-        fatigueCost: pattern.overallFatigueCost,
-        progressionSignal: pattern.progressionSignal,
-        exerciseConsistency: pattern.exerciseConsistency,
-        implementationInterpretation: pattern.implementationInterpretation,
-        confidence: pattern.confidence,
-        notableSignals: pattern.notableSignals,
-      })),
+      ...summarizeCoachAnalysis(analysis),
     })),
     symptomEvidence: symptomSummary,
     executionEvidence: executionSummary,

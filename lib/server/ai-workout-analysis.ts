@@ -9,6 +9,7 @@ import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
 import {
   ExerciseAssessmentSchema,
+  SetAssessmentSchema,
   MovementPatternAssessmentSchema,
   WorkoutAnalysisSchema,
   type WorkoutAnalysis,
@@ -273,7 +274,9 @@ ATHLETE-FACING OUTPUT POLICY:
 - Do not narrate every small performance fluctuation. Mention a problem in workoutSummary only when it meaningfully changes the interpretation of stimulus, recovery, execution, safety, or what deserves attention.
 - Do not create "next time beat this" language, rep targets based on the prior logbook, or implied pressure to progress load/reps session to session.
 - A productive session with stable execution and appropriate effort can be summarized positively even if load/reps were flat or lower than a prior exposure.
-- Technical rationales and notableSignals may preserve useful evidence for drill-down, but keep them concise and avoid turning normal biological variation into a coaching problem.
+- Classify every completed set, but use an empty set rationale for routine sets whose interpretation is already covered by the exercise conclusion. Give one short sentence only for a meaningful deviation or uncertainty.
+- Exercise rationale: one or two sentences explaining the conclusion, not a retelling of every set. Movement rationale: explain only the cross-exercise or historical conclusion; do not repeat exercise prose.
+- Use at most two notable signals per exercise/pattern and a two- or three-sentence workout summary. Preserve adverse signals and uncertainty; brevity must not hide them.
 
 Core interpretation rules:
 - Do not use a rigid rule such as "2 RIR is productive". Observed RIR is evidence, not ground truth.
@@ -646,14 +649,20 @@ function createRuntimeWorkoutAnalysisSchema(
   );
 
   return WorkoutAnalysisSchema.extend({
+    workoutSummary: z.string().max(600),
     exerciseAssessments: z.array(
       ExerciseAssessmentSchema.extend({
         sessionExerciseId: sessionExerciseIdSchema,
+        rationale: z.string().max(360),
+        notableSignals: z.array(z.string().max(160)).max(2),
+        sets: z.array(SetAssessmentSchema.extend({ rationale: z.string().max(160) })),
       }),
     ),
     movementPatternAssessments: z.array(
       MovementPatternAssessmentSchema.extend({
         movementPatternId: movementPatternIdSchema,
+        rationale: z.string().max(400),
+        notableSignals: z.array(z.string().max(160)).max(2),
       }),
     ),
   });

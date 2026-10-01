@@ -9,12 +9,15 @@ export async function readApprovedWeek(userId: string, programId: string) {
   const plan = record?.status === "APPROVED" && record.userId === userId ? parseWeeklyCoachPlan(record.proposal) : null;
   if (!plan) return null;
   const sessions = await prisma.workoutSession.findMany({ where: { userId, programId, performedAt: { gte: week.start, lt: week.end } },
-      select: { prescriptionSummary: true } });
+      select: { prescriptionSummary: true, status: true } });
   const startedIds = sessions.map((session) => weeklyOccurrenceFromSummary(session.prescriptionSummary)).filter((id): id is string => Boolean(id));
+  const completedIds = sessions.filter((session) => session.status === "COMPLETED").flatMap((session) => {
+    const id = weeklyOccurrenceFromSummary(session.prescriptionSummary); return id ? [id] : [];
+  });
   const missedIds = parseMissedOccurrenceIds(record?.missedIds);
   const allocation = parseWeeklyCoachPlan(record?.allocation) ?? plan;
   const distribution = { workouts: allocation.workouts, unallocatedSets: record?.unallocated ?? 0 };
-  return { record, plan, missedIds, startedIds, distribution };
+  return { record, plan, missedIds, startedIds, completedIds, distribution };
 }
 
 export async function readApprovedOccurrence(userId: string, programId: string, occurrenceId: string) {

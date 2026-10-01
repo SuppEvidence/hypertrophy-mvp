@@ -1,3 +1,4 @@
+import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
 import "server-only";
 import { randomUUID } from "node:crypto";
 
@@ -204,20 +205,7 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
     if (!parsed.success) return [];
     return [{
       performedAt: session.performedAt.toISOString(),
-      workoutSummary: parsed.data.workoutSummary,
-      overallFatigueSignal: parsed.data.overallFatigueSignal,
-      confidence: parsed.data.confidence,
-      movementPatterns: parsed.data.movementPatternAssessments
-        .filter((assessment) => movementGroups.some((movement) => movement.id === assessment.movementPatternId))
-        .map((assessment) => ({
-          movementPatternId: assessment.movementPatternId,
-          overallStimulus: assessment.overallStimulus,
-          overallFatigueCost: assessment.overallFatigueCost,
-          progressionSignal: assessment.progressionSignal,
-          implementationInterpretation: assessment.implementationInterpretation,
-          confidence: assessment.confidence,
-          notableSignals: assessment.notableSignals,
-        })),
+      ...summarizeCoachAnalysis(parsed.data, new Set(movementGroups.map((row) => row.id)), false),
     }];
   });
 
@@ -326,16 +314,11 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
     },
     program: {
       id: context.prescription.program.id,
-      name: context.prescription.program.name,
-      phase: context.prescription.program.activePhase,
+            phase: context.prescription.program.activePhase,
       activeMesocycle: context.prescription.activeMesocycle ? {
         id: context.prescription.activeMesocycle.id,
         name: context.prescription.activeMesocycle.name,
         phase: context.prescription.activeMesocycle.phase,
-        historicalNumericVolumePrescriptions: context.prescription.activeMesocycle.volumeTargets.map((target) => ({
-          muscle: target.muscle.name, targetSets: numberOrNull(target.targetSets),
-          minimumSets: numberOrNull(target.minimumSets), maximumSets: numberOrNull(target.maximumSets), priorityLevel: target.priorityLevel,
-        })),
         t3Priorities: context.prescription.activeMesocycle.musclePriorities.map((target) => ({
           muscle: target.muscle.name,
           priority: target.priority,
@@ -347,19 +330,19 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
           coachingStatus: target.coachingStatus,
         })),
       } : null,
-      weeklyPlan: context.prescription.generated.weeklyPlan,
+      weeklyPlan: context.coachedWeek ? undefined : context.prescription.generated.weeklyPlan,
     },
     bodyComposition: context.bodyComposition,
     declaredEnergyPhase: context.energyPhase,
     energyPhaseTimeline: context.energyPhaseTimeline,
     globalRecovery: context.globalRecovery,
     localizedReadiness: context.localizedReadiness,
-    recentWorkoutAnalyses: context.recentAnalyses,
-    priorCoachingChoices: context.interventions.map((row) => ({
+    recentWorkoutAnalyses: context.recentAnalyses.slice(0, 4),
+    priorCoachingChoices: context.interventions.slice(0, 4).map((row) => ({
       date: row.createdAt.toISOString(), status: row.status,
       proposal: (() => { const value = PreWorkoutCoachProposalSchema.safeParse(row.proposal); return value.success ? {
-        decision: value.data.decision, summary: value.data.summary,
-        items: value.data.items.map((item) => ({ sourceSlotId: item.sourceSlotId, exerciseId: item.exerciseId, sets: item.sets, reason: item.reason })),
+        decision: value.data.decision,
+        items: value.data.items.map((item) => ({ sourceSlotId: item.sourceSlotId, exerciseId: item.exerciseId, sets: item.sets })),
       } : null; })(),
       observation: row.outcome,
     })),
@@ -379,8 +362,9 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
       weekStart: context.coachedWeek.plan.weekStart,
       todayOccurrenceId: context.input.occurrenceId,
       sessions: context.coachedWeek.distribution.workouts.map((day) => ({
-        id: day.id, date: day.date, templateId: day.templateId, status: context.coachedWeek!.missedIds.includes(day.id) ? "MISSED" : context.coachedWeek!.startedIds.includes(day.id) ? "STARTED" : "PLANNED",
-        movements: day.items.map((item) => ({ exerciseId: item.exerciseId, sets: item.sets })),
+        id: day.id, date: day.date, templateId: day.templateId, status: context.coachedWeek!.missedIds.includes(day.id) ? "MISSED" : context.coachedWeek!.completedIds.includes(day.id) ? "COMPLETED" : context.coachedWeek!.startedIds.includes(day.id) ? "IN_PROGRESS" : "PLANNED",
+        movements: day.items.map((item) => ({ exerciseId: item.exerciseId, sets: item.sets,
+          effectiveSets: item.setTypeIds.reduce((sum, id) => sum + Number(context.prescription.setTypes.find((type) => type.id === id)?.multiplier ?? 0), 0) })),
       })),
     } : null,
     setTypes: context.prescription.setTypes.map((type) => ({ id: type.id, name: type.name, slug: type.slug, multiplier: Number(type.multiplier), isIntensifier: type.isIntensifier })),

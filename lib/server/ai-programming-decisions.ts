@@ -1,5 +1,8 @@
 "use server";
 
+import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
+import { getApprovedWeekDoseContext } from "@/lib/server/weekly-coach-dose-context";
+
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 
 import { randomUUID } from "node:crypto";
@@ -538,6 +541,12 @@ async function buildProgrammingContext(userId: string) {
   const plannedMovementSets = new Map(prescription.generated.movementVolumeRows.map((row) => [row.movementGroupId,
     round(row.planned * 7 / volumeWindowDays(prescription.program.volumeWindowType, prescription.program.customWindowDays))]));
 
+  const approvedWeek = await getApprovedWeekDoseContext(userId, programId, mesocycleId,
+    exerciseCatalog.map((row) => ({ id: row.id, movementGroupId: row.movementGroupId,
+      primaryMuscleIds: row.primaryMuscles.map((link) => link.muscleId),
+      secondaryMuscles: row.secondaryMuscles.map((link) => ({ muscleId: link.muscleId, fraction: Number(link.contributionEstimate ?? 0) })) })),
+    Object.fromEntries(prescription.setTypes.map((row) => [row.id, Number(row.multiplier)])));
+
   const currentMuscleVolumes = mesocycle.musclePriorities.map((target) => {
     const row = dashboard.volumeRows.find((item) => item.muscleId === target.muscleId);
     return {
@@ -578,44 +587,7 @@ async function buildProgrammingContext(userId: string) {
     const analysis = parseStoredAnalysis(session.aiAnalysis);
     if (!analysis) return [];
 
-    const metadata = new Map(
-      session.exercises.map((sessionExercise) => [
-        sessionExercise.id,
-        sessionExercise.exercise,
-      ]),
-    );
-
-    return [
-      {
-        performedAt: session.performedAt.toISOString(),
-        overallFatigueSignal: analysis.overallFatigueSignal,
-        confidence: analysis.confidence,
-        movementPatterns: analysis.movementPatternAssessments.map((pattern) => ({
-          movementPatternId: pattern.movementPatternId,
-          movementPatternName: pattern.movementPatternName,
-          stimulus: pattern.overallStimulus,
-          fatigueCost: pattern.overallFatigueCost,
-          progressionSignal: pattern.progressionSignal,
-          implementationInterpretation: pattern.implementationInterpretation,
-          confidence: pattern.confidence,
-          notableSignals: pattern.notableSignals.slice(0, 2),
-        })),
-        exercises: analysis.exerciseAssessments.map((assessment) => {
-          const exercise = metadata.get(assessment.sessionExerciseId);
-          return {
-            exerciseName: assessment.exerciseName,
-            movementPatternId: exercise?.movementGroupId ?? null,
-            primaryMuscles: exercise?.primaryMuscles.map((link) => link.muscleId) ?? [],
-            secondaryMuscles: exercise?.secondaryMuscles.map((link) => link.muscleId) ?? [],
-            stimulus: assessment.overallStimulus,
-            fatigueCost: assessment.overallFatigueCost,
-            performanceDecay: assessment.performanceDecay,
-            confidence: assessment.confidence,
-            notableSignals: assessment.notableSignals.slice(0, 2),
-          };
-        }),
-      },
-    ];
+    return [{ performedAt: session.performedAt.toISOString(), ...summarizeCoachAnalysis(analysis) }];
   });
 
   const historicalDoseResponse = completedHistory.map((historical, index) => {
@@ -711,7 +683,8 @@ async function buildProgrammingContext(userId: string) {
       volumeWindowDays: dashboard.windowDays,
       currentMuscleVolumes,
       currentMovementVolumes,
-      prescribedMovementDoses: [...plannedMovementSets].map(([movementPatternId, weeklyEffectiveSets]) => ({ movementPatternId, weeklyEffectiveSets })),
+      approvedWeek,
+      templateMovementDoses: [...plannedMovementSets].map(([movementPatternId, weeklyEffectiveSets]) => ({ movementPatternId, weeklyEffectiveSets })),
       prescribedSlots: prescription.generated.items.filter((row) => !row.isMesocycleSuppressed).map((row) => ({
         exercise: row.exerciseName, template: row.templateName, movementPatternId: row.movementGroupId,
         setsPerOccurrence: row.adjustedPlannedSets, occurrencesPerWindow: Number(row.expectedOccurrences),
@@ -773,6 +746,7 @@ async function buildProgrammingContext(userId: string) {
 
 const PROGRAMMING_SYSTEM_INSTRUCTIONS = `
 You are the T3 priority-based volume-coaching layer for a hypertrophy training application.
+When approvedWeek is supplied, use its completed and not-completed doses to interpret this week's actual implementation. Template doses describe the persistent framework, not an additional workload. Do not recommend a change merely to repeat an allocation already approved for this week. Persistent decision options still refer to template movement targets; explain any remaining discrepancy instead of conflating it with completed dose.
 
 ${TRAINING_PROGRAMMING_POLICY}
 

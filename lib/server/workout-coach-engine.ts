@@ -6,7 +6,6 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { prisma } from "@/lib/db/prisma";
 import { getOpenAIClient } from "@/lib/ai/openai";
 import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
-import { TRAINING_PROGRAMMING_POLICY } from "@/lib/ai/training-policy";
 import { buildLiveExerciseCoachingContext } from "@/lib/server/live-coaching-context";
 import { buildAllowedLoadOptions, detectCoachSignal, object, numeric, readPrescription, validateCoachDecision } from "@/lib/coaching/workout-coach-policy";
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
@@ -209,8 +208,8 @@ export async function runLiveWorkoutCoach(userId: string, input: { sessionId: st
     const requestStartedAt = Date.now();
     const response = await getOpenAIClient().responses.parse({
       ...aiConfig.request,
-      input: [{ role: "system", content: `${TRAINING_PROGRAMMING_POLICY}\n
-T1 LIVE WORKOUT RULES (override broader programming options):
+      input: [{ role: "system", content: `T1 LIVE WORKOUT POLICY:
+Assess useful hypertrophic training quality, not an obligation to beat the logbook. Interpret load/reps with RIR, execution, pain and exercise-specific history. Normal variation alone is not a reason to intervene. Separate stimulus from fatigue; neither low RIR nor target attainment proves hypertrophy.
 Return KEEP by default. Change only the next unstarted set. No rest advice: sets may alternate with other exercises.
 ADJUST automatically changes prescribed load/rep range/RIR only. Never change actual logged performance.
 REMOVE_SET proposes removing the last remaining set. STOP_EXERCISE proposes removing all remaining sets. Both need user approval.
@@ -224,7 +223,15 @@ RIR bounds: within 0–4, at most 1 RIR from current target; never invent a miss
 Null fields mean leave unchanged. Do not repeat unchanged targets. Explain the smallest useful change in one short sentence.
 Do not add sets, rotate exercises, change rest, reorder, or alter future workouts. LOW confidence means KEEP.
 The numeric signal is a noisy within-exercise proxy, not a measure of stimulus or a fatigue diagnosis.` },
-      { role: "user", content: JSON.stringify({ context, signal, nextSet: { setNumber: target.setNumber, current, referenceLoad,
+      { role: "user", content: JSON.stringify({ context: {
+        exercise: Object.fromEntries(Object.entries(context.exercise).filter(([key]) => key !== "minimumWeightIncrement")),
+        triggerSetNumber: trigger.setNumber, triggerPrescription,
+        completedSets: context.currentSets.map((set) => Object.fromEntries(Object.entries(set).filter(([key]) => !["id", "rir"].includes(key)))),
+        remainingSetCount: remaining.length,
+        history: { ...context.history, exposures: context.history.exposures.map((sets) => sets.map((set) =>
+          Object.fromEntries(Object.entries(set).filter(([key]) => key !== "id")))) },
+        recentTraining: context.recentTraining, recovery: context.recovery,
+      }, signal, nextSet: { setNumber: target.setNumber, current, referenceLoad,
         minimumWeightIncrement, allowedLoadOptions, isIntensifier: target.setType.isIntensifier, isEdt: isEdtSetType(target.setType) }, memory }) }],
       text: { format: zodTextFormat(DecisionSchema, "live_workout_coach") },
     }, aiConfig.options);
