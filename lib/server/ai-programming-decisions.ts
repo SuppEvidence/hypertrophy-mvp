@@ -1,5 +1,6 @@
 "use server";
 
+import { summarizeIntraMesocycleCircumferences } from "@/lib/coaching/intra-mesocycle-circumferences";
 import { hasT3EarlyReviewEvidence } from "@/lib/coaching/t3-early-review";
 import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
 import { getApprovedWeekDoseContext } from "@/lib/server/weekly-coach-dose-context";
@@ -34,7 +35,7 @@ import {
   T3_REVIEW_LEASE_MS,
 } from "@/lib/coaching/t3-volume-policy";
 import { prisma } from "@/lib/db/prisma";
-import { selectMesocycleCheckins } from "@/lib/coaching/mesocycle-checkins";
+import { checkinQueryEndExclusive, selectMesocycleCheckins } from "@/lib/coaching/mesocycle-checkins";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { getDashboardData } from "@/lib/server/dashboard";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
@@ -490,7 +491,7 @@ async function buildProgrammingContext(userId: string) {
         isDraft: false,
         loggedAt: {
           gte: new Date(earliestHistoricalStart.getTime() - 14 * DAY_MS),
-          lte: new Date(),
+          lt: checkinQueryEndExclusive(new Date()),
         },
       },
       orderBy: { loggedAt: "asc" },
@@ -604,6 +605,15 @@ async function buildProgrammingContext(userId: string) {
     });
   });
 
+  const priorBlock = completedHistory[0];
+  const intraMesocycleCircumferences = summarizeIntraMesocycleCircumferences({
+    logs: historicalMetrics.map((row) => ({ ...row, logType: String(row.logType) })),
+    startDate: mesocycle.startDate,
+    endDate: mesocycle.actualEndDate ?? new Date(mesocycle.startDate.getTime() + mesocycle.lengthWeeks * 7 * DAY_MS - DAY_MS),
+    priorEndDate: priorBlock ? priorBlock.actualEndDate ?? new Date(priorBlock.startDate.getTime() + priorBlock.lengthWeeks * 7 * DAY_MS - DAY_MS) : null,
+    now: new Date(),
+  });
+
   const currentMovementVolumes = dashboard.movementCoverage.map((coverage) => {
     const target = mesocycle.movementVolumeTargets.find(
       (row) => row.movementGroupId === coverage.movementGroupId,
@@ -713,6 +723,7 @@ async function buildProgrammingContext(userId: string) {
       recoveryAndFatigue: dashboard.fatigueTrend,
       currentIntensifierUse: dashboard.intensifiers,
       bodyMetrics: dashboard.bodyMetrics,
+      intraMesocycleCircumferences,
       bodyComposition,
       declaredEnergyPhase,
       energyPhaseTimeline,
@@ -754,6 +765,7 @@ ${TRAINING_PROGRAMMING_POLICY}
 CURRENT TASK
 - Assess EVERY configured muscle against its outcome priority: SPECIALIZE, GROW, MAINTAIN, or INDIRECT_ONLY.
 - Upper, Mid, and Lower chest are separate coaching targets. Their exercise classification is an emphasis proxy, not exclusive anatomical recruitment or three independent recovery budgets. Chest (unclassified) is legacy or manually unassigned work; do not add it to a chest-region dose or infer that old total-chest targets prove a region-specific response.
+- Use intraMesocycleCircumferences (including OPTIONAL_CHECKIN observations) as supporting evidence of the current block response. Compare dated observations to the baseline when available, or clearly identify a first-observation reference when it is missing. Account for elapsed days, measurement noise, fat loss/gain, glycogen/water and measurement consistency. Flat circumference over a short interval is not failed stimulus; an isolated increase is not proof of growth. Cross-check execution, performance, recovery and completed dose before suggesting any volume change. Aggregate chest, shoulder, arm and thigh measurements cannot identify individual regional muscles or prove secondary-contribution fractions. Mention these observations only when they materially affect confidence or a recommendation.
 - Infer an individualized useful dose RANGE from current execution, stimulus, symptoms, recovery, body-composition context, historical response, and evidence quality. The range is coach-owned—not a user-set quota.
 - Previous estimated ranges and the activation baseline are evidence, NOT hard bounds. Revise the estimates when justified. The 0–60 validation ceiling is an application sanity check, not a physiological recommendation. Changing an estimate does not change training.
 - Produce 0 to 5 decision cards only where user approval is useful. Do not create a card merely to say that a muscle is on track; record that in assessments instead.
