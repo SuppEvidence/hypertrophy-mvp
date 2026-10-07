@@ -1,5 +1,6 @@
 "use server";
 
+import { hasT3EarlyReviewEvidence } from "@/lib/coaching/t3-early-review";
 import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
 import { getApprovedWeekDoseContext } from "@/lib/server/weekly-coach-dose-context";
 
@@ -997,18 +998,20 @@ export async function runT3VolumeEvaluationForUser(
     return { status: "ALREADY_RUNNING" as const };
   }
 
-  const latestSession = await prisma.workoutSession.findFirst({
+  const recentTriggerSessions = await prisma.workoutSession.findMany({
     where: {
       userId,
       mesocycleId: mesocycle.id,
       status: "COMPLETED",
       completedAt: { gte: mesocycle.t3ActivatedAt },
     },
+    take: 16,
     orderBy: [{ completedAt: "desc" }, { performedAt: "desc" }],
     select: { completedAt: true, performedAt: true, aiAnalyzedAt: true, aiAnalysis: true,
-      exercises: { select: { painFlag: true, sets: { where: { isCompleted: true }, select: { painFlag: true } } } },
+      exercises: { select: { id: true, exerciseId: true, exercise: { select: { movementGroupId: true } }, painFlag: true, sets: { where: { isCompleted: true }, select: { painFlag: true } } } },
     },
   });
+  const latestSession = recentTriggerSessions[0];
   const completedWorkoutsSinceActivation = await prisma.workoutSession.count({
     where: {
       userId,
@@ -1030,9 +1033,20 @@ export async function runT3VolumeEvaluationForUser(
         latestEvidenceAt &&
           (!mesocycle.t3LastEvaluatedAt || latestEvidenceAt > mesocycle.t3LastEvaluatedAt),
       ),
-      adverseSignal: latestAnalysis?.overallFatigueSignal === "HIGH" ||
-        latestAnalysis?.movementPatternAssessments.some((row) => row.overallFatigueCost === "HIGH" || row.implementationInterpretation === "PATTERN_WIDE_STALL") === true ||
+      adverseSignal: hasT3EarlyReviewEvidence(
+        { analysis: latestAnalysis, exercises: (latestSession?.exercises ?? []).map((row) => ({
+          id: row.id, exerciseId: row.exerciseId, movementGroupId: row.exercise.movementGroupId,
+        })) },
+        recentTriggerSessions.slice(1).filter((session) =>
+          (session.completedAt ?? session.performedAt).getTime() >= now.getTime() - 21 * DAY_MS
+        ).map((session) => ({
+          analysis: parseStoredAnalysis(session.aiAnalysis),
+          exercises: session.exercises.map((row) => ({
+            id: row.id, exerciseId: row.exerciseId, movementGroupId: row.exercise.movementGroupId,
+          })),
+        })),
         latestSession?.exercises.some((row) => row.painFlag || row.sets.some((set) => set.painFlag)) === true,
+      ),
       now,
     });
   if (!shouldRun) return { status: "NOT_DUE" as const };
