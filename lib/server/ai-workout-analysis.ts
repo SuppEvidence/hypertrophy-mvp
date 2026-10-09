@@ -5,6 +5,8 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { getOpenAIClient } from "@/lib/ai/openai";
+import { summarizeExposureTolerance } from "@/lib/coaching/exposure-tolerance";
+import { getEnergyPhaseContext, getEnergyPhaseTimeline } from "@/lib/server/energy-phases";
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
 import {
@@ -286,6 +288,7 @@ Core interpretation rules:
 - Compromised sets remain valid evidence about stimulus/fatigue and the circumstances of the exposure, but exclude them as clean anchors for performance progression and decay comparisons.
 - A single compromised set is not automatically a programming problem. Look for repetition, clustering within an exercise/pattern, symptoms, fatigue, and recovery context.
 - Stable or slightly variable weight/reps with good execution, suitable RIR, strong stimulus, manageable fatigue, and no adverse signals should generally be interpreted as productive maintenance of training quality, not stagnation.
+- Intensifier/EDT labels and low RIR do not automatically imply HIGH fatigue cost. Distinguish acute set effort from demonstrated impairment at later comparable exposures. Expected cluster decay is not abnormal recovery. Use individual history; absent follow-up evidence is uncertainty, not harm.
 - Separate hypertrophic stimulus from fatigue cost. A set may be HIGH stimulus and HIGH fatigue.
 - Compare performance decay primarily with the athlete's own history for the same exercise. Do not assume one universal acceptable decay rate.
 - Whole-set timer duration covers the complete set. For myo-rep/rest-pause/EDT-style work it includes the activation set plus all clusters. Cluster count is post-activation clusters. For drop sets, drop portions are explicitly supplied.
@@ -293,7 +296,7 @@ Core interpretation rules:
 - Do not compare absolute set duration across exercises. For unilateral exercises, duration may consistently represent only one side and should be treated as an exercise-specific within-history signal.
 - Primary muscles only means the app classifies the exercise as isolation. Any secondary muscle means compound. Treat this only as context; do not assume every compound is equally fatiguing.
 - Pain is an adverse signal and should raise fatigue/uncertainty where appropriate, but do not diagnose injuries.
-- Use exercise history over generic assumptions whenever enough history exists.
+- Use exercise history and exposureTolerance over generic assumptions whenever enough history exists. Compare subsequent same-exercise exposures after intensified work; distinguish associations from causation and missing anchors from impairment. Interpret performance in the declared phase: stable performance during CUTTING can be successful preservation; do not label it a pattern-wide stall merely for lacking gains. Account for phase changes, spacing, intervening workload and execution quality.
 - Historical logging quality can differ by era. Older exposures may have weight/reps/RIR but no set timer, cluster count, or drop-set detail because those fields were added later. Still use the available weight/reps/RIR evidence rather than discarding the exposure.
 - A historical exposure with at least one usable weight+reps set is valid evidence for performance progression. If RIR is also present, it can inform RIR plausibility/calibration.
 - Within-exercise performance decay requires at least two usable weight+reps sets in the same historical exposure. Do not confuse a lack of decay-comparable exposures with a total lack of exercise history.
@@ -367,7 +370,7 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
   // One recovery query + one batched history query. The previous implementation
   // performed separate history queries for every exercise and every movement
   // pattern in the workout.
-  const [recentRecovery, historicalExposures] = await Promise.all([
+  const [recentRecovery, historicalExposures, energyPhase, energyPhaseTimeline] = await Promise.all([
     prisma.metricLog.findMany({
       where: {
         userId,
@@ -413,6 +416,7 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
             exercise: {
               include: {
                 movementGroup: true,
+                primaryMuscles: true,
                 secondaryMuscles: true,
               },
             },
@@ -423,6 +427,8 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
             },
           },
         }),
+    getEnergyPhaseContext(userId, session.performedAt),
+    getEnergyPhaseTimeline(userId, session.performedAt),
   ]);
 
   const historyByExercise = new Map<string, typeof historicalExposures>();
@@ -607,6 +613,11 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
       performedAt: session.performedAt.toISOString(),
       completedAt: session.completedAt?.toISOString() ?? null,
     },
+    declaredEnergyPhase: energyPhase,
+    energyPhaseTimeline,
+    exposureTolerance: summarizeExposureTolerance([...historicalExposures, ...session.exercises.map((row) => ({
+      ...row, session: { performedAt: session.performedAt },
+    }))], energyPhaseTimeline),
     recentRecovery: recentRecovery.map((entry) => ({
       loggedAt: entry.loggedAt.toISOString(),
       sleepDuration: finiteNumber(entry.sleepDuration),

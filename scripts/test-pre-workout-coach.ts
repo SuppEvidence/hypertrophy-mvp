@@ -99,8 +99,8 @@ check("local pain creates caution", () => {
   assert.equal(inferLocalReadiness({ ...localBase, recentPainSets: 1 }).status, "CAUTION");
 });
 
-check("recent local workload creates recovering status", () => {
-  assert.equal(inferLocalReadiness({ ...localBase, hoursSinceLastExposure: 30, effectiveSetsLast48h: 2, effectiveSetsLast72h: 2 }).status, "RECOVERING");
+check("recent workload alone does not imply impaired recovery", () => {
+  assert.equal(inferLocalReadiness({ ...localBase, hoursSinceLastExposure: 30, effectiveSetsLast48h: 2, effectiveSetsLast72h: 2 }).status, "READY");
 });
 
 check("adequate history without warning signals reports ready", () => {

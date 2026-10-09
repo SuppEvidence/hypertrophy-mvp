@@ -236,14 +236,12 @@ export function inferLocalReadiness(input: LocalReadinessInput): LocalReadinessI
   if (input.recentCompromisedSets > 0) evidence.push(`${input.recentCompromisedSets} recent execution-compromised set${input.recentCompromisedSets === 1 ? "" : "s"}`);
 
   const highConcern = pain > 0 || input.recentCompromisedSets >= 2 || input.downwardExerciseSignals >= 2 ||
-    (input.hoursSinceLastExposure !== null && input.hoursSinceLastExposure < 24 && input.effectiveSetsLast48h >= 3) ||
     (input.globalRecoveryStatus === "HIGH_FATIGUE" && input.hoursSinceLastExposure !== null && input.hoursSinceLastExposure < 48);
   const recovering = !highConcern && (
     input.recentCompromisedSets === 1 || input.downwardExerciseSignals === 1 ||
-    (input.hoursSinceLastExposure !== null && input.hoursSinceLastExposure < 48 && input.effectiveSetsLast72h >= 2) ||
     (input.globalRecoveryStatus === "ELEVATED_FATIGUE" && input.hoursSinceLastExposure !== null && input.hoursSinceLastExposure < 72)
   );
-  const enoughEvidence = input.performanceExposureCount >= 3 || input.effectiveSetsLast72h > 0;
+  const enoughEvidence = input.performanceExposureCount >= 3;
   const status: LocalReadinessInference["status"] = highConcern
     ? "CAUTION"
     : recovering
@@ -257,7 +255,7 @@ export function inferLocalReadiness(input: LocalReadinessInput): LocalReadinessI
       ? "MODERATE"
       : "LOW";
   const interpretation = status === "CAUTION"
-    ? "Multiple local signals justify considering a smaller or different exposure; this is not a direct measurement of tissue recovery."
+    ? "Observed symptom, execution, performance or reported recovery concerns justify considering a smaller or different exposure; this is not a direct measurement of tissue recovery."
     : status === "RECOVERING"
       ? "Some local evidence favors a conservative session, but it is not strong enough to require removing the movement."
       : status === "READY"

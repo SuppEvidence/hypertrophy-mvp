@@ -1,3 +1,4 @@
+import { WeeklySetEditor } from "@/components/weekly/WeeklySetEditor";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -6,7 +7,7 @@ import { approveWeeklyCoachAction, generateWeeklyCoachAction, getWeeklyCoachView
 
 export const maxDuration = 300;
 
-export default async function WeeklyCoachPage({ searchParams }: { searchParams: Promise<{ error?: string; approved?: string; reviewed?: string; redistributed?: string; exerciseUpdated?: string }> }) {
+export default async function WeeklyCoachPage({ searchParams }: { searchParams: Promise<{ error?: string; approved?: string; reviewed?: string; redistributed?: string; setsUpdated?: string; exerciseUpdated?: string }> }) {
   const [view, query] = await Promise.all([getWeeklyCoachView(), searchParams]);
   const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const monday = view ? new Date(`${view.weekStart}T00:00:00Z`) : new Date();
@@ -16,6 +17,7 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
     {query.error ? <Card className="border-rose-500/30 text-sm text-rose-200">{query.error}</Card> : null}
     {query.approved ? <Card className="border-emerald-500/30 text-sm text-emerald-200">Weekly plan approved. Start its scheduled workouts from the logger.</Card> : null}
     {query.redistributed ? <Card className="border-sky-500/30 text-sm text-sky-200">Missed work has been redistributed into compatible upcoming sessions where capacity allows.</Card> : null}
+    {query.setsUpdated ? <Card className="border-emerald-500/30 text-sm text-emerald-200">Set allocation updated. Review the new weekly totals before approval.</Card> : null}
     {query.exerciseUpdated ? <Card className="border-emerald-500/30 text-sm text-emerald-200">Exercise updated in the weekly proposal. Review the revised week before approval.</Card> : null}
     {!view ? <Card>Activate a program to plan a week. <Link href="/programs" className="text-orange-300">Open programs</Link></Card> : <>
       <Card className="space-y-3">
@@ -52,22 +54,28 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
           {view.exerciseIssues.length} exercise {view.exerciseIssues.length === 1 ? "choice needs" : "choices need"} your decision. Exercises marked Avoid can be explicitly accepted; an unavailable exercise must be replaced before approval. The muscle estimates omit unavailable exercises until they are replaced.
         </p> : null}
         {view.allocated?.unallocatedSets ? <p className="rounded-lg border border-amber-500/30 p-2 text-xs text-amber-200">{view.allocated.unallocatedSets} physical sets from missed workouts could not fit into compatible remaining sessions.</p> : null}
-        {view.muscleSummary.length ? <details className="rounded-xl border border-slate-800 p-3 text-xs text-slate-300"><summary className="cursor-pointer font-semibold">Planned effective work across the week</summary>
-          <div className="mt-2 grid gap-1 sm:grid-cols-2">{view.muscleSummary.map((row) => <p key={row.name}>{row.name} · {row.priority.toLowerCase().replaceAll("_", " ")} · {row.weekly} estimated effective sets this week · largest session {row.largestSession}</p>)}</div>
-        </details> : null}
+        <div className="rounded-xl border border-slate-800 p-3 text-sm text-slate-300">
+          <p className="font-semibold">Weekly effective work · {view.weekEffectiveTotal.toFixed(1)} exercise sets</p>
+          <p className="text-xs text-slate-400">Completed actual work plus remaining planned work. Muscle estimates include secondary contributions; their sum differs from exercise-set totals.</p>
+          <div className="mt-2 overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th>Muscle / priority</th><th>Week</th><th>Target</th><th>Difference</th></tr></thead>
+          <tbody>{view.muscleSummary.map((row) => <tr key={row.id} className="border-t border-slate-800"><td className="py-2">{row.name} · {row.priority.toLowerCase().replaceAll("_", " ")}{row.doseReason ? <p className="max-w-md text-slate-400">{row.doseReason}</p> : null}</td><td>{row.weekly.toFixed(1)}</td><td>{row.target.toFixed(1)}</td><td className={row.weekly < row.target - .1 ? "text-amber-200" : "text-slate-300"}>{(row.weekly - row.target).toFixed(1)}</td></tr>)}</tbody></table></div>
+          {view.plan.userEdited ? <p className="mt-2 text-xs text-orange-300">User-adjusted proposal. The original coach summary describes its original allocation; the totals above reflect your edits.</p> : null}
+        </div>
         <div className="grid gap-3 md:grid-cols-2">
           {(view.allocated?.workouts ?? view.plan.workouts).map((day) => {
             const missed = view.missedIds.includes(day.id);
             const started = view.startedIds.includes(day.id);
             return <div key={day.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
               <h3 className="font-semibold text-slate-100">{day.date} · {view.templates.find((row) => row.id === day.templateId)?.name ?? "Workout"}</h3>
-              <p className="text-xs text-slate-400">{day.durationMinutes} minutes · {day.items.reduce((sum, item) => sum + item.sets, 0)} physical sets · {missed ? "Missed" : started ? "Started" : "Planned"}</p>
+              <p className="text-xs text-slate-400">{day.durationMinutes} minutes · {day.items.reduce((sum, item) => sum + item.sets, 0)} physical sets · {missed ? "Missed" : view.completedIds.includes(day.id) ? "Completed" : started ? "Started" : "Planned"}</p>
               <p className="mt-1 text-xs text-slate-500">{day.rationale}</p>
               <ul className="mt-2 space-y-2 text-xs text-slate-300">{day.items.map((item) => {
                 const issue = view.status === "PROPOSED" ? view.exerciseIssues.find((row) => row.occurrenceId === day.id && row.sourceSlotId === item.sourceSlotId) : null;
                 return <li key={item.sourceSlotId} className={issue ? "rounded-lg border border-amber-500/30 p-2" : ""}>
                   {item.sets} × {view.exerciseNames[item.exerciseId] ?? `Unavailable exercise ${item.exerciseId}`} · {item.reason}
                   <p className="mt-1 text-slate-400">Set types: {item.setTypeIds.map((id) => view.setTypeNames[id] ?? "Unavailable type").join(" · ")}</p>
+                  {view.status === "PROPOSED" && !view.proposalStale && !issue ? <WeeklySetEditor key={`${item.sourceSlotId}:${item.setTypeIds.join(",")}`} planId={view.recordId ?? ""} proposalVersion={view.proposalVersion} occurrenceId={day.id} sourceSlotId={item.sourceSlotId} setTypeIds={item.setTypeIds}
+                    options={view.editSetTypes.filter((type) => view.editAllowedTypes[item.exerciseId]?.includes(type.id) || item.setTypeIds.includes(type.id))} /> : null}
                   {issue ? <><p className="mt-1 text-amber-200">{issue.kind === "AVOID" ? "Marked Avoid in your coaching profile. You can accept it for this week or replace it." : "Inactive, archived, or absent from your exercise catalog. Choose a replacement before approval."}</p>
                     <form action={replaceWeeklyPlanExerciseAction} className="mt-2 flex flex-wrap items-end gap-2">
                       <input type="hidden" name="planId" value={view.recordId ?? ""} /><input type="hidden" name="occurrenceId" value={day.id} />

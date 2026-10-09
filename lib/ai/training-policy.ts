@@ -1,9 +1,13 @@
-export const TRAINING_POLICY_VERSION = "1.2";
+export const TRAINING_POLICY_VERSION = "1.3";
 
 /**
  * Stable hypertrophy-programming principles used by all AI recommendation layers.
  * Hard planner constraints should still be enforced deterministically in code.
  */
+export const RECOVERY_EVIDENCE_POLICY = `- Separate acute effort/within-set fatigue from residual fatigue that impairs later exposures. Neither intensifier labels, near-failure RIR, set multipliers nor recent volume alone establish impaired recovery. Do not reduce the current dose just in case.
+- Use exposureTolerance when supplied: repeated clean, stable or improving next exposures after intensified work support individual tolerance. Match exercise/pattern, effort, technique and spacing; consider intervening overlap and recovery. Missing comparable evidence is unknown, not proof of excessive fatigue. High acute fatigue can coexist with adequate recovery.
+- Interpret all dose-response evidence in the declared CUTTING/MAINTAINING/GAINING phase and phase timeline. During a cut, maintained execution/performance can be a successful response, and smaller circumferences can reflect fat/glycogen loss. Flat strength alone is not failed growth stimulus or reason to cut/add volume. During gaining, circumference increases can include fat/water. Do not claim hypertrophy from performance or tape measurements alone.`;
+
 export const TRAINING_PROGRAMMING_POLICY = `
 TRAINING PROGRAMMING POLICY v${TRAINING_POLICY_VERSION}
 
@@ -38,6 +42,7 @@ HYPERTROPHY PERFORMANCE, NOT LOGBOOK COMPETITION
 - Avoid surfacing trivial negative details to the athlete when they do not change the recommended action. Internal reasoning can be richer than the athlete-facing explanation.
 
 STIMULUS AND FATIGUE
+${RECOVERY_EVIDENCE_POLICY}
 - Do not equate low RIR with high hypertrophic stimulus automatically.
 - Do not equate failure with superior stimulus automatically.
 - Distinguish stimulus from fatigue cost. High-stimulus/high-fatigue work can be useful but should not be treated as universally preferable.
@@ -47,7 +52,7 @@ STIMULUS AND FATIGUE
 - Do not interpret one poor workout as evidence that volume must change.
 
 VOLUME DECISIONS
-- HOLD is the default when evidence is mixed, sparse, or does not clearly justify change.
+- HOLD means preserving the established current dose when evidence is mixed or sparse, not silently prescribing less.
 - Increase volume only when current stimulus appears insufficient or there is a strong reason to test a higher dose AND recovery capacity supports it.
 - Do not increase volume merely because recovery is good or because a muscle is a priority.
 - Increase in small steps. Normally prefer +1 to +2 weekly sets rather than large jumps.
@@ -80,7 +85,7 @@ COMPOUND VS ISOLATION
 
 INTENSIFIERS
 - Intensifiers are tools, not default progression methods.
-- Prefer straight sets when they solve the problem equally well.
+- Use safe, preferred intensifiers when they preserve useful stimulus within time constraints and historical tolerance supports them. Do not penalize their labels or share of work as evidence of impaired recovery.
 - Do not recommend intensifiers merely to make training harder.
 - High-risk/high-fatigue squat and hinge compounds should not receive drop sets, myo-reps, or rest-pause recommendations. Similar compound patterns should default to straight sets unless an explicit deterministic whitelist later permits otherwise.
 - Isolation and stable machine/cable work may use intensifiers when they improve time efficiency or stimulus without creating disproportionate fatigue.

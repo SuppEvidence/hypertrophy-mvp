@@ -81,13 +81,13 @@ assert.equal(validateWeeklyCoachPlan(safeSwap, allowedSwap).ok, true);
 const tooMany = { ...withDrop, workouts: withDrop.workouts.map((row, index) => index ? row : {
   ...row, items: [{ ...row.items[0], setTypeIds: [type, drop, drop] }],
 }) };
-assert.match(validateWeeklyCoachPlan(tooMany, intensifierEvidence).errors.join(" "), /at most one new intensifier/);
+assert.equal(validateWeeklyCoachPlan(tooMany, intensifierEvidence).ok, true, "Eligible intensifier count alone does not imply recovery impairment");
 const capped = normalizeWeeklySetTypes(tooMany, {
   candidates: evidence.candidates, regularSetTypeIds: [type], introducibleSetTypeIdsByExercise: eligible,
   multipliers: intensifierEvidence.multipliers,
 });
-assert.deepEqual(capped.workouts[0].items[0].setTypeIds, [type, drop, type],
-  "A second new intensifier is returned to a regular set");
+assert.deepEqual(capped.workouts[0].items[0].setTypeIds, [type, drop, drop],
+  "Eligible intensified work is preserved instead of silently reducing its effective dose");
 assert.equal(validateWeeklyCoachPlan(capped, intensifierEvidence).ok, true);
 assert.equal(validateWeeklyCoachPlan(withDrop, evidence).ok, false, "Unapproved intensifiers cannot be introduced");
 assert.deepEqual(weeklyIntroducibleSetTypes([{ ...lateral, movementGroupName: "Squat" }], kinds)[exercise], []);

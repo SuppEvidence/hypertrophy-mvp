@@ -1,5 +1,6 @@
 "use server";
 
+import { summarizeExposureTolerance } from "@/lib/coaching/exposure-tolerance";
 import { summarizeIntraMesocycleCircumferences } from "@/lib/coaching/intra-mesocycle-circumferences";
 import { hasT3EarlyReviewEvidence } from "@/lib/coaching/t3-early-review";
 import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
@@ -730,6 +731,7 @@ async function buildProgrammingContext(userId: string) {
       globalRecovery,
       localizedReadiness,
       rawExerciseEvidence,
+      exposureTolerance: summarizeExposureTolerance(rawHistory, energyPhaseTimeline),
       evidenceCautions: "AI stimulus/readiness and set multipliers are estimates. Completed volume is not prescribed capacity. Circumference is not direct proof of hypertrophy. Legacy Chest (unclassified) priorities and targets predate the upper/mid/lower split; never treat them as region-specific history. Mapped exercise exposures can provide provisional regional dose history, but their old classification was less precise. Consider adherence, recent changes and measurement noise. Low confidence defaults to HOLD, except a modest protective reduction for observed symptoms.",
       recentAiEvidence,
       historicalDoseResponse,

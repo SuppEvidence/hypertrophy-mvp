@@ -15,10 +15,13 @@ export const WeeklyCoachWorkoutSchema = z.object({
   rationale: z.string().min(1).max(400),
   items: z.array(WeeklyCoachItemSchema).min(1).max(16),
 });
+export const WeeklyDoseReviewSchema = z.object({ muscleId: z.string(), reason: z.string().min(1).max(400) });
 export const WeeklyCoachPlanSchema = z.object({
   version: z.literal("W1"),
   weekStart: z.iso.date(),
   summary: z.string().min(1).max(1800),
+  doseReviews: z.array(WeeklyDoseReviewSchema).max(30).optional(),
+  userEdited: z.boolean().optional(),
   workouts: z.array(WeeklyCoachWorkoutSchema).min(1).max(7),
 });
 export type WeeklyCoachPlan = z.infer<typeof WeeklyCoachPlanSchema>;
@@ -28,6 +31,7 @@ export const WeeklyCoachDeltaSchema = z.object({
   version: z.literal("WD1"),
   weekStart: z.iso.date(),
   summary: z.string().min(1).max(1800),
+  doseReviews: z.array(WeeklyDoseReviewSchema).max(30).optional(),
   changes: z.array(z.object({
     date: z.iso.date(),
     templateId: z.string().uuid(),
@@ -74,15 +78,13 @@ export function normalizeWeeklySetTypes(plan: WeeklyCoachPlan, input: {
   const defaultType = input.regularSetTypeIds.find((id) => regular.has(id));
   if (!defaultType) return plan;
   return { ...plan, workouts: plan.workouts.map((day) => {
-    let introduced = 0;
     return { ...day, items: day.items.map((item) => {
       const source = candidates.get(item.sourceSlotId);
       let changed = false;
       const setTypeIds = item.setTypeIds.map((id, index) => {
         const retained = source?.exerciseId === item.exerciseId && source.setTypeIds[index] === id;
         if (valid(id) && (regular.has(id) || retained)) return id;
-        if (valid(id) && introduced < 1 && input.introducibleSetTypeIdsByExercise[item.exerciseId]?.includes(id)) {
-          introduced += 1;
+        if (valid(id) && input.introducibleSetTypeIdsByExercise[item.exerciseId]?.includes(id)) {
           return id;
         }
         changed = true;
@@ -142,7 +144,6 @@ export function validateWeeklyCoachPlan(plan: WeeklyCoachPlan, input: {
     if (!input.templateIds.includes(workout.templateId)) errors.push("Unknown template framework.");
     if (workout.durationMinutes !== dates.get(workout.date)) errors.push("Session time differs from availability.");
     let totalSets = 0;
-    let newIntensifiers = 0;
     const seenSlots = new Set<string>();
     const seenExercises = new Set<string>();
     const sessionMuscles = new Map<string, number>();
@@ -164,8 +165,7 @@ export function validateWeeklyCoachPlan(plan: WeeklyCoachPlan, input: {
       for (const [index, typeId] of item.setTypeIds.entries()) {
         const retainingExisting = source && source.exerciseId === item.exerciseId && source.setTypeIds[index] === typeId;
         if (!input.regularSetTypeIds.includes(typeId) && !retainingExisting) {
-          if (input.introducibleSetTypeIdsByExercise?.[item.exerciseId]?.includes(typeId)) newIntensifiers += 1;
-          else errors.push(`${workout.date}: set type ${typeId} is unsuitable for this exercise or its coaching preferences.`);
+          if (!input.introducibleSetTypeIdsByExercise?.[item.exerciseId]?.includes(typeId)) errors.push(`${workout.date}: set type ${typeId} is unsuitable for this exercise or its coaching preferences.`);
         }
         if (!Number.isFinite(input.multipliers[typeId]) || input.multipliers[typeId] <= 0) errors.push("Unknown set type.");
       }
@@ -176,7 +176,6 @@ export function validateWeeklyCoachPlan(plan: WeeklyCoachPlan, input: {
         for (const row of exercise.secondaryMuscles) sessionMuscles.set(row.muscleId, (sessionMuscles.get(row.muscleId) ?? 0) + effective * row.fraction);
       }
     }
-    if (newIntensifiers > 1) errors.push(`${workout.date}: at most one new intensifier may be planned per workout.`);
     for (const [muscleId, effective] of sessionMuscles) {
       weeklyMuscles.set(muscleId, (weeklyMuscles.get(muscleId) ?? 0) + effective);
       peakMuscles.set(muscleId, Math.max(peakMuscles.get(muscleId) ?? 0, effective));

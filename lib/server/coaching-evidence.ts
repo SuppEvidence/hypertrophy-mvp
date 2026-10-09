@@ -24,7 +24,7 @@ export async function loadCoachingHistory(userId: string, programId: string, sin
       painFlag: true,
       painImpact: true,
       exercise: { select: { name: true, movementGroupId: true,
-        primaryMuscles: { select: { muscleId: true } }, secondaryMuscles: { select: { muscleId: true } },
+        primaryMuscles: { select: { muscleId: true } }, secondaryMuscles: { select: { muscleId: true, contributionEstimate: true } },
       } },
       session: { select: { templateId: true, performedAt: true } },
       sets: {

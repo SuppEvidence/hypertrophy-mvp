@@ -53,7 +53,6 @@ export function carryForwardWeek(input: {
       else unique.set(item.exerciseId, { ...item, setTypeIds: [...item.setTypeIds] });
     }
     const used = new Set<string>();
-    let newlyIntroduced = 0;
     const items = [...unique.values()].flatMap((item) => {
       const exercise = allowed.get(item.exerciseId);
       if (!exercise || !item.setTypeIds.length) return [];
@@ -66,8 +65,7 @@ export function carryForwardWeek(input: {
       used.add(slotId);
       const types = item.setTypeIds.slice(0, 8).map((id, setIndex) => {
         if (regular.has(id) || (source?.exerciseId === exercise.id && source.setTypeIds[setIndex] === id)) return id;
-        if (newlyIntroduced < 1 && input.introducibleSetTypeIdsByExercise?.[exercise.id]?.includes(id)) {
-          newlyIntroduced += 1;
+        if (input.introducibleSetTypeIdsByExercise?.[exercise.id]?.includes(id)) {
           return id;
         }
         return baseType;
@@ -97,7 +95,7 @@ export function applyWeeklyCoachDelta(base: WeeklyCoachPlan, delta: WeeklyCoachD
   if (new Set(delta.changes.map((change) => change.date)).size !== delta.changes.length ||
       delta.changes.some((change) => !days.has(change.date))) return null;
   const changes = new Map(delta.changes.map((change) => [change.date, change]));
-  return { ...base, summary: delta.summary, workouts: base.workouts.map((day) => {
+  return { ...base, summary: delta.summary, doseReviews: delta.doseReviews, userEdited: false, workouts: base.workouts.map((day) => {
     const change = changes.get(day.date);
     return change ? { ...day, templateId: change.templateId, rationale: change.rationale, items: change.items } : day;
   }) };

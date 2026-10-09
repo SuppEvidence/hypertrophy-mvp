@@ -278,7 +278,7 @@ export function buildIntensifierSummary(sessions: DashboardSessionInput[]): Inte
     effectiveVolume: round(effectiveVolume),
     intensifierEffectiveVolume: round(intensifierEffectiveVolume),
     share: round(share * 100),
-    isInflated: share >= 0.25 && intensifierSets > 0,
+    isInflated: false,
   };
 }
 

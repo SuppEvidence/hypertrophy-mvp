@@ -15,6 +15,7 @@ import {
   type PreWorkoutCoachProposal,
 } from "@/lib/ai/pre-workout-coach-schema";
 import { WorkoutAnalysisSchema } from "@/lib/ai/workout-analysis-schema";
+import { summarizeExposureTolerance } from "@/lib/coaching/exposure-tolerance";
 import { TRAINING_PROGRAMMING_POLICY } from "@/lib/ai/training-policy";
 import {
   inferBodyCompositionTrend,
@@ -337,6 +338,7 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
     energyPhaseTimeline: context.energyPhaseTimeline,
     globalRecovery: context.globalRecovery,
     localizedReadiness: context.localizedReadiness,
+    exposureTolerance: summarizeExposureTolerance(context.history, context.energyPhaseTimeline),
     recentWorkoutAnalyses: context.recentAnalyses.slice(0, 4),
     priorCoachingChoices: context.interventions.slice(0, 4).map((row) => ({
       date: row.createdAt.toISOString(), status: row.status,
