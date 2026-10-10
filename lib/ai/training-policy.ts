@@ -1,15 +1,32 @@
-export const TRAINING_POLICY_VERSION = "1.3";
+export const TRAINING_POLICY_VERSION = "1.4";
 
 /**
  * Stable hypertrophy-programming principles used by all AI recommendation layers.
  * Hard planner constraints should still be enforced deterministically in code.
  */
+export const COACH_COMMUNICATION_POLICY = `COACH COMMUNICATION
+- Speak directly to the athlete in plain language. Lead with what to do and why it matters; use only the supporting evidence needed to understand the recommendation.
+- Omit routine reassurance, empty status statements ("phase OK", "no need to change phase", "no persistent changes need approval"), metric inventories, schema labels and repeated caveats. Do not turn internal assessments into an analytics report.
+- Keep required structured classifications for the app, but allow free-text summaries/rationales to be empty when there is no useful advice or meaningful observation. Empty advice is not an error. Preserve material pain/safety concerns and uncertainty affecting a decision.
+- Positive feedback is useful only when specific and informative, not generic praise. Do not repeat the same conclusion across summary, body context and decision cards. Never invent a recommendation to fill a field.`;
+
+export const T3_PHASE_RECOMMENDATION_POLICY = `ENERGY-PHASE ADVICE (T3 ONLY)
+- phaseRecommendation is null unless there is an actionable recommendation to consider moving from the current CUTTING phase to MAINTAINING. Never emit a keep/OK phase message. Do not repeat this advice in other output fields.
+- Recommend considering maintenance only for sustained, meaningful performance deterioration across at least two distinct movement patterns over repeated comparable exposures, with the current deficit a plausible contributor. Flat or slower progress, one bad session, one affected exercise, soreness or intensifier labels alone are insufficient. A productive cut with stable/improving performance needs no phase advice.
+- Compare same-exercise load/reps at comparable RIR, execution, set protocol, placement and spacing. Pattern IDs alone do not prove independent problems: several overlapping press patterns may reflect one local joint issue. Prefer evidence spanning unrelated patterns/muscles. Specify dated observations in evidence and exact affectedMovementPatternIds from supplied history; sourcePhaseStartDate must equal declaredEnergyPhase.startDate.
+- Combine phase timeline, actual bodyweight/waist trajectory and dated recovery observations. Sleep, stress, readiness, manual fatigue and joint irritation help distinguish explanations. Missing entries are unknown; subjective fatigue is corroboration, not mandatory. Good mood does not invalidate repeated objective deterioration.
+- Investigate pain, illness/stress if recorded, sleep, exercise/order/protocol changes, recent volume changes and scheduling before attributing deterioration to the deficit. Current phase is declared intent, not measured energy balance. Consider a smaller deficit or a local training adjustment when better supported; do not manufacture certainty or automatically reduce volume when energy availability may explain the problem.
+- MODERATE/HIGH confidence expresses confidence in the usefulness of considering maintenance, not proof of causation. Explain the tradeoff with continued fat loss, the strongest evidence, relevant competing explanations and when to reassess using repeated comparable exposures and recovery trends. Do not prescribe calories or promise renewed progression.
+- Phase changes are manual in Metrics. Never change phase, volume, or priorities through this advisory. After a recorded switch, use dated before/after observations where available; account for transition lag, glycogen/water changes and simultaneous training changes. Do not claim the phase change caused an improvement or repeat an obsolete cut recommendation.`;
+
 export const RECOVERY_EVIDENCE_POLICY = `- Separate acute effort/within-set fatigue from residual fatigue that impairs later exposures. Neither intensifier labels, near-failure RIR, set multipliers nor recent volume alone establish impaired recovery. Do not reduce the current dose just in case.
 - Use exposureTolerance when supplied: repeated clean, stable or improving next exposures after intensified work support individual tolerance. Match exercise/pattern, effort, technique and spacing; consider intervening overlap and recovery. Missing comparable evidence is unknown, not proof of excessive fatigue. High acute fatigue can coexist with adequate recovery.
 - Interpret all dose-response evidence in the declared CUTTING/MAINTAINING/GAINING phase and phase timeline. During a cut, maintained execution/performance can be a successful response, and smaller circumferences can reflect fat/glycogen loss. Flat strength alone is not failed growth stimulus or reason to cut/add volume. During gaining, circumference increases can include fat/water. Do not claim hypertrophy from performance or tape measurements alone.`;
 
 export const TRAINING_PROGRAMMING_POLICY = `
 TRAINING PROGRAMMING POLICY v${TRAINING_POLICY_VERSION}
+
+${COACH_COMMUNICATION_POLICY}
 
 OBJECTIVE
 - Maximize useful hypertrophic stimulus while controlling fatigue, pain risk, execution quality, session complexity, and unnecessary volume.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PhaseRecommendationSchema } from "./phase-recommendation-schema";
 
 export const MesocycleConfidenceSchema = z.enum(["LOW", "MODERATE", "HIGH"]);
 export const MesocycleHistoryModeSchema = z.enum([
@@ -32,6 +33,7 @@ export const MesocycleSymptomPrecautionSchema = z.object({
 });
 
 export const MesocycleRecommendationSchema = z.object({
+  phaseRecommendation: PhaseRecommendationSchema.nullable().optional(),
   summary: z.string(),
   confidence: MesocycleConfidenceSchema,
   historyMode: MesocycleHistoryModeSchema,

@@ -1,5 +1,8 @@
 "use server";
 
+import { PhaseRecommendationSchema } from "@/lib/ai/phase-recommendation-schema";
+import { validatePhaseRecommendation } from "@/lib/coaching/phase-recommendation";
+
 import { summarizeExposureTolerance } from "@/lib/coaching/exposure-tolerance";
 import { summarizeIntraMesocycleCircumferences } from "@/lib/coaching/intra-mesocycle-circumferences";
 import { hasT3EarlyReviewEvidence } from "@/lib/coaching/t3-early-review";
@@ -21,6 +24,7 @@ import {
 import {
   TRAINING_POLICY_VERSION,
   TRAINING_PROGRAMMING_POLICY,
+  T3_PHASE_RECOMMENDATION_POLICY,
 } from "@/lib/ai/training-policy";
 import {
   WorkoutAnalysisSchema,
@@ -357,7 +361,7 @@ async function buildProgrammingContext(userId: string) {
         },
       }),
       prisma.workoutSession.findMany({
-        where: { userId, programId, status: "COMPLETED", performedAt: { gte: new Date(Date.now() - 90 * DAY_MS), lte: new Date() } },
+        where: { userId, programId, status: "COMPLETED", performedAt: { gte: new Date(Date.now() - 90 * DAY_MS), lt: checkinQueryEndExclusive(new Date()) } },
         orderBy: { performedAt: "desc" },
         take: RECENT_AI_SESSIONS,
         select: {
@@ -729,6 +733,7 @@ async function buildProgrammingContext(userId: string) {
       declaredEnergyPhase,
       energyPhaseTimeline,
       globalRecovery,
+      recoveryObservations: currentMetrics.slice(0, 42).map((row) => ({ ...row, loggedAt: row.loggedAt.toISOString(), bodyweight: finiteNumber(row.bodyweight), waist: finiteNumber(row.waist), sleepDuration: finiteNumber(row.sleepDuration) })),
       localizedReadiness,
       rawExerciseEvidence,
       exposureTolerance: summarizeExposureTolerance(rawHistory, energyPhaseTimeline),
@@ -763,6 +768,7 @@ You are the T3 priority-based volume-coaching layer for a hypertrophy training a
 When approvedWeek is supplied, use its completed and not-completed doses to interpret this week's actual implementation. Template doses describe the persistent framework, not an additional workload. Do not recommend a change merely to repeat an allocation already approved for this week. Persistent decision options still refer to template movement targets; explain any remaining discrepancy instead of conflating it with completed dose.
 
 ${TRAINING_PROGRAMMING_POLICY}
+${T3_PHASE_RECOMMENDATION_POLICY}
 
 CURRENT TASK
 - Assess EVERY configured muscle against its outcome priority: SPECIALIZE, GROW, MAINTAIN, or INDIRECT_ONLY.
@@ -822,7 +828,7 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
     ],
     text: {
       format: zodTextFormat(
-        ProgrammingRecommendationsSchema,
+        ProgrammingRecommendationsSchema.extend({ phaseRecommendation: PhaseRecommendationSchema.nullable() }),
         "hypertrophy_programming_recommendations",
       ),
     },
@@ -837,6 +843,7 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
   }
 
   const { parsed, notes: reviewNotes } = validateT3Review(output, validation);
+  parsed.phaseRecommendation = validatePhaseRecommendation(parsed.phaseRecommendation, context.declaredEnergyPhase, context.rawExerciseEvidence.map((row) => row.movementPatternId));
   const optionPreviews: Record<string, Record<string, T3PlanPreview>> = {};
   const recentChanges = await prisma.aiProgrammingDecision.findMany({
     where: { userId, mesocycleId, status: "SELECTED", selectedAt: { gte: new Date(Date.now() - 7 * DAY_MS) } },
@@ -946,6 +953,7 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
           generatedAt: now.toISOString(),
           globalSummary: parsed.globalSummary,
           bodyCompositionContext: parsed.bodyCompositionContext,
+          phaseRecommendation: parsed.phaseRecommendation ?? null,
           assessments: parsed.assessments,
           reviewNotes,
         } as unknown as Prisma.InputJsonValue,

@@ -1,5 +1,7 @@
 "use server";
 
+import { PhaseRecommendationSchema } from "@/lib/ai/phase-recommendation-schema";
+import { validatePhaseRecommendation } from "@/lib/coaching/phase-recommendation";
 import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
 
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
@@ -18,7 +20,7 @@ import {
 } from "@/lib/ai/mesocycle-recommendation-schema";
 import { getOpenAIClient } from "@/lib/ai/openai";
 import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
-import { TRAINING_PROGRAMMING_POLICY } from "@/lib/ai/training-policy";
+import { TRAINING_PROGRAMMING_POLICY, T3_PHASE_RECOMMENDATION_POLICY } from "@/lib/ai/training-policy";
 import {
   WorkoutAnalysisSchema,
   type WorkoutAnalysis,
@@ -409,10 +411,11 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
               orderBy: { setNumber: "asc" },
               select: {
                 setNumber: true,
+                weight: true, reps: true, rir: true, painFlag: true,
                 isCompleted: true,
                 intensifierDetails: true,
                 setType: {
-                  select: { multiplier: true, isIntensifier: true },
+                  select: { multiplier: true, isIntensifier: true, slug: true, name: true },
                 },
               },
             },
@@ -512,6 +515,11 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
 
   const declaredEnergyPhase = await getEnergyPhaseContext(userId, now);
   const energyPhaseTimeline = await getEnergyPhaseTimeline(userId, now);
+  const recoveryObservations = await prisma.metricLog.findMany({
+    where: { userId, isDraft: false, loggedAt: { gte: new Date(now.getTime() - 42 * DAY_MS), lt: checkinQueryEndExclusive(now) } },
+    orderBy: { loggedAt: "desc" }, take: 84,
+    select: { loggedAt: true, bodyweight: true, waist: true, sleepDuration: true, sleepQuality: true, stress: true, readiness: true, manualFatigue: true, sorenessJointIrritation: true },
+  });
   const primaryPatternMap = new Map<string, { primaryMuscle: string; movementPatternName: string; availableExerciseCount: number; exampleExercises: string[]; preferredExamples: string[] }>();
   for (const exercise of candidateExercises.filter((entry) => entry.coachingProfiles[0]?.preference !== "AVOID")) {
     for (const link of exercise.primaryMuscles) {
@@ -528,6 +536,7 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
     policy: TRAINING_PROGRAMMING_POLICY,
     declaredEnergyPhase,
     energyPhaseTimeline,
+    recoveryObservations: recoveryObservations.map((row) => ({ ...row, loggedAt: row.loggedAt.toISOString(), bodyweight: finiteNumber(row.bodyweight), waist: finiteNumber(row.waist), sleepDuration: finiteNumber(row.sleepDuration) })),
     historyMode,
     historyInterpretation:
       historyMode === "FIRST_MESOCYCLE"
@@ -591,6 +600,13 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
       workoutName: session.name,
       ...summarizeCoachAnalysis(analysis),
     })),
+    recentPerformanceObservations: sessions.slice(-16).map((session) => ({
+      date: session.performedAt.toISOString(),
+      exercises: session.exercises.map((row, index) => ({ name: row.exercise.name, movementPatternId: row.exercise.movementGroupId, position: index + 1, pain: row.painFlag,
+        // Early sets anchor comparisons; the existing workout synthesis covers later decay.
+        sets: row.sets.slice(0, 2).map((set) => ({ weight: finiteNumber(set.weight), reps: set.reps, rir: finiteNumber(set.rir), pain: set.painFlag, protocol: set.setType.slug, execution: parseExecutionCompromise(set.intensifierDetails),
+          protocolDetails: set.intensifierDetails })) })),
+    })),
     symptomEvidence: symptomSummary,
     executionEvidence: executionSummary,
     bodyMetrics: {
@@ -640,11 +656,14 @@ function createRuntimeMesocycleSchema(context: Awaited<ReturnType<typeof buildMe
   ];
 
   if (muscleNames.length === 0) {
-    return MesocycleRecommendationSchema;
+    return MesocycleRecommendationSchema.extend({
+      phaseRecommendation: PhaseRecommendationSchema.nullable(),
+    });
   }
 
   const muscleNameSchema = z.enum(muscleNames as [string, ...string[]]);
   return MesocycleRecommendationSchema.extend({
+    phaseRecommendation: PhaseRecommendationSchema.nullable(),
     historyMode: z.literal(context.historyMode),
     nextPriorities: z
       .array(
@@ -665,6 +684,7 @@ function createRuntimeMesocycleSchema(context: Awaited<ReturnType<typeof buildMe
 
 const MESOCYCLE_SYSTEM_INSTRUCTIONS = `
 You are the end-of-mesocycle hypertrophy programming advisor inside a training tracker.
+${T3_PHASE_RECOMMENDATION_POLICY}
 
 Use the supplied deterministic data and the Programming Policy as hard guidance. Your job is to recommend the NEXT mesocycle, not to diagnose injury and not to rewrite the entire program without cause.
 
@@ -729,6 +749,7 @@ export async function generateMesocycleRecommendationForUser(userId: string, req
     );
   }
 
+  parsed.phaseRecommendation = validatePhaseRecommendation(parsed.phaseRecommendation, context.declaredEnergyPhase, context.recentPerformanceObservations.flatMap((row) => row.exercises.map((exercise) => exercise.movementPatternId)));
   const assigned = new Map(context.currentMesocycle.priorityAssignments.map((row) => [row.muscleName, row.priority]));
   const rank = { INDIRECT_ONLY: 0, MAINTAIN: 1, GROW: 2, SPECIALIZE: 3 };
   const seen = new Set<string>();

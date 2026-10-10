@@ -140,7 +140,7 @@ export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMi
             </span>
           </div>
 
-          <p className="text-sm leading-6 text-slate-200">{result.proposal.summary}</p>
+          {result.proposal.summary ? <p className="text-sm leading-6 text-slate-200">{result.proposal.summary}</p> : null}
           {result.display.continuity.lastCompletedAt ? (
             <details className="rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-xs text-slate-400">
               <summary className="cursor-pointer font-semibold text-slate-200">Compared with last {result.display.continuity.sameMesocycle ? "same-block" : "previous-block"} workout of this template</summary>

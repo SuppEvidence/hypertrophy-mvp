@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PhaseRecommendationSchema } from "./phase-recommendation-schema";
 
 export const ProgrammingConfidenceSchema = z.enum([
   "LOW",
@@ -86,6 +87,7 @@ export const ProgrammingDecisionProposalSchema = z.object({
 });
 
 export const ProgrammingRecommendationsSchema = z.object({
+  phaseRecommendation: PhaseRecommendationSchema.nullable().optional(),
   globalSummary: z.string().max(1200),
   bodyCompositionContext: z.string().max(900),
   assessments: z.array(T3MuscleAssessmentSchema).min(1).max(24),

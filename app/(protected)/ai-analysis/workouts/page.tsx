@@ -185,14 +185,14 @@ export default async function WorkoutAnalysisPage({
 
               {analysis ? (
                 <div className="mt-4">
-                  <div className="rounded-xl border border-emerald-400/15 bg-emerald-500/[0.04] p-3">
+                  {analysis.workoutSummary ? <div className="rounded-xl border border-emerald-400/15 bg-emerald-500/[0.04] p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-300/70">
                       Coach read
                     </p>
                     <p className="mt-1 text-sm leading-6 text-slate-200">
                       {analysis.workoutSummary}
                     </p>
-                  </div>
+                  </div> : null}
 
                   <details className="mt-4 border-t border-white/[0.06] pt-3">
                     <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">

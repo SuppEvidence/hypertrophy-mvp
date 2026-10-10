@@ -20,14 +20,14 @@ export const PreWorkoutPlanItemSchema = z.object({
   minReps: z.number().int().min(3).max(30).nullable(),
   maxReps: z.number().int().min(3).max(30).nullable(),
   targetRir: z.number().min(0).max(4).nullable(),
-  reason: z.string().min(1).max(500),
+  reason: z.string().max(500),
 });
 
 export const PreWorkoutCoachModelPlanSchema = z.object({
   decision: PreWorkoutDecisionSchema,
   confidence: PreWorkoutConfidenceSchema,
   baseTemplateId: z.string().uuid(),
-  summary: z.string().min(1).max(1200),
+  summary: z.string().max(1200),
   constraintsApplied: z.array(z.string().min(1).max(240)).max(6),
   items: z.array(PreWorkoutPlanItemSchema).min(1).max(12),
 });

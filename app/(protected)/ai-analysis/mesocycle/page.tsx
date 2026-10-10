@@ -1,3 +1,4 @@
+import { PhaseRecommendation } from "@/components/coaching/PhaseRecommendation";
 import { Card } from "@/components/ui/Card";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -151,9 +152,7 @@ export default async function MesocycleRecommendationsPage({
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
                   Next-block summary
                 </p>
-                <p className="mt-2 text-sm leading-6 text-slate-300">
-                  {recommendation.summary}
-                </p>
+                {recommendation.summary ? <p className="mt-2 text-sm leading-6 text-slate-300">{recommendation.summary}</p> : null}
               </div>
               <div className="flex flex-wrap gap-2">
                 <span
@@ -168,23 +167,24 @@ export default async function MesocycleRecommendationsPage({
                 </span>
               </div>
             </div>
+            <PhaseRecommendation value={recommendation.phaseRecommendation} />
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+              {recommendation.currentBlockAssessment ? <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Current block
                 </p>
                 <p className="mt-2 text-xs leading-5 text-slate-400">
                   {recommendation.currentBlockAssessment}
                 </p>
-              </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+              </div> : null}
+              {recommendation.bodyMetricInterpretation ? <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Body metrics
                 </p>
                 <p className="mt-2 text-xs leading-5 text-slate-400">
                   {recommendation.bodyMetricInterpretation}
                 </p>
-              </div>
+              </div> : null}
             </div>
             {current.aiRecommendedAt ? (
               <p className="mt-3 text-[11px] text-slate-600">

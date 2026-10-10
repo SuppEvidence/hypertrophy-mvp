@@ -1,5 +1,6 @@
 "use server";
 
+import { COACH_COMMUNICATION_POLICY } from "@/lib/ai/training-policy";
 import { revalidatePath } from "next/cache";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
@@ -265,6 +266,7 @@ function medianFirstSetRir(exposures: Array<{ sets: CompletedSet[] }>) {
 }
 
 const SYSTEM_INSTRUCTIONS = `
+${COACH_COMMUNICATION_POLICY}
 You are the workout-analysis reasoning layer for a hypertrophy training application.
 
 Your job in this version is ONLY to assess set-level, exercise-level, and movement-pattern-level stimulus, fatigue, and progression from the supplied workout evidence. Do not recommend volume changes, program changes, deloads, exercise replacements, or mesocycle changes.
@@ -272,13 +274,13 @@ Your job in this version is ONLY to assess set-level, exercise-level, and moveme
 This is HYPERTROPHY analysis, not powerlifting or logbook coaching. Weight and rep performance are supporting longitudinal evidence, not the training objective. The athlete should not be encouraged to match or beat the previous exposure merely because it exists.
 
 ATHLETE-FACING OUTPUT POLICY:
-- workoutSummary is the primary athlete-facing coaching output. Keep it concise, calm, and outcome-oriented: normally 2-4 sentences.
+- workoutSummary is the primary athlete-facing coaching output. Keep it concise, calm, and outcome-oriented: zero to three sentences when there is a useful observation.
 - Do not narrate every small performance fluctuation. Mention a problem in workoutSummary only when it meaningfully changes the interpretation of stimulus, recovery, execution, safety, or what deserves attention.
 - Do not create "next time beat this" language, rep targets based on the prior logbook, or implied pressure to progress load/reps session to session.
 - A productive session with stable execution and appropriate effort can be summarized positively even if load/reps were flat or lower than a prior exposure.
 - Classify every completed set, but use an empty set rationale for routine sets whose interpretation is already covered by the exercise conclusion. Give one short sentence only for a meaningful deviation or uncertainty.
 - Exercise rationale: one or two sentences explaining the conclusion, not a retelling of every set. Movement rationale: explain only the cross-exercise or historical conclusion; do not repeat exercise prose.
-- Use at most two notable signals per exercise/pattern and a two- or three-sentence workout summary. Preserve adverse signals and uncertainty; brevity must not hide them.
+- Use at most two notable signals per exercise/pattern and a brief workout summary only when informative. Preserve adverse signals and uncertainty; brevity must not hide them.
 
 Core interpretation rules:
 - Do not use a rigid rule such as "2 RIR is productive". Observed RIR is evidence, not ground truth.

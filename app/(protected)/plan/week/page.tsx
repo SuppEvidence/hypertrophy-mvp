@@ -48,7 +48,7 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
         )}
       </Card>
       {view.plan ? <Card className="space-y-4 border-orange-500/20">
-        <div><p className="text-xs font-semibold uppercase text-orange-300">{view.status === "APPROVED" ? "Approved weekly plan" : "Coach proposal · needs your approval"}</p><p className="mt-1 text-sm text-slate-300">{view.plan.summary}</p></div>
+        <div><p className="text-xs font-semibold uppercase text-orange-300">{view.status === "APPROVED" ? "Approved weekly plan" : "Coach proposal · needs your approval"}</p>{view.plan.summary ? <p className="mt-1 text-sm text-slate-300">{view.plan.summary}</p> : null}</div>
         {view.proposalStale ? <p className="text-sm text-amber-200">Your logged workouts or available dates changed since this proposal. Run the review again before approval.</p> : null}
         {view.status === "PROPOSED" && view.exerciseIssues.length ? <p className="rounded-lg border border-amber-500/30 p-3 text-sm text-amber-100">
           {view.exerciseIssues.length} exercise {view.exerciseIssues.length === 1 ? "choice needs" : "choices need"} your decision. Exercises marked Avoid can be explicitly accepted; an unavailable exercise must be replaced before approval. The muscle estimates omit unavailable exercises until they are replaced.

@@ -5,21 +5,21 @@ export const WeeklyCoachItemSchema = z.object({
   exerciseId: z.string().uuid(),
   sets: z.number().int().min(1).max(8),
   setTypeIds: z.array(z.string().uuid()).min(1).max(8),
-  reason: z.string().min(1).max(240),
+  reason: z.string().max(240),
 });
 export const WeeklyCoachWorkoutSchema = z.object({
   id: z.string().uuid(),
   date: z.iso.date(),
   templateId: z.string().uuid(),
   durationMinutes: z.number().int().min(20).max(120),
-  rationale: z.string().min(1).max(400),
+  rationale: z.string().max(400),
   items: z.array(WeeklyCoachItemSchema).min(1).max(16),
 });
-export const WeeklyDoseReviewSchema = z.object({ muscleId: z.string(), reason: z.string().min(1).max(400) });
+export const WeeklyDoseReviewSchema = z.object({ muscleId: z.string(), reason: z.string().max(400) });
 export const WeeklyCoachPlanSchema = z.object({
   version: z.literal("W1"),
   weekStart: z.iso.date(),
-  summary: z.string().min(1).max(1800),
+  summary: z.string().max(1800),
   doseReviews: z.array(WeeklyDoseReviewSchema).max(30).optional(),
   userEdited: z.boolean().optional(),
   workouts: z.array(WeeklyCoachWorkoutSchema).min(1).max(7),
@@ -30,12 +30,12 @@ export type WeeklyCoachPlan = z.infer<typeof WeeklyCoachPlanSchema>;
 export const WeeklyCoachDeltaSchema = z.object({
   version: z.literal("WD1"),
   weekStart: z.iso.date(),
-  summary: z.string().min(1).max(1800),
+  summary: z.string().max(1800),
   doseReviews: z.array(WeeklyDoseReviewSchema).max(30).optional(),
   changes: z.array(z.object({
     date: z.iso.date(),
     templateId: z.string().uuid(),
-    rationale: z.string().min(1).max(400),
+    rationale: z.string().max(400),
     items: z.array(WeeklyCoachItemSchema).min(1).max(16),
   })).max(7),
 });

@@ -263,12 +263,12 @@ function defaultPlan(context: Awaited<ReturnType<typeof buildContext>>): PreWork
       minReps: candidate.minReps,
       maxReps: candidate.maxReps,
       targetRir: candidate.targetRir,
-      reason: "Keep the current template prescription.",
+      reason: "",
     }));
   if (items.length === 0) throw new Error("Selected template has no prescribed exercises.");
   return {
     decision: "KEEP", confidence: "MODERATE", baseTemplateId: context.input.templateId,
-    summary: "Current evidence does not justify changing the selected workout before training.",
+    summary: "",
     constraintsApplied: [], items,
   };
 }

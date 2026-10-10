@@ -1,3 +1,4 @@
+import { PhaseRecommendation } from "@/components/coaching/PhaseRecommendation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
@@ -172,9 +173,8 @@ export default async function VolumeRecommendationsPage({
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
                   Latest T3 assessment · {mesocycle?.t3EvaluationStatus.toLowerCase().replaceAll("_", " ")}
                 </p>
-                <p className="mt-2 text-sm leading-6 text-slate-300">
-                  {summary ?? "Waiting for enough current-block evidence to assess the useful dose. The baseline remains in place."}
-                </p>
+                {summary ? <p className="mt-2 text-sm leading-6 text-slate-300">{summary}</p> : null}
+                <PhaseRecommendation value={storedAssessment?.phaseRecommendation} />
                 {bodyContext ? <p className="mt-2 text-xs leading-5 text-slate-500">{bodyContext}</p> : null}
                 {mesocycle?.t3EvaluationError ? <p className="mt-2 text-xs text-rose-300">{mesocycle.t3EvaluationError}</p> : null}
                 {stringArray(storedAssessment?.reviewNotes).map((note, index) => <p key={index} className="mt-2 text-xs text-amber-200">{note}</p>)}

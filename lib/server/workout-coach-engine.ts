@@ -1,3 +1,4 @@
+import { COACH_COMMUNICATION_POLICY } from "@/lib/ai/training-policy";
 import "server-only";
 
 import { Prisma } from "@prisma/client";
@@ -208,7 +209,8 @@ export async function runLiveWorkoutCoach(userId: string, input: { sessionId: st
     const requestStartedAt = Date.now();
     const response = await getOpenAIClient().responses.parse({
       ...aiConfig.request,
-      input: [{ role: "system", content: `T1 LIVE WORKOUT POLICY:
+      input: [{ role: "system", content: `${COACH_COMMUNICATION_POLICY}
+T1 LIVE WORKOUT POLICY:
 Assess useful hypertrophic training quality, not an obligation to beat the logbook. Interpret load/reps with RIR, execution, pain and exercise-specific history. Normal variation alone is not a reason to intervene. Separate stimulus from fatigue; neither low RIR nor target attainment proves hypertrophy.
 Return KEEP by default. Change only the next unstarted set. No rest advice: sets may alternate with other exercises.
 ADJUST automatically changes prescribed load/rep range/RIR only. Never change actual logged performance.
