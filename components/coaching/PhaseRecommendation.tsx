@@ -8,7 +8,7 @@ export async function PhaseRecommendation({ value }: { value: unknown }) {
   if (!parsed.success) return null;
   const phase = await getEnergyPhaseContext(await requireUserId());
   const advice = parsed.data;
-  if (phase?.phase !== "CUTTING" || phase.startDate !== advice.sourcePhaseStartDate) return null;
+  if (!phase || phase.phase !== (advice.sourcePhase ?? "CUTTING") || phase.startDate !== advice.sourcePhaseStartDate) return null;
   return <aside className="mt-3 rounded-xl border border-orange-500/30 bg-orange-500/5 p-3">
     <p className="text-sm leading-6 text-slate-200">{advice.recommendation}</p>
     <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-400">

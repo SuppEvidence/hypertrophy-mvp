@@ -1,6 +1,6 @@
 "use server";
 
-import { PhaseRecommendationSchema } from "@/lib/ai/phase-recommendation-schema";
+import { ModelPhaseRecommendationSchema } from "@/lib/ai/phase-recommendation-schema";
 import { validatePhaseRecommendation } from "@/lib/coaching/phase-recommendation";
 
 import { summarizeExposureTolerance } from "@/lib/coaching/exposure-tolerance";
@@ -828,7 +828,7 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
     ],
     text: {
       format: zodTextFormat(
-        ProgrammingRecommendationsSchema.extend({ phaseRecommendation: PhaseRecommendationSchema.nullable() }),
+        ProgrammingRecommendationsSchema.extend({ phaseRecommendation: ModelPhaseRecommendationSchema.nullable() }),
         "hypertrophy_programming_recommendations",
       ),
     },

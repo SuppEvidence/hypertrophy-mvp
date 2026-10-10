@@ -1,6 +1,6 @@
 "use server";
 
-import { PhaseRecommendationSchema } from "@/lib/ai/phase-recommendation-schema";
+import { ModelPhaseRecommendationSchema } from "@/lib/ai/phase-recommendation-schema";
 import { validatePhaseRecommendation } from "@/lib/coaching/phase-recommendation";
 import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
 
@@ -657,13 +657,13 @@ function createRuntimeMesocycleSchema(context: Awaited<ReturnType<typeof buildMe
 
   if (muscleNames.length === 0) {
     return MesocycleRecommendationSchema.extend({
-      phaseRecommendation: PhaseRecommendationSchema.nullable(),
+      phaseRecommendation: ModelPhaseRecommendationSchema.nullable(),
     });
   }
 
   const muscleNameSchema = z.enum(muscleNames as [string, ...string[]]);
   return MesocycleRecommendationSchema.extend({
-    phaseRecommendation: PhaseRecommendationSchema.nullable(),
+    phaseRecommendation: ModelPhaseRecommendationSchema.nullable(),
     historyMode: z.literal(context.historyMode),
     nextPriorities: z
       .array(
