@@ -22,6 +22,11 @@ export const WeeklyCoachPlanSchema = z.object({
   summary: z.string().max(1800),
   doseReviews: z.array(WeeklyDoseReviewSchema).max(30).optional(),
   userEdited: z.boolean().optional(),
+  // Written by the manual editor only; never part of AI output schemas.
+  manualSetTypeOverrides: z.array(z.object({
+    occurrenceId: z.string().uuid(), sourceSlotId: z.string(), exerciseId: z.string().uuid(),
+    setTypeIds: z.array(z.string().uuid()).max(8),
+  })).max(112).optional(),
   // Application-owned display metadata; excluded from model response schemas.
   lineage: z.object({
     source: z.enum(["TEMPLATES", "CARRY_FORWARD"]),
@@ -120,6 +125,7 @@ export function validateWeeklyCoachPlan(plan: WeeklyCoachPlan, input: {
   candidates: WeeklyCandidate[];
   exercises: WeeklyExercise[];
   regularSetTypeIds: string[];
+  manualSetTypeOverrides?: WeeklyCoachPlan["manualSetTypeOverrides"];
   introducibleSetTypeIdsByExercise?: Record<string, string[]>;
   multipliers: Record<string, number>;
   priorities?: Record<string, string>;
@@ -170,7 +176,10 @@ export function validateWeeklyCoachPlan(plan: WeeklyCoachPlan, input: {
       if (item.setTypeIds.length !== item.sets) errors.push("Every physical set must have a set type.");
       for (const [index, typeId] of item.setTypeIds.entries()) {
         const retainingExisting = source && source.exerciseId === item.exerciseId && source.setTypeIds[index] === typeId;
-        if (!input.regularSetTypeIds.includes(typeId) && !retainingExisting) {
+        const manuallyChosen = input.manualSetTypeOverrides?.some((override) =>
+          override.occurrenceId === workout.id && override.sourceSlotId === item.sourceSlotId &&
+          override.exerciseId === item.exerciseId && override.setTypeIds[index] === typeId);
+        if (!input.regularSetTypeIds.includes(typeId) && !retainingExisting && !manuallyChosen) {
           if (!input.introducibleSetTypeIdsByExercise?.[item.exerciseId]?.includes(typeId)) errors.push(`${workout.date}: set type ${typeId} is unsuitable for this exercise or its coaching preferences.`);
         }
         if (!Number.isFinite(input.multipliers[typeId]) || input.multipliers[typeId] <= 0) errors.push("Unknown set type.");

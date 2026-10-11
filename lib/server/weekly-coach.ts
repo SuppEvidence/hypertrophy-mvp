@@ -156,7 +156,6 @@ export async function getWeeklyCoachView(requestedWeek?: string) {
     program, weekStart: week.weekStart, today: week.today, isUpcoming: week.isUpcoming, weekOptions: options, completedSessions: baseline.sessions,
     exerciseNames: Object.fromEntries(availableExercises.map((row) => [row.id, row.name])),
     editSetTypes: prescription?.setTypes.map((row) => ({ id: row.id, name: row.name, multiplier: Number(row.multiplier) })) ?? [],
-    editAllowedTypes: prescription ? Object.fromEntries(availableExercises.map((row) => [row.id, [...regularWeeklySetTypeIds(prescription.setTypes.map((t) => ({ ...t, multiplier: Number(t.multiplier) }))), ...(weeklyIntroducibleSetTypes([row], prescription.setTypes.map((t) => ({ ...t, multiplier: Number(t.multiplier) })))[row.id] ?? [])]])) : {},
     weekEffectiveTotal: baseline.sessions.reduce((sum, row) => sum + row.effectiveSets, 0) + (allocated?.workouts ?? plan?.workouts ?? []).filter((day) => !missedIds.includes(day.id) && !completedIds.includes(day.id)).reduce((sum, day) => sum + day.items.reduce((n, item) => n + item.setTypeIds.reduce((v, id) => v + (multiplier.get(id) ?? 0), 0), 0), 0),
     setTypeNames: Object.fromEntries(prescription?.setTypes.map((row) => [row.id, row.name]) ?? []),
     exerciseIssues, availableExercises: availableExercises.filter((row) => !row.avoided).map((row) => ({
@@ -279,10 +278,10 @@ Plan the remaining hypertrophy workouts for this week. Completed sessions are fi
           secondary: row.secondaryMuscles.filter((link) => Number(link.contributionEstimate ?? 0) > 0)
             .map((link) => ({ name: link.muscleName, fraction: Number(link.contributionEstimate) })) })),
         setTypes: prescription.setTypes.map((row) => ({ id: row.id, name: row.name, multiplier: Number(row.multiplier),
-          regular: normalIds.includes(row.id) })), priorDoseAssessment, recent, metrics, startingWeek: carried ? { ...carried, lineage: undefined } : null }) },
+          regular: normalIds.includes(row.id) })), priorDoseAssessment, recent, metrics, startingWeek: carried ? { ...carried, lineage: undefined, manualSetTypeOverrides: undefined } : null }) },
     ];
     const response = await getOpenAIClient().responses.parse({ ...aiConfig.request,
-      input: modelInput, text: { format: zodTextFormat(carried ? WeeklyCoachDeltaSchema.extend({ doseReviews: z.array(WeeklyDoseReviewSchema).max(30) }) : WeeklyCoachPlanSchema.omit({ userEdited: true, lineage: true }).extend({ doseReviews: z.array(WeeklyDoseReviewSchema).max(30) }),
+      input: modelInput, text: { format: zodTextFormat(carried ? WeeklyCoachDeltaSchema.extend({ doseReviews: z.array(WeeklyDoseReviewSchema).max(30) }) : WeeklyCoachPlanSchema.omit({ userEdited: true, lineage: true, manualSetTypeOverrides: true }).extend({ doseReviews: z.array(WeeklyDoseReviewSchema).max(30) }),
         carried ? "weekly_coach_delta" : "weekly_coach_plan") },
     }, aiConfig.options);
     logCoachingModelUsage(aiConfig, response, started);
@@ -305,6 +304,8 @@ Plan the remaining hypertrophy workouts for this week. Completed sessions are fi
       candidates, regularSetTypeIds: normalIds, introducibleSetTypeIdsByExercise: introducible,
       multipliers: Object.fromEntries(setTypes.map((row) => [row.id, row.multiplier])),
     });
+    // AI output can never create manual permissions, even if unexpected fields arrive.
+    delete plan.manualSetTypeOverrides;
     const validation = validateWeeklyCoachPlan(plan, { weekStart: weekStartText, availability, templateIds, candidates, exercises,
       regularSetTypeIds: normalIds, introducibleSetTypeIdsByExercise: introducible,
       multipliers: Object.fromEntries(prescription.setTypes.map((row) => [row.id, Number(row.multiplier)])),
@@ -388,6 +389,7 @@ export async function approveWeeklyCoachAction(formData: FormData) {
   }
   const regular = regularWeeklySetTypeIds(current.setTypes.map((row) => ({ ...row, multiplier: Number(row.multiplier) })));
   const checked = validateWeeklyCoachPlan(proposed, { weekStart: week.weekStart,
+    manualSetTypeOverrides: proposed.manualSetTypeOverrides,
     availability: proposed.workouts.map((row) => ({ date: row.date, minutes: row.durationMinutes, id: row.id })),
     templateIds: current.program.templates.map((row) => row.id), candidates: weeklyCandidates(current), exercises,
     regularSetTypeIds: regular, introducibleSetTypeIdsByExercise: weeklyIntroducibleSetTypes(exercises, current.setTypes.map((row) => ({ ...row, multiplier: Number(row.multiplier) }))),
@@ -429,7 +431,9 @@ export async function replaceWeeklyPlanExerciseAction(formData: FormData) {
   }
   const regular = regularWeeklySetTypeIds(current.setTypes.map((row) => ({ ...row, multiplier: Number(row.multiplier) })));
   if (!regular.length) redirect(plannerUrl(week.weekStart, "error=No%20regular%20set%20type%20is%20available."));
-  const adjusted = { ...plan, userEdited: true, doseReviews: undefined, workouts: plan.workouts.map((day) => day.id !== occurrenceId ? day : { ...day,
+  const adjusted = { ...plan,
+    manualSetTypeOverrides: plan.manualSetTypeOverrides?.filter((row) => row.occurrenceId !== occurrenceId || row.sourceSlotId !== sourceSlotId),
+    userEdited: true, doseReviews: undefined, workouts: plan.workouts.map((day) => day.id !== occurrenceId ? day : { ...day,
     items: day.items.map((item) => item.sourceSlotId !== sourceSlotId ? item : {
       ...item, sourceSlotId: sourceSlotId.startsWith("exercise:") ||
         (source && source.movementGroupId !== chosen.movementGroupId && source.exerciseId !== chosen.id)
@@ -440,6 +444,7 @@ export async function replaceWeeklyPlanExerciseAction(formData: FormData) {
       reason: `${item.reason.slice(0, 160)} User selected ${chosen.name}.`.slice(0, 240),
     }) }) };
   const checked = validateWeeklyCoachPlan(adjusted, { weekStart: week.weekStart,
+    manualSetTypeOverrides: adjusted.manualSetTypeOverrides,
     availability: adjusted.workouts.map((day) => ({ date: day.date, minutes: day.durationMinutes, id: day.id })),
     templateIds: current.program.templates.map((row) => row.id), candidates: weeklyCandidates(current), exercises,
     regularSetTypeIds: regular, introducibleSetTypeIdsByExercise: weeklyIntroducibleSetTypes(exercises, current.setTypes.map((row) => ({ ...row, multiplier: Number(row.multiplier) }))),
@@ -480,12 +485,16 @@ export async function editWeeklyPlanSetsAction(formData: FormData) {
   if (!target || !Number.isInteger(count) || count < 0 || count > 8 || targetDay!.date < week.today) redirect(plannerUrl(week.weekStart, "error=Invalid%20set%20adjustment."));
   if (count === 0 && targetDay!.items.length === 1) redirect(plannerUrl(week.weekStart, "error=Keep%20at%20least%20one%20exercise%20in%20this%20workout."));
   const regular = regularWeeklySetTypeIds(current.setTypes.map((row) => ({ ...row, multiplier: Number(row.multiplier) })));
-  const adjusted = { ...plan, userEdited: true, doseReviews: undefined, workouts: plan.workouts.map((day) => day.id !== occurrenceId ? day : { ...day,
+  const selectedTypes = Array.from({ length: count }, (_, index) => String(formData.get(`setType:${index}`) ?? ""));
+  const manualSetTypeOverrides = (plan.manualSetTypeOverrides ?? []).filter((row) => row.occurrenceId !== occurrenceId || row.sourceSlotId !== sourceSlotId);
+  if (count > 0) manualSetTypeOverrides.push({ occurrenceId, sourceSlotId, exerciseId: target.exerciseId, setTypeIds: selectedTypes });
+  const adjusted = { ...plan, manualSetTypeOverrides, userEdited: true, doseReviews: undefined, workouts: plan.workouts.map((day) => day.id !== occurrenceId ? day : { ...day,
     items: day.items.flatMap((item) => item.sourceSlotId !== sourceSlotId ? [item] : count === 0 ? [] : [{ ...item, sets: count,
-      setTypeIds: Array.from({ length: count }, (_, index) => String(formData.get(`setType:${index}`) ?? "")),
+      setTypeIds: selectedTypes,
       reason: "User adjusted weekly set count/types; review updated totals before approval.",
     }]) }) };
   const checked = validateWeeklyCoachPlan(adjusted, { weekStart: week.weekStart,
+    manualSetTypeOverrides: adjusted.manualSetTypeOverrides,
     availability: adjusted.workouts.map((day) => ({ date: day.date, minutes: day.durationMinutes, id: day.id })),
     templateIds: current.program.templates.map((row) => row.id), candidates: weeklyCandidates(current), exercises,
     regularSetTypeIds: regular, introducibleSetTypeIdsByExercise: weeklyIntroducibleSetTypes(exercises, current.setTypes.map((row) => ({ ...row, multiplier: Number(row.multiplier) }))),

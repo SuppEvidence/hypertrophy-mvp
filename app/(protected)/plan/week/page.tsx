@@ -85,8 +85,8 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
                 return <li key={item.sourceSlotId} className={issue ? "rounded-lg border border-amber-500/30 p-2" : ""}>
                   {item.sets} × {view.exerciseNames[item.exerciseId] ?? `Unavailable exercise ${item.exerciseId}`} · {item.reason}
                   <p className="mt-1 text-slate-400">Set types: {item.setTypeIds.map((id) => view.setTypeNames[id] ?? "Unavailable type").join(" · ")}</p>
-                  {view.status === "PROPOSED" && !view.proposalStale && !issue ? <WeeklySetEditor key={`${item.sourceSlotId}:${item.setTypeIds.join(",")}`} weekStart={view.weekStart} planId={view.recordId ?? ""} proposalVersion={view.proposalVersion} occurrenceId={day.id} sourceSlotId={item.sourceSlotId} setTypeIds={item.setTypeIds}
-                    options={view.editSetTypes.filter((type) => view.editAllowedTypes[item.exerciseId]?.includes(type.id) || item.setTypeIds.includes(type.id))} /> : null}
+                  {view.status === "PROPOSED" && !view.proposalStale && issue?.kind !== "UNAVAILABLE" ? <WeeklySetEditor key={`${item.sourceSlotId}:${item.setTypeIds.join(",")}`} weekStart={view.weekStart} planId={view.recordId ?? ""} proposalVersion={view.proposalVersion} occurrenceId={day.id} sourceSlotId={item.sourceSlotId} setTypeIds={item.setTypeIds}
+                    options={view.editSetTypes} /> : null}
                   {issue ? <><p className="mt-1 text-amber-200">{issue.kind === "AVOID" ? "Marked Avoid in your coaching profile. You can accept it for this week or replace it." : "Inactive, archived, or absent from your exercise catalog. Choose a replacement before approval."}</p>
                     <form action={replaceWeeklyPlanExerciseAction} className="mt-2 flex flex-wrap items-end gap-2">
                       <input type="hidden" name="weekStart" value={view.weekStart} /><input type="hidden" name="planId" value={view.recordId ?? ""} /><input type="hidden" name="occurrenceId" value={day.id} />

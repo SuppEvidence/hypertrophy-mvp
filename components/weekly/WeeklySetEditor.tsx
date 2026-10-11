@@ -15,6 +15,7 @@ export function WeeklySetEditor(props: {
   return <details className="mt-2 rounded-lg border border-slate-700 p-2">
     <summary className="cursor-pointer text-orange-300">Adjust sets / set types</summary>
     <form action={editWeeklyPlanSetsAction} className="mt-2 space-y-2">
+      <p className="text-xs text-slate-400">Manual adjustment · all active set types are available. Coach suggestions still follow exercise preferences.</p>
       <input type="hidden" name="weekStart" value={props.weekStart} />
       <input type="hidden" name="planId" value={props.planId} />
       <input type="hidden" name="proposalVersion" value={props.proposalVersion} />
