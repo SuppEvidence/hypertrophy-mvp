@@ -27,8 +27,8 @@ async function getActiveMesocycle(programId: string, userId: string, now = new D
   });
   return mesocycles.find((mesocycle) => addDays(mesocycle.startDate, mesocycle.lengthWeeks * 7) > now) ?? null;
 }
-async function getMesocycleForPrescription(programId: string, userId: string, mesocycleId?: string | null) {
-  if (!mesocycleId) return getActiveMesocycle(programId, userId);
+async function getMesocycleForPrescription(programId: string, userId: string, mesocycleId?: string | null, asOf?: Date) {
+  if (!mesocycleId) return getActiveMesocycle(programId, userId, asOf);
   return prisma.programMesocycle.findFirst({
     where: { id: mesocycleId, programId, userId, isArchived: false },
     include: {
@@ -43,7 +43,7 @@ async function getMesocycleForPrescription(programId: string, userId: string, me
 export async function buildProgramPrescription(
   programId: string,
   userId: string,
-  options?: { mesocycleId?: string | null; includeWeeklyPlan?: boolean; weeklyOccurrenceId?: string | null },
+  options?: { mesocycleId?: string | null; includeWeeklyPlan?: boolean; weeklyOccurrenceId?: string | null; asOf?: Date },
 ) {
   const includeWeeklyPlan = options?.includeWeeklyPlan !== false;
   const approvedOccurrence = options?.weeklyOccurrenceId
@@ -79,7 +79,7 @@ export async function buildProgramPrescription(
         },
       },
     }),
-    getMesocycleForPrescription(programId, userId, options?.mesocycleId),
+    getMesocycleForPrescription(programId, userId, options?.mesocycleId, options?.asOf),
     includeWeeklyPlan
       ? prisma.workoutSession.findMany({
           where: {

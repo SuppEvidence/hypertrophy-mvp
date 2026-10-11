@@ -17,6 +17,29 @@ export function coachedWeek(now = new Date()) {
     start: helsinkiMidnight(weekStart), end: helsinkiMidnight(nextMonday.toISOString().slice(0, 10)) };
 }
 
+/** Planner-only selection. Logger and dose-context callers keep coachedWeek(). */
+export function plannerWeekOptions(now = new Date()) {
+  const current = coachedWeek(now);
+  const next = coachedWeek(new Date(Date.parse(`${current.weekStart}T12:00:00Z`) + 7 * 86_400_000));
+  const weekday = new Date(`${current.today}T12:00:00Z`).getUTCDay();
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Helsinki", hour: "2-digit", hourCycle: "h23" }).format(now));
+  const nextAvailable = weekday === 0 && hour >= 12;
+  return { current: current.weekStart, next: next.weekStart, nextAvailable,
+    defaultWeek: nextAvailable ? next.weekStart : current.weekStart };
+}
+
+export function resolvePlannerWeek(requested?: string, now = new Date()) {
+  const options = plannerWeekOptions(now);
+  const selected = requested ?? options.defaultWeek;
+  if (selected !== options.current && !(options.nextAvailable && selected === options.next)) {
+    throw new Error("Choose the current week. Upcoming-week planning opens Sunday at 12:00 Helsinki time.");
+  }
+  const range = coachedWeek(new Date(`${selected}T12:00:00Z`));
+  const current = coachedWeek(now);
+  return { ...range, today: current.today, isUpcoming: selected !== options.current,
+    prescriptionAsOf: selected !== options.current ? new Date(`${selected}T12:00:00Z`) : now };
+}
+
 function helsinkiMidnight(date: string) {
   const noon = new Date(`${date}T12:00:00Z`);
   const zone = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Helsinki", timeZoneName: "shortOffset" })

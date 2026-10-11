@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { editWeeklyPlanSetsAction } from "@/lib/server/weekly-coach";
 
 export function WeeklySetEditor(props: {
-  planId: string; proposalVersion: string; occurrenceId: string; sourceSlotId: string; setTypeIds: string[];
+  weekStart: string; planId: string; proposalVersion: string; occurrenceId: string; sourceSlotId: string; setTypeIds: string[];
   options: { id: string; name: string; multiplier: number }[];
 }) {
   const [count, setCount] = useState(props.setTypeIds.length);
@@ -15,6 +15,7 @@ export function WeeklySetEditor(props: {
   return <details className="mt-2 rounded-lg border border-slate-700 p-2">
     <summary className="cursor-pointer text-orange-300">Adjust sets / set types</summary>
     <form action={editWeeklyPlanSetsAction} className="mt-2 space-y-2">
+      <input type="hidden" name="weekStart" value={props.weekStart} />
       <input type="hidden" name="planId" value={props.planId} />
       <input type="hidden" name="proposalVersion" value={props.proposalVersion} />
       <input type="hidden" name="occurrenceId" value={props.occurrenceId} />

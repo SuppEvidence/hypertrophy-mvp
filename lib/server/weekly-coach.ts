@@ -18,7 +18,7 @@ import { prisma } from "@/lib/db/prisma";
 import { WeeklyCoachPlanSchema, WeeklyCoachDeltaSchema, consolidateWeeklyExercises, normalizeWeeklySetTypes, validateWeeklyCoachPlan, weeklyExerciseIssues } from "@/lib/coaching/weekly-coach-policy";
 import { applyWeeklyCoachDelta, carryForwardWeek } from "@/lib/coaching/weekly-coach-continuity";
 import { completedWeekBaseline, parseCompletedBaseline } from "@/lib/coaching/weekly-coach-baseline";
-import { coachedWeek } from "@/lib/coaching/weekly-coach-calendar";
+import { coachedWeek, plannerWeekOptions, resolvePlannerWeek } from "@/lib/coaching/weekly-coach-calendar";
 import { parseWeeklyCoachPlan, parseMissedOccurrenceIds, reallocateMissedWeeklyWork, weeklyOccurrenceFromSummary } from "@/lib/coaching/weekly-coach-runtime";
 import { toDateOnly } from "@/lib/templates/weeklyPlan";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
@@ -27,6 +27,20 @@ import { freshT3Assessment } from "@/lib/coaching/coach-evidence-summary";
 import { WorkoutAnalysisSchema } from "@/lib/ai/workout-analysis-schema";
 import { regularWeeklySetTypeIds, weeklyIntroducibleSetTypes } from "@/lib/coaching/weekly-set-types";
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
+
+
+function actionPlannerWeek(formData: FormData) {
+  try {
+    // Older already-rendered forms without a week stay on the actual current week.
+    return resolvePlannerWeek(String(formData.get("weekStart") || coachedWeek().weekStart));
+  } catch {
+    redirect("/plan/week?error=Upcoming-week%20planning%20opens%20Sunday%20at%2012%3A00%20Helsinki%20time.");
+  }
+}
+
+function plannerUrl(weekStart: string, query = "") {
+  return `/plan/week?week=${weekStart}${query ? `&${query}` : ""}`;
+}
 
 function readAvailability(formData: FormData, weekStart: Date, today: string, completedDates: Set<string>) {
   return Array.from({ length: 7 }, (_, day) => {
@@ -91,15 +105,17 @@ function weeklyCandidates(prescription: NonNullable<Awaited<ReturnType<typeof bu
   }));
 }
 
-export async function getWeeklyCoachView() {
+export async function getWeeklyCoachView(requestedWeek?: string) {
   const userId = await requireUserId();
   const program = await prisma.program.findFirst({ where: { userId, isActive: true, isArchived: false }, select: { id: true, name: true } });
   if (!program) return null;
-  const week = coachedWeek();
+  const options = plannerWeekOptions();
+  const allowed = requestedWeek === options.current || (options.nextAvailable && requestedWeek === options.next);
+  const week = resolvePlannerWeek(allowed ? requestedWeek : undefined);
   const weekStart = week.dbWeekStart;
   const [record, prescription, sessions, actualBaseline, availableExercises] = await Promise.all([
     prisma.weeklyCoachPlan.findUnique({ where: { programId_weekStart: { programId: program.id, weekStart } } }),
-    buildProgramPrescription(program.id, userId, { includeWeeklyPlan: false }),
+    buildProgramPrescription(program.id, userId, { includeWeeklyPlan: false, asOf: week.prescriptionAsOf }),
     currentWeekSessions(userId, program.id, week),
     currentCompletedBaseline(userId, program.id, week),
     activeExerciseOptions(userId),
@@ -137,7 +153,7 @@ export async function getWeeklyCoachView() {
     }
   }
   return {
-    program, weekStart: week.weekStart, today: week.today, completedSessions: baseline.sessions,
+    program, weekStart: week.weekStart, today: week.today, isUpcoming: week.isUpcoming, weekOptions: options, completedSessions: baseline.sessions,
     exerciseNames: Object.fromEntries(availableExercises.map((row) => [row.id, row.name])),
     editSetTypes: prescription?.setTypes.map((row) => ({ id: row.id, name: row.name, multiplier: Number(row.multiplier) })) ?? [],
     editAllowedTypes: prescription ? Object.fromEntries(availableExercises.map((row) => [row.id, [...regularWeeklySetTypeIds(prescription.setTypes.map((t) => ({ ...t, multiplier: Number(t.multiplier) }))), ...(weeklyIntroducibleSetTypes([row], prescription.setTypes.map((t) => ({ ...t, multiplier: Number(t.multiplier) })))[row.id] ?? [])]])) : {},
@@ -165,24 +181,24 @@ export async function generateWeeklyCoachAction(formData: FormData) {
   const userId = await requireUserId();
   const program = await prisma.program.findFirst({ where: { userId, isActive: true, isArchived: false }, select: { id: true } });
   if (!program) redirect("/programs");
-  const week = coachedWeek();
+  const week = actionPlannerWeek(formData);
   const weekStart = week.dbWeekStart;
   const weekStartText = week.weekStart;
   const constraints = String(formData.get("constraints") ?? "").trim().slice(0, 1000);
   const sessions = await currentWeekSessions(userId, program.id, week);
-  if (!canReviewWithSessions(sessions)) redirect("/plan/week?error=Finish%20draft%20workouts%20or%20mark%20approved%20weekly%20workouts%20missed%20to%20adjust%20this%20week.");
+  if (!canReviewWithSessions(sessions)) redirect(plannerUrl(week.weekStart, "error=Finish%20draft%20workouts%20or%20mark%20approved%20weekly%20workouts%20missed%20to%20adjust%20this%20week."));
   const baseline = await currentCompletedBaseline(userId, program.id, week);
   const availability = readAvailability(formData, weekStart, week.today, new Set(baseline.sessions.map((session) => session.date))).map((day) => ({ ...day, id: randomUUID() }));
-  if (!availability.length) redirect("/plan/week?error=Select%20at%20least%20one%20remaining%20training%20day.");
-  const prescription = await buildProgramPrescription(program.id, userId, { includeWeeklyPlan: false });
-  if (!prescription) redirect("/plan/week?error=No%20active%20program%20prescription.");
+  if (!availability.length) redirect(plannerUrl(week.weekStart, "error=Select%20at%20least%20one%20remaining%20training%20day."));
+  const prescription = await buildProgramPrescription(program.id, userId, { includeWeeklyPlan: false, asOf: week.prescriptionAsOf });
+  if (!prescription) redirect(plannerUrl(week.weekStart, "error=No%20active%20program%20prescription."));
   const catalog = prescription.generationInput.movementDefaults ?? [];
   const exercises = await activeExerciseOptions(userId);
   const setTypes = prescription.setTypes.map((row) => ({ ...row, multiplier: Number(row.multiplier) }));
   const candidates = weeklyCandidates(prescription);
   const templateIds = prescription.program.templates.map((row) => row.id);
   const normalIds = regularWeeklySetTypeIds(setTypes);
-  if (!normalIds.length) redirect("/plan/week?error=No%20regular%20set%20type%20is%20available.");
+  if (!normalIds.length) redirect(plannerUrl(week.weekStart, "error=No%20regular%20set%20type%20is%20available."));
   const introducible = weeklyIntroducibleSetTypes(exercises, setTypes);
   const previous = prescription.activeMesocycle ? await prisma.weeklyCoachPlan.findFirst({
     where: { userId, programId: program.id, status: "APPROVED", mesocycleId: prescription.activeMesocycle.id,
@@ -303,8 +319,10 @@ Plan the remaining hypertrophy workouts for this week. Completed sessions are fi
     });
     if (gaps.length) plan.summary = `${plan.summary} Dose reconciliation: ${gaps.join(" ")}`.slice(0, 1800);
     if (!validation.ok) throw new Error(`The proposed week did not pass validation: ${validation.errors[0]}`);
+    // Recheck the pinned week if the request crosses midnight or the Sunday gate.
+    resolvePlannerWeek(week.weekStart);
     if (!canReviewWithSessions(await currentWeekSessions(userId, program.id, week)) ||
-      (await currentCompletedBaseline(userId, program.id, week)).signature !== baseline.signature || coachedWeek().weekStart !== week.weekStart) {
+      (await currentCompletedBaseline(userId, program.id, week)).signature !== baseline.signature) {
       throw new Error("The completed workouts or planning week changed during review. Run the weekly review again.");
     }
     // Record provenance from actual deterministic inputs, never from model claims.
@@ -336,33 +354,33 @@ Plan the remaining hypertrophy workouts for this week. Completed sessions are fi
       reasoningEffort: aiConfig.request.reasoning.effort, status: timedOut ? "timeout" : "failed", durationMs: elapsedMs }));
     const message = timedOut ? "The weekly coach reached its time limit. No plan was saved; the review can be run again."
       : error instanceof Error ? error.message.slice(0, 220) : "Weekly coaching failed.";
-    redirect(`/plan/week?error=${encodeURIComponent(message)}`);
+    redirect(plannerUrl(week.weekStart, `error=${encodeURIComponent(message)}`));
   }
   revalidatePath("/plan/week");
-  redirect("/plan/week?reviewed=1");
+  redirect(plannerUrl(week.weekStart, "reviewed=1"));
 }
 
 export async function approveWeeklyCoachAction(formData: FormData) {
   const userId = await requireUserId();
   const id = String(formData.get("planId") ?? "");
-  const week = coachedWeek();
+  const week = actionPlannerWeek(formData);
   const record = await prisma.weeklyCoachPlan.findFirst({ where: { id, userId, weekStart: week.dbWeekStart, status: "PROPOSED" } });
-  if (!record || !parseWeeklyCoachPlan(record.proposal)) redirect("/plan/week?error=Review%20the%20week%20again.");
+  if (!record || !parseWeeklyCoachPlan(record.proposal)) redirect(plannerUrl(week.weekStart, "error=Review%20the%20week%20again."));
   const savedBaseline = parseCompletedBaseline(record.completedBaseline);
   const freshBaseline = await currentCompletedBaseline(userId, record.programId, week);
   const proposed = parseWeeklyCoachPlan(record.proposal)!;
   if (!savedBaseline || savedBaseline.signature !== freshBaseline.signature ||
       !canReviewWithSessions(await currentWeekSessions(userId, record.programId, week)) ||
       proposed.workouts.some((workout) => workout.date < week.today || freshBaseline.sessions.some((session) => session.date === workout.date))) {
-    redirect("/plan/week?error=This%20week%20changed.%20Run%20the%20weekly%20review%20again.");
+    redirect(plannerUrl(week.weekStart, "error=This%20week%20changed.%20Run%20the%20weekly%20review%20again."));
   }
-  const current = await buildProgramPrescription(record.programId, userId, { includeWeeklyPlan: false });
-  if ((current?.activeMesocycle?.id ?? null) !== record.mesocycleId) redirect("/plan/week?error=The%20mesocycle%20changed.%20Review%20the%20week%20again.");
-  if (!current) redirect("/plan/week?error=Program%20not%20found.");
+  const current = await buildProgramPrescription(record.programId, userId, { includeWeeklyPlan: false, asOf: week.prescriptionAsOf });
+  if ((current?.activeMesocycle?.id ?? null) !== record.mesocycleId) redirect(plannerUrl(week.weekStart, "error=The%20mesocycle%20changed.%20Review%20the%20week%20again."));
+  if (!current) redirect(plannerUrl(week.weekStart, "error=Program%20not%20found."));
   const exercises = await activeExerciseOptions(userId);
   const avoided = weeklyExerciseIssues(proposed, exercises).filter((issue) => issue.kind === "AVOID");
   if (avoided.length && formData.get("acceptAvoided") !== "on") {
-    redirect("/plan/week?error=Confirm%20that%20you%20want%20to%20use%20the%20marked%20Avoid%20exercise%20or%20replace%20it.");
+    redirect(plannerUrl(week.weekStart, "error=Confirm%20that%20you%20want%20to%20use%20the%20marked%20Avoid%20exercise%20or%20replace%20it."));
   }
   const regular = regularWeeklySetTypeIds(current.setTypes.map((row) => ({ ...row, multiplier: Number(row.multiplier) })));
   const checked = validateWeeklyCoachPlan(proposed, { weekStart: week.weekStart,
@@ -374,39 +392,39 @@ export async function approveWeeklyCoachAction(formData: FormData) {
     completedMuscles: freshBaseline.sessions.map((session) => session.muscles),
     excludedDates: freshBaseline.sessions.map((session) => session.date),
     allowAvoidedExerciseIds: formData.get("acceptAvoided") === "on" ? avoided.map((issue) => issue.exerciseId) : [] });
-  if (!checked.ok) redirect(`/plan/week?error=${encodeURIComponent(checked.errors[0])}`);
+  if (!checked.ok) redirect(plannerUrl(week.weekStart, `error=${encodeURIComponent(checked.errors[0])}`));
   await prisma.weeklyCoachPlan.update({ where: { id: record.id }, data: { status: "APPROVED", approvedAt: new Date(), missedIds: [], allocation: record.proposal as Prisma.InputJsonValue, unallocated: 0 } });
   revalidatePath("/plan/week"); revalidatePath("/log");
-  redirect("/plan/week?approved=1");
+  redirect(plannerUrl(week.weekStart, "approved=1"));
 }
 
 export async function replaceWeeklyPlanExerciseAction(formData: FormData) {
   const userId = await requireUserId();
-  const week = coachedWeek();
+  const week = actionPlannerWeek(formData);
   const record = await prisma.weeklyCoachPlan.findFirst({ where: { id: String(formData.get("planId") ?? ""), userId,
     status: "PROPOSED", weekStart: week.dbWeekStart } });
   const plan = record && parseWeeklyCoachPlan(record.proposal);
-  if (!record || !plan) redirect("/plan/week?error=Review%20the%20week%20again.");
+  if (!record || !plan) redirect(plannerUrl(week.weekStart, "error=Review%20the%20week%20again."));
   const saved = parseCompletedBaseline(record.completedBaseline);
   const currentBaseline = await currentCompletedBaseline(userId, record.programId, week);
   if (!saved || saved.signature !== currentBaseline.signature ||
       !canReviewWithSessions(await currentWeekSessions(userId, record.programId, week))) {
-    redirect("/plan/week?error=This%20week%20changed.%20Run%20the%20review%20again.");
+    redirect(plannerUrl(week.weekStart, "error=This%20week%20changed.%20Run%20the%20review%20again."));
   }
   const occurrenceId = String(formData.get("occurrenceId") ?? "");
   const sourceSlotId = String(formData.get("sourceSlotId") ?? "");
   const exerciseId = String(formData.get("exerciseId") ?? "");
-  const current = await buildProgramPrescription(record.programId, userId, { includeWeeklyPlan: false });
-  if (!current || current.activeMesocycle?.id !== record.mesocycleId) redirect("/plan/week?error=The%20mesocycle%20changed.%20Review%20the%20week%20again.");
+  const current = await buildProgramPrescription(record.programId, userId, { includeWeeklyPlan: false, asOf: week.prescriptionAsOf });
+  if (!current || current.activeMesocycle?.id !== record.mesocycleId) redirect(plannerUrl(week.weekStart, "error=The%20mesocycle%20changed.%20Review%20the%20week%20again."));
   const exercises = await activeExerciseOptions(userId);
   const chosen = exercises.find((row) => row.id === exerciseId && !row.avoided);
   const source = weeklyCandidates(current).find((row) => row.id === sourceSlotId);
   const target = plan.workouts.find((day) => day.id === occurrenceId)?.items.find((item) => item.sourceSlotId === sourceSlotId);
   if (!chosen || !target) {
-    redirect("/plan/week?error=Choose%20an%20active%20exercise%20for%20this%20workout.");
+    redirect(plannerUrl(week.weekStart, "error=Choose%20an%20active%20exercise%20for%20this%20workout."));
   }
   const regular = regularWeeklySetTypeIds(current.setTypes.map((row) => ({ ...row, multiplier: Number(row.multiplier) })));
-  if (!regular.length) redirect("/plan/week?error=No%20regular%20set%20type%20is%20available.");
+  if (!regular.length) redirect(plannerUrl(week.weekStart, "error=No%20regular%20set%20type%20is%20available."));
   const adjusted = { ...plan, userEdited: true, doseReviews: undefined, workouts: plan.workouts.map((day) => day.id !== occurrenceId ? day : { ...day,
     items: day.items.map((item) => item.sourceSlotId !== sourceSlotId ? item : {
       ...item, sourceSlotId: sourceSlotId.startsWith("exercise:") ||
@@ -427,36 +445,36 @@ export async function replaceWeeklyPlanExerciseAction(formData: FormData) {
     excludedDates: currentBaseline.sessions.map((session) => session.date),
     allowUnavailableDraft: true,
     allowAvoidedExerciseIds: exercises.filter((row) => row.avoided).map((row) => row.id) });
-  if (!checked.ok) redirect(`/plan/week?error=${encodeURIComponent(checked.errors[0])}`);
+  if (!checked.ok) redirect(plannerUrl(week.weekStart, `error=${encodeURIComponent(checked.errors[0])}`));
   await prisma.weeklyCoachPlan.update({ where: { id: record.id }, data: { proposal: adjusted as unknown as Prisma.InputJsonValue } });
   revalidatePath("/plan/week");
-  redirect("/plan/week?exerciseUpdated=1");
+  redirect(plannerUrl(week.weekStart, "exerciseUpdated=1"));
 }
 
 export async function editWeeklyPlanSetsAction(formData: FormData) {
   const userId = await requireUserId();
-  const week = coachedWeek();
+  const week = actionPlannerWeek(formData);
   const record = await prisma.weeklyCoachPlan.findFirst({ where: { id: String(formData.get("planId") ?? ""), userId,
     status: "PROPOSED", weekStart: week.dbWeekStart } });
   const plan = record && parseWeeklyCoachPlan(record.proposal);
-  if (!record || !plan) redirect("/plan/week?error=Review%20the%20week%20again.");
-  if (formData.get("proposalVersion") !== record.updatedAt.toISOString()) redirect("/plan/week?error=The%20proposal%20changed.%20Refresh%20before%20editing.");
+  if (!record || !plan) redirect(plannerUrl(week.weekStart, "error=Review%20the%20week%20again."));
+  if (formData.get("proposalVersion") !== record.updatedAt.toISOString()) redirect(plannerUrl(week.weekStart, "error=The%20proposal%20changed.%20Refresh%20before%20editing."));
   const saved = parseCompletedBaseline(record.completedBaseline);
   const currentBaseline = await currentCompletedBaseline(userId, record.programId, week);
   if (!saved || saved.signature !== currentBaseline.signature ||
       !canReviewWithSessions(await currentWeekSessions(userId, record.programId, week))) {
-    redirect("/plan/week?error=This%20week%20changed.%20Run%20the%20review%20again.");
+    redirect(plannerUrl(week.weekStart, "error=This%20week%20changed.%20Run%20the%20review%20again."));
   }
   const occurrenceId = String(formData.get("occurrenceId") ?? "");
   const sourceSlotId = String(formData.get("sourceSlotId") ?? "");
-  const current = await buildProgramPrescription(record.programId, userId, { includeWeeklyPlan: false });
-  if (!current || current.activeMesocycle?.id !== record.mesocycleId) redirect("/plan/week?error=The%20mesocycle%20changed.%20Review%20again.");
+  const current = await buildProgramPrescription(record.programId, userId, { includeWeeklyPlan: false, asOf: week.prescriptionAsOf });
+  if (!current || current.activeMesocycle?.id !== record.mesocycleId) redirect(plannerUrl(week.weekStart, "error=The%20mesocycle%20changed.%20Review%20again."));
   const exercises = await activeExerciseOptions(userId);
   const count = Number(formData.get("sets"));
   const targetDay = plan.workouts.find((day) => day.id === occurrenceId);
   const target = targetDay?.items.find((item) => item.sourceSlotId === sourceSlotId);
-  if (!target || !Number.isInteger(count) || count < 0 || count > 8 || targetDay!.date < week.today) redirect("/plan/week?error=Invalid%20set%20adjustment.");
-  if (count === 0 && targetDay!.items.length === 1) redirect("/plan/week?error=Keep%20at%20least%20one%20exercise%20in%20this%20workout.");
+  if (!target || !Number.isInteger(count) || count < 0 || count > 8 || targetDay!.date < week.today) redirect(plannerUrl(week.weekStart, "error=Invalid%20set%20adjustment."));
+  if (count === 0 && targetDay!.items.length === 1) redirect(plannerUrl(week.weekStart, "error=Keep%20at%20least%20one%20exercise%20in%20this%20workout."));
   const regular = regularWeeklySetTypeIds(current.setTypes.map((row) => ({ ...row, multiplier: Number(row.multiplier) })));
   const adjusted = { ...plan, userEdited: true, doseReviews: undefined, workouts: plan.workouts.map((day) => day.id !== occurrenceId ? day : { ...day,
     items: day.items.flatMap((item) => item.sourceSlotId !== sourceSlotId ? [item] : count === 0 ? [] : [{ ...item, sets: count,
@@ -473,25 +491,25 @@ export async function editWeeklyPlanSetsAction(formData: FormData) {
     excludedDates: currentBaseline.sessions.map((session) => session.date),
     allowUnavailableDraft: true,
     allowAvoidedExerciseIds: exercises.filter((row) => row.avoided).map((row) => row.id) });
-  if (!checked.ok) redirect(`/plan/week?error=${encodeURIComponent(checked.errors[0])}`);
+  if (!checked.ok) redirect(plannerUrl(week.weekStart, `error=${encodeURIComponent(checked.errors[0])}`));
   const changed = await prisma.weeklyCoachPlan.updateMany({ where: { id: record.id, userId, status: "PROPOSED", updatedAt: record.updatedAt }, data: { proposal: adjusted as unknown as Prisma.InputJsonValue } });
-  if (changed.count !== 1) redirect("/plan/week?error=The%20proposal%20changed.%20Refresh%20before%20editing.");
+  if (changed.count !== 1) redirect(plannerUrl(week.weekStart, "error=The%20proposal%20changed.%20Refresh%20before%20editing."));
   revalidatePath("/plan/week");
-  redirect("/plan/week?setsUpdated=1");
+  redirect(plannerUrl(week.weekStart, "setsUpdated=1"));
 }
 
 
 export async function markWeeklyOccurrenceMissedAction(formData: FormData) {
   const userId = await requireUserId();
-  const week = coachedWeek();
+  const week = actionPlannerWeek(formData);
   const record = await prisma.weeklyCoachPlan.findFirst({ where: { id: String(formData.get("planId") ?? ""), userId, status: "APPROVED", weekStart: week.dbWeekStart } });
   const plan = record && parseWeeklyCoachPlan(record.proposal);
   const occurrenceId = String(formData.get("occurrenceId") ?? "");
-  if (!record || !plan?.workouts.some((day) => day.id === occurrenceId)) redirect("/plan/week?error=Workout%20not%20found.");
+  if (!record || !plan?.workouts.some((day) => day.id === occurrenceId)) redirect(plannerUrl(week.weekStart, "error=Workout%20not%20found."));
   const sessions = await currentWeekSessions(userId, record.programId, week);
-  if (sessions.some((session) => weeklyOccurrenceFromSummary(session.prescriptionSummary) === occurrenceId)) redirect("/plan/week?error=This%20workout%20has%20already%20started.");
+  if (sessions.some((session) => weeklyOccurrenceFromSummary(session.prescriptionSummary) === occurrenceId)) redirect(plannerUrl(week.weekStart, "error=This%20workout%20has%20already%20started."));
   const existingMissed = parseMissedOccurrenceIds(record.missedIds);
-  if (existingMissed.includes(occurrenceId)) redirect("/plan/week");
+  if (existingMissed.includes(occurrenceId)) redirect(plannerUrl(week.weekStart));
   const missed = [...existingMissed, occurrenceId];
   const currentPlan = parseWeeklyCoachPlan(record.allocation) ?? plan;
   const catalog = await prisma.exercise.findMany({ where: { isActive: true, isArchived: false, OR: [{ isSeed: true, userId: null }, { userId }] }, select: { id: true, movementGroupId: true } });
@@ -503,5 +521,5 @@ export async function markWeeklyOccurrenceMissedAction(formData: FormData) {
     allocation: { ...currentPlan, workouts: redistributed.workouts } as unknown as Prisma.InputJsonValue,
     unallocated: record.unallocated + redistributed.unallocatedSets } });
   revalidatePath("/plan/week"); revalidatePath("/log");
-  redirect("/plan/week?redistributed=1");
+  redirect(plannerUrl(week.weekStart, "redistributed=1"));
 }
