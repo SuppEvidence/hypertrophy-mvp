@@ -22,6 +22,12 @@ export const WeeklyCoachPlanSchema = z.object({
   summary: z.string().max(1800),
   doseReviews: z.array(WeeklyDoseReviewSchema).max(30).optional(),
   userEdited: z.boolean().optional(),
+  // Application-owned display metadata; excluded from model response schemas.
+  lineage: z.object({
+    source: z.enum(["TEMPLATES", "CARRY_FORWARD"]),
+    sourceWeek: z.iso.date().nullable(),
+    changedWorkoutDates: z.array(z.iso.date()).max(7),
+  }).optional(),
   workouts: z.array(WeeklyCoachWorkoutSchema).min(1).max(7),
 });
 export type WeeklyCoachPlan = z.infer<typeof WeeklyCoachPlanSchema>;

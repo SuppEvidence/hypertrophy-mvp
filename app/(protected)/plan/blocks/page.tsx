@@ -1,3 +1,4 @@
+import { ReviewProgress } from "@/components/coaching/ReviewProgress";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -67,6 +68,7 @@ export default async function MesocyclePlanningPage({ searchParams }: {
               <form action={generateAdvisorMesocycleRecommendationAction}>
                 <input type="hidden" name="returnTo" value="/plan/blocks" />
                 <Button type="submit" variant="secondary" pendingText="Reviewing…">Run next-block review</Button>
+                <ReviewProgress label="Reviewing next block…" />
               </form>
             ) : null}
             {!ready && review ? <Link href="/metrics?logType=MESOCYCLE_CHECKIN" className="text-xs font-semibold text-orange-300">Open metrics check-in</Link> : null}

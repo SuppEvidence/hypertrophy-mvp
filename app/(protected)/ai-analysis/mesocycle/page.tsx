@@ -1,3 +1,4 @@
+import { ReviewProgress } from "@/components/coaching/ReviewProgress";
 import { PhaseRecommendation } from "@/components/coaching/PhaseRecommendation";
 import { Card } from "@/components/ui/Card";
 import Link from "next/link";
@@ -129,6 +130,7 @@ export default async function MesocycleRecommendationsPage({
               {current.checkinStatus.comparable && Boolean(current.completedWorkoutsInBlock) ? (
                 <form action={generateAdvisorMesocycleRecommendationAction}>
                   <Button type="submit" pendingText="Reviewing…" variant="secondary">Run next-block review</Button>
+                <ReviewProgress label="Reviewing next block…" />
                 </form>
               ) : null}
               {!current.checkinStatus.comparable ? (

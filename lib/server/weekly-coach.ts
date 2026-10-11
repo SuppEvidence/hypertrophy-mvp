@@ -121,6 +121,7 @@ export async function getWeeklyCoachView() {
     const old = muscleDose.get(id) ?? { sets: 0, peak: 0 };
     muscleDose.set(id, { sets: old.sets + dose, peak: Math.max(old.peak, dose) });
   }
+  const completedMuscleDose = new Map([...muscleDose].map(([id, dose]) => [id, dose.sets]));
   for (const day of (allocated?.workouts ?? plan?.workouts ?? []).filter((day) => !missedIds.includes(day.id) && !completedIds.includes(day.id))) {
     const dayDose = new Map<string, number>();
     for (const item of day.items) {
@@ -147,6 +148,8 @@ export async function getWeeklyCoachView() {
     slotMovements: Object.fromEntries(prescription ? weeklyCandidates(prescription).map((row) => [row.id, row.movementGroupId]) : []),
     muscleSummary: prescription?.activeMesocycle?.musclePriorities.map((row) => ({ id: row.muscleId, name: row.muscle.name, priority: row.priority, target: Number(row.coachTargetWeeklySets),
       doseReason: plan?.doseReviews?.find((review) => review.muscleId === row.muscleId)?.reason ?? null,
+      completed: completedMuscleDose.get(row.muscleId) ?? 0,
+      remaining: (muscleDose.get(row.muscleId)?.sets ?? 0) - (completedMuscleDose.get(row.muscleId) ?? 0),
       weekly: Math.round((muscleDose.get(row.muscleId)?.sets ?? 0) * 10) / 10,
       largestSession: Math.round((muscleDose.get(row.muscleId)?.peak ?? 0) * 10) / 10 })) ?? [],
     templates: prescription?.program.templates.map((template) => ({ id: template.id, name: template.name, occurrences: Number(template.expectedOccurrences) })) ?? [],
@@ -264,10 +267,10 @@ Plan the remaining hypertrophy workouts for this week. Completed sessions are fi
           secondary: row.secondaryMuscles.filter((link) => Number(link.contributionEstimate ?? 0) > 0)
             .map((link) => ({ name: link.muscleName, fraction: Number(link.contributionEstimate) })) })),
         setTypes: prescription.setTypes.map((row) => ({ id: row.id, name: row.name, multiplier: Number(row.multiplier),
-          regular: normalIds.includes(row.id) })), priorDoseAssessment, recent, metrics, startingWeek: carried }) },
+          regular: normalIds.includes(row.id) })), priorDoseAssessment, recent, metrics, startingWeek: carried ? { ...carried, lineage: undefined } : null }) },
     ];
     const response = await getOpenAIClient().responses.parse({ ...aiConfig.request,
-      input: modelInput, text: { format: zodTextFormat(carried ? WeeklyCoachDeltaSchema.extend({ doseReviews: z.array(WeeklyDoseReviewSchema).max(30) }) : WeeklyCoachPlanSchema.omit({ userEdited: true }).extend({ doseReviews: z.array(WeeklyDoseReviewSchema).max(30) }),
+      input: modelInput, text: { format: zodTextFormat(carried ? WeeklyCoachDeltaSchema.extend({ doseReviews: z.array(WeeklyDoseReviewSchema).max(30) }) : WeeklyCoachPlanSchema.omit({ userEdited: true, lineage: true }).extend({ doseReviews: z.array(WeeklyDoseReviewSchema).max(30) }),
         carried ? "weekly_coach_delta" : "weekly_coach_plan") },
     }, aiConfig.options);
     logCoachingModelUsage(aiConfig, response, started);
@@ -304,6 +307,19 @@ Plan the remaining hypertrophy workouts for this week. Completed sessions are fi
       (await currentCompletedBaseline(userId, program.id, week)).signature !== baseline.signature || coachedWeek().weekStart !== week.weekStart) {
       throw new Error("The completed workouts or planning week changed during review. Run the weekly review again.");
     }
+    // Record provenance from actual deterministic inputs, never from model claims.
+    const implementation = (day: typeof plan.workouts[number]) => JSON.stringify({
+      templateId: day.templateId, durationMinutes: day.durationMinutes,
+      items: day.items.map(({ sourceSlotId, exerciseId, sets, setTypeIds }) => ({ sourceSlotId, exerciseId, sets, setTypeIds })),
+    });
+    plan.lineage = {
+      source: carried ? "CARRY_FORWARD" : "TEMPLATES",
+      sourceWeek: carried && previous ? toDateOnly(previous.weekStart) : null,
+      changedWorkoutDates: carried ? plan.workouts.filter((day) => {
+        const base = carried.workouts.find((row) => row.date === day.date);
+        return !base || implementation(base) !== implementation(day);
+      }).map((day) => day.date) : [],
+    };
     // A new AI proposal cannot replace an already approved week without an explicit new review.
     await prisma.weeklyCoachPlan.upsert({ where: { programId_weekStart: { programId: program.id, weekStart } },
       create: { userId, programId: program.id, mesocycleId: prescription.activeMesocycle?.id ?? null,

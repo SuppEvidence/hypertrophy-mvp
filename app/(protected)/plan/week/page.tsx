@@ -1,3 +1,5 @@
+import { WeeklyDoseComparison } from "@/components/weekly/WeeklyDoseComparison";
+import { ReviewProgress } from "@/components/coaching/ReviewProgress";
 import { WeeklySetEditor } from "@/components/weekly/WeeklySetEditor";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
@@ -14,7 +16,8 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
   return <div className="space-y-5">
     <Link href="/plan" className="text-sm font-semibold text-orange-300">← Plan</Link>
     <PageHeader title="Weekly coach" description="Review remaining sessions around this week's completed work. The coach runs only when you request it." />
-    {query.error ? <Card className="border-rose-500/30 text-sm text-rose-200">{query.error}</Card> : null}
+    {query.error ? <Card className="border-rose-500/30 text-sm text-rose-200">{query.error}<p className="mt-2 text-xs">The review did not replace your saved plan. Retry using the availability and constraints below.</p></Card> : null}
+    {query.reviewed ? <Card className="border-sky-500/30 text-sm text-sky-200"><p role="status">Review complete. Inspect the proposal and weekly dose before approving.</p></Card> : null}
     {query.approved ? <Card className="border-emerald-500/30 text-sm text-emerald-200">Weekly plan approved. Start its scheduled workouts from the logger.</Card> : null}
     {query.redistributed ? <Card className="border-sky-500/30 text-sm text-sky-200">Missed work has been redistributed into compatible upcoming sessions where capacity allows.</Card> : null}
     {query.setsUpdated ? <Card className="border-emerald-500/30 text-sm text-emerald-200">Set allocation updated. Review the new weekly totals before approval.</Card> : null}
@@ -43,24 +46,25 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
             <label className="block text-sm text-slate-300">Other known constraints for this week
               <textarea name="constraints" maxLength={1000} rows={3} placeholder="Equipment unavailable, travel, sore joints, exercise preferences, unusually short sessions…" className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-slate-100" />
             </label>
-            <Button type="submit" pendingText="Planning the week…" variant="secondary">Review whole week with coach</Button>
+            <Button type="submit" pendingText="Planning the week…" variant="secondary">{query.error ? "Retry weekly review" : "Review whole week with coach"}</Button>
+            <ReviewProgress label="Planning the week…" />
           </form>
         )}
       </Card>
       {view.plan ? <Card className="space-y-4 border-orange-500/20">
         <div><p className="text-xs font-semibold uppercase text-orange-300">{view.status === "APPROVED" ? "Approved weekly plan" : "Coach proposal · needs your approval"}</p>{view.plan.summary ? <p className="mt-1 text-sm text-slate-300">{view.plan.summary}</p> : null}</div>
-        {view.proposalStale ? <p className="text-sm text-amber-200">Your logged workouts or available dates changed since this proposal. Run the review again before approval.</p> : null}
+        <div className="rounded-lg border border-sky-900/50 p-3 text-xs text-slate-300">
+          <p className="font-semibold text-sky-200">Plan source: {view.plan.lineage?.source === "CARRY_FORWARD" ? `Accepted/completed structure from ${view.plan.lineage.sourceWeek}` : view.plan.lineage?.source === "TEMPLATES" ? "Program templates, adapted by the weekly coach" : "Source not recorded for this older plan"}</p>
+          {view.plan.lineage?.source === "CARRY_FORWARD" ? <p className="mt-1">{view.plan.lineage.changedWorkoutDates.length ? `At the coach review, revised: ${view.plan.lineage.changedWorkoutDates.join(", ")}. Other days retained the carried structure.` : "At review, the coach retained the carried workout structure."}</p> : null}
+          {view.plan.userEdited ? <p className="mt-1">Includes your edits after the review.</p> : null}
+          {view.missedIds.length ? <p className="mt-1">Missed-session redistribution is included in the remaining plan below.</p> : null}
+        </div>
+        {view.proposalStale ? <p className="text-sm text-amber-200">Your logged workouts or available dates changed since this proposal. These proposal totals use completed work from the review time. Run the review again before approval.</p> : null}
         {view.status === "PROPOSED" && view.exerciseIssues.length ? <p className="rounded-lg border border-amber-500/30 p-3 text-sm text-amber-100">
           {view.exerciseIssues.length} exercise {view.exerciseIssues.length === 1 ? "choice needs" : "choices need"} your decision. Exercises marked Avoid can be explicitly accepted; an unavailable exercise must be replaced before approval. The muscle estimates omit unavailable exercises until they are replaced.
         </p> : null}
         {view.allocated?.unallocatedSets ? <p className="rounded-lg border border-amber-500/30 p-2 text-xs text-amber-200">{view.allocated.unallocatedSets} physical sets from missed workouts could not fit into compatible remaining sessions.</p> : null}
-        <div className="rounded-xl border border-slate-800 p-3 text-sm text-slate-300">
-          <p className="font-semibold">Weekly effective work · {view.weekEffectiveTotal.toFixed(1)} exercise sets</p>
-          <p className="text-xs text-slate-400">Completed actual work plus remaining planned work. Muscle estimates include secondary contributions; their sum differs from exercise-set totals.</p>
-          <div className="mt-2 overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th>Muscle / priority</th><th>Week</th><th>Target</th><th>Difference</th></tr></thead>
-          <tbody>{view.muscleSummary.map((row) => <tr key={row.id} className="border-t border-slate-800"><td className="py-2">{row.name} · {row.priority.toLowerCase().replaceAll("_", " ")}{row.doseReason ? <p className="max-w-md text-slate-400">{row.doseReason}</p> : null}</td><td>{row.weekly.toFixed(1)}</td><td>{row.target.toFixed(1)}</td><td className={row.weekly < row.target - .1 ? "text-amber-200" : "text-slate-300"}>{(row.weekly - row.target).toFixed(1)}</td></tr>)}</tbody></table></div>
-          {view.plan.userEdited ? <p className="mt-2 text-xs text-orange-300">User-adjusted proposal. The original coach summary describes its original allocation; the totals above reflect your edits.</p> : null}
-        </div>
+        <WeeklyDoseComparison rows={view.muscleSummary} exerciseTotal={view.weekEffectiveTotal} userEdited={view.plan.userEdited} />
         <div className="grid gap-3 md:grid-cols-2">
           {(view.allocated?.workouts ?? view.plan.workouts).map((day) => {
             const missed = view.missedIds.includes(day.id);

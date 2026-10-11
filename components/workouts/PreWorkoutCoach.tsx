@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ExerciseChoiceScope } from "@/components/workouts/ExerciseChoiceScope";
+
+import { useEffect, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import type {
@@ -26,19 +28,26 @@ export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMi
   const [availableMinutes, setAvailableMinutes] = useState(String(plannedMinutes ?? 60));
   const [constraints, setConstraints] = useState("");
   const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<"REVIEW" | "DECLINE">("REVIEW");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CoachResult | null>(null);
+  const requestGeneration = useRef(0);
 
   useEffect(() => {
+    requestGeneration.current += 1;
+    setBusy(false);
     setResult(null);
     setError(null);
     setAvailableMinutes(String(plannedMinutes ?? 60));
+    return () => { requestGeneration.current += 1; };
   }, [programId, templateId, occurrenceId, plannedMinutes]);
 
   async function review() {
+    if (busy) return;
+    const generation = ++requestGeneration.current;
+    setOperation("REVIEW");
     setBusy(true);
     setError(null);
-    setResult(null);
     try {
       const response = await fetch("/api/pre-workout-coach", {
         method: "POST",
@@ -47,16 +56,19 @@ export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMi
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Pre-workout review failed.");
-      setResult(payload as CoachResult);
+      if (generation === requestGeneration.current) setResult(payload as CoachResult);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Pre-workout coach unavailable. Start the template unchanged.");
+      if (generation === requestGeneration.current) setError(caught instanceof Error ? caught.message : "Pre-workout coach unavailable. Start the current plan.");
     } finally {
-      setBusy(false);
+      if (generation === requestGeneration.current) setBusy(false);
     }
   }
 
   async function decline() {
-    if (!result) return;
+    if (!result || busy) return;
+    const generation = ++requestGeneration.current;
+    setOperation("DECLINE");
+    setError(null);
     setBusy(true);
     try {
       const response = await fetch("/api/pre-workout-coach/decline", {
@@ -64,12 +76,14 @@ export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMi
         body: JSON.stringify({ interventionId: result.proposal.interventionId }),
       });
       if (!response.ok) throw new Error("Could not save your choice. Please retry.");
-      setResult(null);
-      setError(null);
+      if (generation === requestGeneration.current) {
+        setResult(null);
+        setError(null);
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not save your choice.");
+      if (generation === requestGeneration.current) setError(caught instanceof Error ? caught.message : "Could not save your choice.");
     } finally {
-      setBusy(false);
+      if (generation === requestGeneration.current) setBusy(false);
     }
   }
 
@@ -97,7 +111,8 @@ export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMi
               max="120"
               step="5"
               value={availableMinutes}
-              onChange={(event) => setAvailableMinutes(event.target.value)}
+              disabled={busy}
+              onChange={(event) => { setAvailableMinutes(event.target.value); setResult(null); }}
               className="min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 pr-11 text-sm text-slate-100 outline-none focus:border-sky-500"
             />
             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">min</span>
@@ -107,8 +122,9 @@ export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMi
           <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Today&apos;s constraints</span>
           <input
             value={constraints}
+            disabled={busy}
             maxLength={800}
-            onChange={(event) => setConstraints(event.target.value)}
+            onChange={(event) => { setConstraints(event.target.value); setResult(null); }}
             placeholder="Optional: equipment unavailable, pain/irritation, exercise to avoid, schedule constraint"
             className="min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-500"
           />
@@ -117,20 +133,22 @@ export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMi
 
       <button
         type="button"
+        aria-busy={busy && operation === "REVIEW"}
         disabled={busy || Number(availableMinutes) < 20 || Number(availableMinutes) > 120}
         onClick={() => void review()}
         className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-sky-700/60 bg-sky-950/50 px-4 py-2 text-sm font-semibold text-sky-100 transition hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {busy ? <><LoaderCircle size={16} className="mr-2 animate-spin" />Analyzing…</> : "Review workout with coach"}
+        {busy && operation === "REVIEW" ? <><LoaderCircle size={16} className="mr-2 animate-spin" />Analyzing…</> : error ? "Retry workout review" : "Review workout with coach"}
       </button>
 
-      {error ? <p className="rounded-lg border border-rose-800/50 bg-rose-950/30 p-2 text-sm text-rose-200">{error}</p> : null}
+      <p role="status" aria-live="polite" className="text-xs text-sky-200">{busy ? operation === "REVIEW" ? "Analyzing the current plan. Your saved plan is preserved while this runs." : "Saving your choice…" : result ? "Review complete · awaiting your choice" : null}</p>
+      {error ? <p role="alert" className="rounded-lg border border-rose-800/50 bg-rose-950/30 p-2 text-sm text-rose-200">{error} Your saved plan is preserved.</p> : null}
 
-      {result ? (
+      {result && !busy ? (
         <div className="space-y-3 border-t border-sky-900/50 pt-3">
           <div className="flex flex-wrap gap-2">
             <span className={`rounded-lg border px-2 py-1 text-[10px] font-semibold ${result.proposal.decision === "ADJUST" ? "border-amber-700/50 text-amber-200" : "border-emerald-700/50 text-emerald-200"}`}>
-              {result.proposal.decision === "ADJUST" ? "Coach · Changes suggested" : "Coach · Keep template"}
+              {result.proposal.decision === "ADJUST" ? "Coach · Changes suggested" : "Coach · Keep current plan"}
             </span>
             <span className={`rounded-lg border px-2 py-1 text-[10px] font-semibold ${statusClass(result.proposal.bodyComposition.status)}`}>
               Metrics · {readable(result.proposal.bodyComposition.status)}
@@ -140,6 +158,7 @@ export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMi
             </span>
           </div>
 
+          <p className="text-xs text-sky-200">Starting plan: {occurrenceId ? "Approved weekly workout" : "Current program prescription"} → Daily review</p>
           {result.proposal.summary ? <p className="text-sm leading-6 text-slate-200">{result.proposal.summary}</p> : null}
           {result.display.continuity.lastCompletedAt ? (
             <details className="rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-xs text-slate-400">
@@ -181,7 +200,7 @@ export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMi
                 <div key={`${item.sourceSlotId}:${index}`} className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-slate-800 p-2 text-xs">
                   <span className="text-slate-200">{index + 1}. {item.exerciseName}<span className="block text-slate-500">{item.movementGroupName}</span></span>
                   <span className="text-right text-slate-300">{item.sets} sets · {item.repRange}{item.targetRir !== null ? ` · ${item.targetRir} RIR` : ""}</span>
-                  <span className="col-span-2 text-slate-500">{item.reason}</span>
+                  <span className="col-span-2 text-slate-500">{item.reason ? <><span className="font-semibold text-slate-300">Why: </span>{item.reason}</> : null}</span>
                   <span className="col-span-2 text-slate-500">Set types: {item.setTypes.join(" · ")}</span>
                 </div>
               ))}
@@ -191,10 +210,10 @@ export function PreWorkoutCoach({ programId, templateId, occurrenceId, plannedMi
           <form action={startCoachedWorkout}>
             <input type="hidden" name="proposal" value={JSON.stringify(result.proposal)} />
             {result.display.items.filter((item) => item.exerciseChanged && item.canRememberExercise).map((item) => (
-              <label key={item.sourceSlotId} className="mb-2 flex items-center gap-2 text-xs text-slate-300">
-                <input type="checkbox" name={`rememberExercise:${item.sourceSlotId.split(":")[1]}`} className="accent-orange-500" />
-                Use {item.exerciseName} next time too (otherwise this swap is for today)
-              </label>
+              <div key={item.sourceSlotId} className="mb-3">
+                <p className="mb-1 text-xs text-slate-200">{item.exerciseName}</p>
+                <ExerciseChoiceScope temporary remember name={`rememberExercise:${item.sourceSlotId.split(":")[1]}`} />
+              </div>
             ))}
             <Button className="w-full" pendingText="Starting coached workout…">
               {result.proposal.decision === "ADJUST" ? "Start coached workout" : "Start reviewed workout"}

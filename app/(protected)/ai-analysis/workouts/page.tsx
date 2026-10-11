@@ -1,3 +1,4 @@
+import { ReviewProgress } from "@/components/coaching/ReviewProgress";
 import { Card } from "@/components/ui/Card";
 
 export const maxDuration = 120;
@@ -130,18 +131,16 @@ export default async function WorkoutAnalysisPage({
       ) : (
         sessions.map((session) => {
           const analysis = parseStoredAnalysis(session.aiAnalysis);
-          const analysisStatus = analysis
-            ? "COMPLETE"
-            : session.aiAnalysisStatus;
+          // Keep a previous successful result visible without hiding a new attempt's status.
+          const analysisStatus = ["RUNNING", "PENDING", "FAILED"].includes(session.aiAnalysisStatus)
+            ? session.aiAnalysisStatus : analysis ? "COMPLETE" : session.aiAnalysisStatus;
           const statusSince = session.aiAnalysisAttemptedAt ?? session.completedAt;
           const stale =
             ["PENDING", "RUNNING"].includes(analysisStatus) &&
             Boolean(statusSince && statusSince < staleBefore);
           const canAnalyze =
-            Boolean(analysis) ||
-            analysisStatus === "FAILED" ||
-            analysisStatus === "NOT_REQUESTED" ||
-            stale;
+            (!["PENDING", "RUNNING"].includes(analysisStatus) || stale) &&
+            (Boolean(analysis) || analysisStatus === "FAILED" || analysisStatus === "NOT_REQUESTED" || stale);
 
           return (
             <Card key={session.id} className="overflow-hidden">
@@ -161,7 +160,7 @@ export default async function WorkoutAnalysisPage({
                         ? "border-rose-400/20 bg-rose-400/10 text-rose-200"
                         : "border-sky-400/20 bg-sky-400/10 text-sky-200"
                   }`}>
-                    {stale ? "Analysis interrupted" : analysisStatus.toLowerCase().replaceAll("_", " ")}
+                    {stale ? "Analysis interrupted · retry available" : analysisStatus === "COMPLETE" ? "Analysis complete" : analysisStatus === "RUNNING" ? "Analyzing…" : analysisStatus === "PENDING" ? "Analysis queued" : analysisStatus.toLowerCase().replaceAll("_", " ")}
                   </span>
                 </div>
 
@@ -169,17 +168,18 @@ export default async function WorkoutAnalysisPage({
                   <form action={analyzeAdvisorWorkoutAction}>
                     <input type="hidden" name="sessionId" value={session.id} />
                     <Button type="submit" variant="secondary" pendingText="Analyzing…" className="min-h-10 border-orange-400/25 bg-orange-500/10 px-3 text-xs text-orange-200 hover:bg-orange-500/15">
-                      {analysis ? "Re-analyze" : analysisStatus === "FAILED" || stale ? "Retry analysis" : "Analyze workout"}
+                      {analysisStatus === "FAILED" || stale ? "Retry analysis" : analysis ? "Re-analyze" : "Analyze workout"}
                     </Button>
+                    <ReviewProgress label="Analyzing workout…" detail="Your logged workout and existing analysis are preserved if the request fails." />
                   </form>
                 ) : (
                   <p className="text-xs text-slate-500">Analysis runs automatically after completion.</p>
                 )}
               </div>
 
-              {session.aiAnalysisError && !analysis ? (
+              {session.aiAnalysisError && analysisStatus === "FAILED" ? (
                 <p className="mt-3 rounded-xl border border-rose-400/15 bg-rose-400/[0.05] p-3 text-xs leading-5 text-rose-200/80">
-                  {session.aiAnalysisError}
+                  {session.aiAnalysisError}{analysis ? " Previous successful analysis is retained below." : " Your logged workout is unchanged."}
                 </p>
               ) : null}
 
@@ -187,7 +187,7 @@ export default async function WorkoutAnalysisPage({
                 <div className="mt-4">
                   {analysis.workoutSummary ? <div className="rounded-xl border border-emerald-400/15 bg-emerald-500/[0.04] p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-300/70">
-                      Coach read
+                      {analysisStatus === "COMPLETE" ? "Coach read" : "Previous coach read"}
                     </p>
                     <p className="mt-1 text-sm leading-6 text-slate-200">
                       {analysis.workoutSummary}

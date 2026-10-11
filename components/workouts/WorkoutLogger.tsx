@@ -1,3 +1,4 @@
+import { ExerciseChoiceScope } from "@/components/workouts/ExerciseChoiceScope";
 import Link from "next/link";
 import { CheckCircle2, History, Plus, Trash2 } from "lucide-react";
 import { AutosaveSetRow } from "@/components/workouts/AutosaveSetRow";
@@ -129,6 +130,7 @@ type LoggerActiveSession = {
   id: string;
   name: string;
   status: "DRAFT" | "COMPLETED" | string;
+  prescriptionSummary?: unknown;
   program: LoggerProgram & { secondaryContribution: unknown };
   exercises: LoggerSessionExercise[];
 };
@@ -324,6 +326,11 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
     : null;
   const isCompletedSession = activeSession?.status === "COMPLETED";
   const isDraftSession = activeSession?.status === "DRAFT";
+  const storedSource = activeSession?.prescriptionSummary && typeof activeSession.prescriptionSummary === "object"
+    ? activeSession.prescriptionSummary as Record<string, unknown> : null;
+  const sourceLabel = storedSource
+    ? `${storedSource.weeklyOccurrenceId ? "Approved weekly plan" : "Program prescription"}${storedSource.preWorkoutCoach ? " → Daily coach review accepted" : ""}`
+    : selectedOccurrence ? "Approved weekly plan" : "Program prescription";
 
   return (
     <div className="space-y-5">
@@ -338,6 +345,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
           </div>
           {isCompletedSession ? <CheckCircle2 className="text-emerald-300" size={22} /> : null}
         </div>
+        <p className="text-xs text-sky-200">{activeSession ? "Workout source" : "Starting plan"}: {sourceLabel}</p>
         <Link href="/log/history" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200">
           <History size={16} /> Training log history
         </Link>
@@ -400,7 +408,7 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
               <input type="hidden" name="templateId" value={selectedTemplate.id} />
               {selectedOccurrence ? <input type="hidden" name="occurrenceId" value={selectedOccurrence.id} /> : null}
               <Button variant="secondary" className="w-full">
-                {data.hasUnfinishedSession ? "Start template unchanged anyway" : "Start template unchanged"}
+                {data.hasUnfinishedSession ? "Start current plan anyway" : "Start current plan"}
               </Button>
             </form>
           </div>
@@ -594,10 +602,7 @@ function EditableSessionBody({
                         ))}
                       </select>
                     </label>
-                    <label className="flex items-center gap-2 text-xs text-slate-300">
-                      <input type="checkbox" name="exerciseChoiceIntent" value="TEMPORARY" defaultChecked={item.exerciseChoiceIntent === "TEMPORARY"} className="accent-orange-500" />
-                      Only use this exercise today (do not remember it for this template slot)
-                    </label>
+                    <ExerciseChoiceScope temporary={item.exerciseChoiceIntent === "TEMPORARY"} />
                     <details className="rounded-xl border border-slate-800 bg-slate-950 p-2">
                       <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">Slot note / exercise save</summary>
                       <div className="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">

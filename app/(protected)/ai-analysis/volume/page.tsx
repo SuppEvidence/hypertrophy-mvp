@@ -1,3 +1,4 @@
+import { ReviewProgress } from "@/components/coaching/ReviewProgress";
 import { PhaseRecommendation } from "@/components/coaching/PhaseRecommendation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -146,6 +147,7 @@ export default async function VolumeRecommendationsPage({
             <Button type="submit" pendingText="Reviewing volume…" className="text-xs">
               {mesocycle?.t3EvaluationStatus === "FAILED" || staleReview ? "Retry T3 review" : "Review volume"}
             </Button>
+            <ReviewProgress label="Reviewing volume…" />
           </form>
         ) : null}
       </div>
@@ -178,7 +180,7 @@ export default async function VolumeRecommendationsPage({
                 {bodyContext ? <p className="mt-2 text-xs leading-5 text-slate-500">{bodyContext}</p> : null}
                 {mesocycle?.t3EvaluationError ? <p className="mt-2 text-xs text-rose-300">{mesocycle.t3EvaluationError}</p> : null}
                 {stringArray(storedAssessment?.reviewNotes).map((note, index) => <p key={index} className="mt-2 text-xs text-amber-200">{note}</p>)}
-                {mesocycle?.t3EvaluationStatus === "RUNNING" ? <p role="status" className="mt-2 text-xs text-orange-300">Reviewing volume… Refresh shortly to see the result.</p> : null}
+                {staleReview ? <p role="status" className="mt-2 text-xs text-amber-200">Review interrupted. Retry above; approved training remains in place.</p> : mesocycle?.t3EvaluationStatus === "RUNNING" ? <p role="status" className="mt-2 text-xs text-orange-300">Reviewing volume… Refresh shortly to see the result.</p> : null}
               </div>
               <div className="text-right text-[11px] text-slate-600">
                 {mesocycle?.t3LastEvaluatedAt ? <p>{formatDate(mesocycle.t3LastEvaluatedAt)}</p> : null}
@@ -300,12 +302,13 @@ export default async function VolumeRecommendationsPage({
                             </div>
                           ) : null}
                           <p className="mt-2 text-xs leading-5 text-slate-500">
-                            {option.rationale}
+                            {option.rationale ? <><span className="font-semibold text-slate-300">Why: </span>{option.rationale}</> : null}
                           </p>
                           {preview.success ? <div className="mt-3 space-y-1 text-xs text-slate-300">
                             <p className="font-semibold">Changes if approved</p>
                             {preview.data.slots.map((slot) => <p key={slot.id}>{slot.template} · {slot.exercise}: {slot.before} → {slot.after} sets</p>)}
                             {preview.data.muscles.map((muscle) => <p key={muscle.muscleId}>{muscle.name}: {muscle.before} → {muscle.after} effective sets/week</p>)}
+                            <p className="text-slate-500">Later reviews assess this change using your logged response across comparable exposures.</p>
                             <p className="text-slate-500">Physical set changes follow the template’s repeat frequency. Secondary-muscle effects are included above.</p>
                           </div> : <p className="mt-2 text-xs text-amber-200">Run a new volume review to preview this older option.</p>}
 
@@ -331,7 +334,7 @@ export default async function VolumeRecommendationsPage({
                                 disabled={!preview.success}
                                 className="min-h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs font-semibold text-slate-200 transition hover:border-orange-400/40 hover:text-orange-200"
                               >
-                                Choose this option
+                                Approve this change
                               </Button>
                             </form>
                           ) : null}
