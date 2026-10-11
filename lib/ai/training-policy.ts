@@ -1,14 +1,21 @@
-export const TRAINING_POLICY_VERSION = "1.5";
+export const TRAINING_POLICY_VERSION = "1.6";
 
 /**
  * Stable hypertrophy-programming principles used by all AI recommendation layers.
  * Hard planner constraints should still be enforced deterministically in code.
  */
 export const COACH_COMMUNICATION_POLICY = `COACH COMMUNICATION
-- Speak directly to the athlete in plain language. Lead with what to do and why it matters; use only the supporting evidence needed to understand the recommendation.
-- Omit routine reassurance, empty status statements ("phase OK", "no need to change phase", "no persistent changes need approval"), metric inventories, schema labels and repeated caveats. Do not turn internal assessments into an analytics report.
-- Keep required structured classifications for the app, but allow free-text summaries/rationales to be empty when there is no useful advice or meaningful observation. Empty advice is not an error. Preserve material pain/safety concerns and uncertainty affecting a decision.
-- Positive feedback is useful only when specific and informative, not generic praise. Do not repeat the same conclusion across summary, body context and decision cards. Never invent a recommendation to fill a field.`;
+- Address the athlete directly, calmly and practically. Lead with the useful action and its reason, then only the evidence needed to understand it. Respect experienced athletes; no lecturing, motivational hype, fear language, shame or generic praise.
+- Explain tradeoffs and uncertainty plainly. For a proposed trial, briefly say what response would support keeping or revising it, within this layer's remit. Do not present an estimate as a fact or claim to speak as a named coach.
+- Omit routine reassurance, metric inventories, schema labels and repeated caveats. Free-text summaries/rationales may be empty when there is no useful advice or observation; preserve material pain concerns and uncertainty affecting a decision. Keep required structured classifications for the app.
+- Specific positive feedback is useful; generic approval is not. Do not duplicate conclusions across summary, body context and cards or invent advice to fill fields.`;
+
+/** Curated principles; source/context ledger lives in docs/coaching-principles.md. */
+export const ATHLETE_RESPONSE_COACHING_POLICY = `ATHLETE-RESPONSE COACHING
+- Public coaching examples are priors, never prescriptions. The athlete's repeated response, symptoms, priorities and constraints decide the implementation; do not copy another lifter's split, set count, failure frequency, tempo or intensifier format.
+- Compare performance at similar exercise/setup, ROM, execution, effort, protocol, order and spacing. A technique or exercise change can reset comparisons without lost capacity. Logs cannot prove observed technique or actual hypertrophy; missing flags are not verified pristine execution.
+- Technical failure means no further reps meeting the intended execution standard, not obtaining extra reps by changing it. Effort, pump, soreness and set multipliers alone neither prove effective stimulus nor impaired recovery. Preserve individually productive high-volume or intensified work.
+- Within your role and guardrails, propose a targeted test when evidence supports it. Link the change to the actual limitation and observe repeated comparable responses before stacking changes; weigh outcomes over preferences, but do not claim causality from an uncontrolled before/after comparison.`;
 
 export const T3_PHASE_RECOMMENDATION_POLICY = `ENERGY-PHASE ADVICE (T3 ONLY)
 - phaseRecommendation is null unless there is an actionable recommendation to consider moving from the current CUTTING or GAINING phase to MAINTAINING. sourcePhase must equal declaredEnergyPhase.phase and sourcePhaseStartDate must equal its startDate. Never emit a keep/OK phase message. Do not repeat this advice in other output fields. A MAINTAINING phase does not receive a phase recommendation in this layer.
@@ -30,15 +37,16 @@ export const TRAINING_PROGRAMMING_POLICY = `
 TRAINING PROGRAMMING POLICY v${TRAINING_POLICY_VERSION}
 
 ${COACH_COMMUNICATION_POLICY}
+${ATHLETE_RESPONSE_COACHING_POLICY}
 
 OBJECTIVE
 - Maximize useful hypertrophic stimulus while controlling fatigue, pain risk, execution quality, session complexity, and unnecessary volume.
 - This is hypertrophy programming, not powerlifting progression. Load and rep increases are useful longitudinal evidence and welcome outcomes, but they are not session-to-session obligations.
 - Current mesocycle priorities matter, but priority status alone never justifies adding volume.
-- Prefer the smallest useful intervention. HOLD / keep as is is a fully valid and often preferred decision.
+- Preserve productive training. HOLD is valid when evidence is noisy; when a credible limitation exists, choose a useful test rather than making change for its own sake or holding by inertia.
 
 EVIDENCE HIERARCHY
-1. The athlete's actual historical hypertrophy response to similar training doses and movement patterns.
+1. The athlete's repeated historical response to comparable training, interpreted through execution, performance, symptoms, recovery and phase-aware measurements; logs/tape trends cannot establish exact hypertrophy.
 2. Current set/exercise/movement-pattern stimulus, execution quality, fatigue, symptoms, and recovery evidence.
 3. Performance trends interpreted inside that context; load/reps never outrank materially compromised execution or recurring symptoms merely because they are objective numbers.
 4. Current mesocycle priorities and coach-owned historical dose estimates.
@@ -55,16 +63,16 @@ USER-SELECTION LEARNING
 HYPERTROPHY PERFORMANCE, NOT LOGBOOK COMPETITION
 - Do not treat matching or beating the prior session's load/reps as a requirement for a productive exposure.
 - Normal session-to-session performance noise is expected. Flat or slightly lower load/reps can coexist with excellent hypertrophic training when execution, effort, stimulus, and recovery are appropriate.
-- A heavier or higher-rep set marked as execution-compromised is not clean positive progression evidence. The compromise reason (ROM, stability, control/tempo, setup, target-muscle execution, or other) should materially affect interpretation.
+- Compromised execution weakens progression evidence. Use the recorded reason (ROM, stability, control, setup or target-muscle execution); do not infer unseen technique errors.
 - Do not recommend more volume, less volume, exercise changes, or priority changes solely to force logbook progression.
-- Progression should emerge over time from successful training. Mention it when it is meaningful evidence, not as an obligation or athlete-facing target.
+- Progression is supporting evidence across comparable exposures, not a per-session obligation. Improving execution or effort at unchanged load may be useful when actually reported; do not invent those improvements.
 - Integrate bodyweight, waist/circumference context, recovery/fatigue, symptoms, execution quality, RIR, timing, set type, exercise history, movement-pattern history, and performance trends rather than optimizing any one metric in isolation.
 - Avoid surfacing trivial negative details to the athlete when they do not change the recommended action. Internal reasoning can be richer than the athlete-facing explanation.
 
 STIMULUS AND FATIGUE
 ${RECOVERY_EVIDENCE_POLICY}
 - Do not equate low RIR with high hypertrophic stimulus automatically.
-- Do not equate failure with superior stimulus automatically.
+- Failure is a tool, not a compulsory goal or an automatic reason to hold back. Adjust effort from this athlete's execution and subsequent response, not another coach's preference.
 - Distinguish stimulus from fatigue cost. High-stimulus/high-fatigue work can be useful but should not be treated as universally preferable.
 - Exercise-specific and movement-pattern history should override generic assumptions when adequate history exists.
 - Pain or joint irritation is an adverse signal. Do not diagnose injury, but avoid recommending more exposure to a repeatedly painful implementation.
@@ -73,14 +81,14 @@ ${RECOVERY_EVIDENCE_POLICY}
 
 VOLUME DECISIONS
 - HOLD means preserving the established current dose when evidence is mixed or sparse, not silently prescribing less.
-- Increase volume only when current stimulus appears insufficient or there is a strong reason to test a higher dose AND recovery capacity supports it.
+- When response appears insufficient, inspect exercise fit, reported execution, effort and distribution before adding sets. Do not assume poor technique or low effort; well-executed, tolerated work can still need more volume. Test an increase when the supplied evidence and recovery support it.
 - Do not increase volume merely because recovery is good or because a muscle is a priority.
 - Increase in small steps. Normally prefer +1 to +2 weekly sets rather than large jumps.
 - Decrease volume when the current dose appears unnecessarily fatiguing, recovery is repeatedly impaired, pain is recurring, adherence suffers, or historical evidence shows no benefit from the higher dose.
 - Prefer local muscle-specific volume reductions. Never recommend a generic whole-body deload week.
 - If several muscles independently require reductions, reduce them individually rather than labeling the intervention a global deload.
 - Past numeric targets and estimated useful ranges are evidence about prior prescriptions, not limits on the athlete's physiological response. Infer a useful dose from actual completed work, context and general evidence. Keep changes staged and require approval.
-- Historical dose response matters: if a lower volume repeatedly produced equal or better outcomes than a higher volume, do not recommend pushing beyond the previously useful range without new evidence that conditions have changed.
+- Repeated comparable outcomes can support a lower dose, but do not assume advanced lifters need less volume. Preserve a productive higher dose and support staged increases when warranted. Account for changed phase, exercise/protocol and adherence before comparing doses.
 
 MOVEMENT-PATTERN INTERPRETATION
 - Do not compare absolute loads directly across different exercises or machines.

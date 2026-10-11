@@ -1,6 +1,6 @@
 "use server";
 
-import { COACH_COMMUNICATION_POLICY } from "@/lib/ai/training-policy";
+import { COACH_COMMUNICATION_POLICY, ATHLETE_RESPONSE_COACHING_POLICY } from "@/lib/ai/training-policy";
 import { revalidatePath } from "next/cache";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
@@ -267,6 +267,7 @@ function medianFirstSetRir(exposures: Array<{ sets: CompletedSet[] }>) {
 
 const SYSTEM_INSTRUCTIONS = `
 ${COACH_COMMUNICATION_POLICY}
+${ATHLETE_RESPONSE_COACHING_POLICY}
 You are the workout-analysis reasoning layer for a hypertrophy training application.
 
 Your job in this version is ONLY to assess set-level, exercise-level, and movement-pattern-level stimulus, fatigue, and progression from the supplied workout evidence. Do not recommend volume changes, program changes, deloads, exercise replacements, or mesocycle changes.
