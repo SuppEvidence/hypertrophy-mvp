@@ -12,7 +12,7 @@ import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/auth/user";
-import { getCoachingModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
+import { getWeeklyPlanningModelConfig, logCoachingModelUsage } from "@/lib/ai/coaching-models";
 import { getOpenAIClient } from "@/lib/ai/openai";
 import { prisma } from "@/lib/db/prisma";
 import { WeeklyCoachPlanSchema, WeeklyCoachDeltaSchema, consolidateWeeklyExercises, normalizeWeeklySetTypes, validateWeeklyCoachPlan, weeklyExerciseIssues } from "@/lib/coaching/weekly-coach-policy";
@@ -253,11 +253,7 @@ export async function generateWeeklyCoachAction(formData: FormData) {
         completedSets: item.sets.length, effectiveSets: item.sets.reduce((sum, set) => sum + Number(set.setType.multiplier), 0),
         performance: item.sets.filter((set) => set.weight != null && set.reps != null).slice(0, 1).map((set) => ({ weight: Number(set.weight), reps: set.reps, rir: set.rir == null ? null : Number(set.rir), setType: set.setType.slug, isIntensifier: set.setType.isIntensifier, painFlag: set.painFlag })) })) };
   });
-  const baseConfig = getCoachingModelConfig("WEEKLY_PLAN");
-  const aiConfig = carried ? { ...baseConfig, request: { ...baseConfig.request,
-    reasoning: { effort: process.env.OPENAI_WEEKLY_REASONING_EFFORT ? baseConfig.request.reasoning.effort : "medium" as const },
-    max_output_tokens: 8192 as const },
-    options: { ...baseConfig.options, timeout: 125_000 } } : baseConfig;
+  const aiConfig = getWeeklyPlanningModelConfig(Boolean(carried));
   const started = Date.now();
   try {
     const movementChoices = Object.fromEntries([...new Set(catalog.map((row) => row.movementGroupId))].map((id) => [id,
@@ -290,7 +286,12 @@ Plan the remaining hypertrophy workouts for this week. Completed sessions are fi
         carried ? "weekly_coach_delta" : "weekly_coach_plan") },
     }, aiConfig.options);
     logCoachingModelUsage(aiConfig, response, started);
-    if (!response.output_parsed) throw new Error("The coach did not finish a weekly plan within its output budget.");
+    if (!response.output_parsed) {
+      const reason = response.incomplete_details?.reason;
+      throw new Error(reason === "max_output_tokens"
+        ? "The weekly coach exhausted its output budget before completing the plan. Your saved plan is unchanged; retry the review."
+        : "The weekly coach did not return a complete plan. Your saved plan is unchanged; retry the review.");
+    }
     const rawPlan = carried
       ? applyWeeklyCoachDelta(carried, WeeklyCoachDeltaSchema.parse(response.output_parsed))
       : WeeklyCoachPlanSchema.parse(response.output_parsed);
@@ -351,7 +352,10 @@ Plan the remaining hypertrophy workouts for this week. Completed sessions are fi
     const elapsedMs = Date.now() - started;
     const timedOut = error instanceof Error && /timed out|timeout|abort/i.test(error.message);
     console.warn("COACHING_AI", JSON.stringify({ workload: "WEEKLY_PLAN", model: aiConfig.request.model,
-      reasoningEffort: aiConfig.request.reasoning.effort, status: timedOut ? "timeout" : "failed", durationMs: elapsedMs }));
+      reasoningEffort: aiConfig.request.reasoning.effort,
+      planningMode: carried ? "CARRY_FORWARD" : "FULL_PLAN",
+      timeoutMs: aiConfig.options.timeout, maxOutputTokens: aiConfig.request.max_output_tokens,
+      status: timedOut ? "timeout" : "failed", durationMs: elapsedMs }));
     const message = timedOut ? "The weekly coach reached its time limit. No plan was saved; the review can be run again."
       : error instanceof Error ? error.message.slice(0, 220) : "Weekly coaching failed.";
     redirect(plannerUrl(week.weekStart, `error=${encodeURIComponent(message)}`));

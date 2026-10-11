@@ -30,7 +30,9 @@ const files = {
 } as const;
 for (const workload of COACHING_WORKLOADS) {
   const source = readFileSync(files[workload], "utf8");
-  assert.ok(source.includes(`getCoachingModelConfig("${workload}")`));
+  assert.ok(workload === "WEEKLY_PLAN"
+    ? source.includes("getWeeklyPlanningModelConfig(Boolean(carried))")
+    : source.includes(`getCoachingModelConfig("${workload}")`));
   assert.match(source, /responses\.parse\(\{\s*\.\.\.aiConfig\.request,/);
   assert.ok(source.includes("}, aiConfig.options)"));
   assert.ok(!source.includes("getOpenAIModel"));

@@ -9,7 +9,7 @@ const PROFILES = {
   WORKOUT_ANALYSIS: { tier: "T2", model: "gpt-5.6-terra", effort: "medium", timeout: 60_000, maxOutputTokens: 16384 },
   T3_VOLUME: { tier: "T3", model: "gpt-5.6-sol", effort: "high", timeout: 90_000, maxOutputTokens: 24576 },
   T3_MESOCYCLE: { tier: "T3", model: "gpt-5.6-sol", effort: "xhigh", timeout: 110_000, maxOutputTokens: 32768 },
-  WEEKLY_PLAN: { tier: "T3", model: "gpt-5.6-sol", effort: "high", timeout: 225_000, maxOutputTokens: 16384 },
+  WEEKLY_PLAN: { tier: "T3", model: "gpt-5.6-sol", effort: "high", timeout: 255_000, maxOutputTokens: 24576 },
 } as const;
 
 export const COACHING_WORKLOADS = Object.keys(PROFILES) as CoachingWorkload[];
@@ -37,6 +37,15 @@ export function getCoachingModelConfig(workload: CoachingWorkload, env: Environm
     request: { model, reasoning: { effort: effort as Effort }, store: false as const, max_output_tokens: profile.maxOutputTokens },
     options: { timeout: profile.timeout, maxRetries: 0 },
   };
+}
+
+/** Keep weekly request deadlines below the planner route's 300-second limit. */
+export function getWeeklyPlanningModelConfig(carried: boolean, env: Environment = process.env) {
+  const base = getCoachingModelConfig("WEEKLY_PLAN", env);
+  if (!carried) return base;
+  return { ...base, request: { ...base.request,
+    reasoning: { effort: env.OPENAI_WEEKLY_REASONING_EFFORT ? base.request.reasoning.effort : "medium" as Effort },
+    max_output_tokens: 16384 }, options: { ...base.options, timeout: 210_000 } };
 }
 
 type ResponseSummary = {
