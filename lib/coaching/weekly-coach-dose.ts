@@ -10,6 +10,7 @@ export function approvedWeekDose(input: {
   const exercises = new Map(input.exercises.map((row) => [row.id, row]));
   const completedMuscles: Record<string, number> = {}, completedMovements: Record<string, number> = {};
   const plannedMuscles: Record<string, number> = {}, plannedMovements: Record<string, number> = {};
+  const plannedPrimary: Record<string, number> = {}, plannedSecondary: Record<string, number> = {};
   for (const session of input.completed) {
     for (const [id, dose] of Object.entries(session.muscles)) completedMuscles[id] = (completedMuscles[id] ?? 0) + dose;
     for (const [id, dose] of Object.entries(session.movements)) completedMovements[id] = (completedMovements[id] ?? 0) + dose;
@@ -21,13 +22,19 @@ export function approvedWeekDose(input: {
     if (!exercise || item.setTypeIds.some((id) => !Number.isFinite(input.multipliers[id]) || input.multipliers[id] <= 0)) { unknownItems++; continue; }
     const dose = item.setTypeIds.reduce((sum, id) => sum + input.multipliers[id], 0);
     plannedMovements[exercise.movementGroupId] = (plannedMovements[exercise.movementGroupId] ?? 0) + dose;
-    for (const id of exercise.primaryMuscleIds) plannedMuscles[id] = (plannedMuscles[id] ?? 0) + dose;
-    for (const row of exercise.secondaryMuscles) plannedMuscles[row.muscleId] = (plannedMuscles[row.muscleId] ?? 0) + dose * row.fraction;
+    for (const id of exercise.primaryMuscleIds) {
+      plannedMuscles[id] = (plannedMuscles[id] ?? 0) + dose;
+      plannedPrimary[id] = (plannedPrimary[id] ?? 0) + dose;
+    }
+    for (const row of exercise.secondaryMuscles) {
+      plannedMuscles[row.muscleId] = (plannedMuscles[row.muscleId] ?? 0) + dose * row.fraction;
+      plannedSecondary[row.muscleId] = (plannedSecondary[row.muscleId] ?? 0) + dose * row.fraction;
+    }
   }
   return { weekStart: input.plan.weekStart,
     completed: { sessions: input.completed.length, muscleDose: completedMuscles, movementDose: completedMovements },
     notCompleted: { sessions: remaining.map((day) => ({ date: day.date, status: input.startedIds.includes(day.id) ? "IN_PROGRESS" : "PLANNED" })),
-      muscleDose: plannedMuscles, movementDose: plannedMovements, unknownItems },
+      muscleDose: plannedMuscles, primaryMuscleDose: plannedPrimary, secondaryMuscleDose: plannedSecondary, movementDose: plannedMovements, unknownItems },
     interpretation: "Completed dose is logged work. Not-completed dose is an approved estimate, including in-progress sessions; do not count it as performed or add completed occurrences again. Missed work uses the saved redistribution. These are this week's implementation, not permanent template targets.",
   };
 }

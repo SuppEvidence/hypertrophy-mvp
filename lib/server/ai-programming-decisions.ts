@@ -1,5 +1,6 @@
 "use server";
 
+import { PRIORITY_DOSE_POLICY, PriorityReviewSchema } from "@/lib/coaching/priority-dose-policy";
 import { ModelPhaseRecommendationSchema } from "@/lib/ai/phase-recommendation-schema";
 import { validatePhaseRecommendation } from "@/lib/coaching/phase-recommendation";
 
@@ -56,7 +57,7 @@ const DECISION_MEMORY_LIMIT = 10;
 const HISTORICAL_MESOCYCLES = 4;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-import { validateT3Review, type CandidatePattern, type DecisionValidationContext } from "@/lib/coaching/t3-review-validation";
+import { assertT3PriorityEffects, validateT3Review, type CandidatePattern, type DecisionValidationContext } from "@/lib/coaching/t3-review-validation";
 
 function finiteNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
@@ -554,12 +555,28 @@ async function buildProgrammingContext(userId: string) {
       secondaryMuscles: row.secondaryMuscles.map((link) => ({ muscleId: link.muscleId, fraction: Number(link.contributionEstimate ?? 0) })) })),
     Object.fromEntries(prescription.setTypes.map((row) => [row.id, Number(row.multiplier)])));
 
+  const templatePrimaryDose: Record<string, number> = {}, templateSecondaryDose: Record<string, number> = {};
+  const templateMultipliers = new Map(prescription.setTypes.map((row) => [row.id, Number(row.multiplier)]));
+  for (const item of prescription.generated.items.filter((row) => !row.isMesocycleSuppressed)) {
+    let effective = 0;
+    for (let index = 0; index < item.adjustedPlannedSets; index++) {
+      const typeId = item.mesocycleAddedSetPlans.find((row) => row.setNumber === index + 1)?.setTypeId ??
+        item.setPlans.find((row) => row.setNumber === index + 1)?.setTypeId ?? item.defaultSetTypeId;
+      effective += templateMultipliers.get(typeId) ?? Number(item.defaultSetTypeMultiplier);
+    }
+    effective *= Number(item.expectedOccurrences) * 7 / volumeWindowDays(prescription.program.volumeWindowType, prescription.program.customWindowDays);
+    for (const link of item.primaryMuscles) templatePrimaryDose[link.muscleId] = (templatePrimaryDose[link.muscleId] ?? 0) + effective;
+    for (const link of item.secondaryMuscles) templateSecondaryDose[link.muscleId] = (templateSecondaryDose[link.muscleId] ?? 0) + effective * Number(link.contributionEstimate ?? 0);
+  }
+
   const currentMuscleVolumes = mesocycle.musclePriorities.map((target) => {
     const row = dashboard.volumeRows.find((item) => item.muscleId === target.muscleId);
     return {
       muscleId: target.muscleId,
       muscleName: target.muscle.name,
       priority: target.priority,
+      templatePrimaryWeekly: round(templatePrimaryDose[target.muscleId] ?? 0, 1),
+      templateSecondaryWeekly: round(templateSecondaryDose[target.muscleId] ?? 0, 1),
       baselineWeeklySets: finiteNumber(target.baselineWeeklySets) ?? 0,
       coachTargetWeekly: finiteNumber(target.coachTargetWeeklySets) ?? 0,
       evidenceBasedMinimum: finiteNumber(target.rangeMinimumSets) ?? 0,
@@ -704,6 +721,7 @@ async function buildProgrammingContext(userId: string) {
       prescribedSlots: prescription.generated.items.filter((row) => !row.isMesocycleSuppressed).map((row) => ({
         exercise: row.exerciseName, template: row.templateName, movementPatternId: row.movementGroupId,
         setsPerOccurrence: row.adjustedPlannedSets, occurrencesPerWindow: Number(row.expectedOccurrences),
+        primaryMuscleIds: row.primaryMuscles.map((link) => link.muscleId),
         minimumSets: row.minSets, maximumSets: row.maxSets, autoAdjustable: row.autoAdjustable,
         exerciseType: row.secondaryMuscles.length ? "COMPOUND" : "ISOLATION",
         secondaryMuscleEstimates: row.secondaryMuscles.map((link) => ({ muscleId: link.muscleId, estimatedFraction: link.contributionEstimate == null ? null : Number(link.contributionEstimate) })),
@@ -769,8 +787,11 @@ When approvedWeek is supplied, use its completed and not-completed doses to inte
 
 ${TRAINING_PROGRAMMING_POLICY}
 ${T3_PHASE_RECOMMENDATION_POLICY}
+${PRIORITY_DOSE_POLICY}
 
 CURRENT TASK
+- Every assessment must include priorityReview.maintenanceBasis. For non-maintenance muscles use NOT_MAINTENANCE. For MAINTAIN use LOWER_DOSE_HISTORY only when lower-dose outcomes actually support preservation; PRESERVATION_CONCERN only for repeated evidence of losing the maintained result, not slowing growth; PRIORITY_OVERLAP for unavoidable dose from useful priority work; REDUCTION_TRIAL for a supported monitored efficiency test; otherwise UNREVIEWED_BASELINE. Cite the actual dated observations in evidence and distinguish primary work from incidental contribution in the rationale when material. Do not certify an inherited baseline as necessary maintenance.
+- A maintenance range increase or additional maintenance work requires PRESERVATION_CONCERN with non-LOW confidence and BELOW_EXPECTED_RESPONSE, meaning declining preservation rather than a growth plateau. A supported reduction trial can have MODERATE confidence without proving an exact minimum. Keep the trial staged and approval-required; protect growth work sharing the same movements.
 - Assess EVERY configured muscle against its outcome priority: SPECIALIZE, GROW, MAINTAIN, or INDIRECT_ONLY.
 - Upper, Mid, and Lower chest are separate coaching targets. Their exercise classification is an emphasis proxy, not exclusive anatomical recruitment or three independent recovery budgets. Chest (unclassified) is legacy or manually unassigned work; do not add it to a chest-region dose or infer that old total-chest targets prove a region-specific response.
 - Use intraMesocycleCircumferences (including OPTIONAL_CHECKIN observations) as supporting evidence of the current block response. Compare dated observations to the baseline when available, or clearly identify a first-observation reference when it is missing. Account for elapsed days, measurement noise, fat loss/gain, glycogen/water and measurement consistency. Flat circumference over a short interval is not failed stimulus; an isolated increase is not proof of growth. Cross-check execution, performance, recovery and completed dose before suggesting any volume change. Aggregate chest, shoulder, arm and thigh measurements cannot identify individual regional muscles or prove secondary-contribution fractions. Mention these observations only when they materially affect confidence or a recommendation.
@@ -828,7 +849,8 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
     ],
     text: {
       format: zodTextFormat(
-        ProgrammingRecommendationsSchema.extend({ phaseRecommendation: ModelPhaseRecommendationSchema.nullable() }),
+        ProgrammingRecommendationsSchema.extend({ phaseRecommendation: ModelPhaseRecommendationSchema.nullable(),
+          assessments: ProgrammingRecommendationsSchema.shape.assessments.element.extend({ priorityReview: PriorityReviewSchema }).array().min(1).max(24) }),
         "hypertrophy_programming_recommendations",
       ),
     },
@@ -857,6 +879,7 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
       try {
         const preview = previewT3Prescription(prescription.generationInput, decision.targetMuscleId, option, assessment.confidence, assessment.status);
         assertT3WeeklyBudget(preview, previousPreviews);
+        assertT3PriorityEffects(preview.muscles, decision.targetMuscleId, parsed, validation);
         optionPreviews[decision.targetMuscleId][option.optionKey] = preview;
         return true;
       } catch (error) {
@@ -1132,7 +1155,8 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
   });
   const activeBlock = decision.mesocycleId && await prisma.programMesocycle.findFirst({
     where: { id: decision.mesocycleId, userId, isArchived: false, actualEndDate: null },
-    select: { programId: true, startDate: true, lengthWeeks: true, updatedAt: true },
+    select: { programId: true, startDate: true, lengthWeeks: true, updatedAt: true, t3Assessment: true,
+      musclePriorities: { select: { muscleId: true, priority: true, coachTargetWeeklySets: true, rangeMinimumSets: true, rangeMaximumSets: true } } },
   });
   if (!activeProgram || !activeBlock || activeBlock.programId !== activeProgram.id ||
       activeBlock.startDate.getTime() + activeBlock.lengthWeeks * 7 * DAY_MS <= Date.now()) {
@@ -1171,7 +1195,22 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
   let appliedPreview: T3PlanPreview | null = null;
   if (selectedOption) {
     if (!prescription || !assessment.success || !approvedPreview.success) throw new Error("This older recommendation needs a new T3 review before it can be applied.");
+    const currentPriority = activeBlock.musclePriorities.find((row) => row.muscleId === decision.targetMuscleId);
+    if (!currentPriority || currentPriority.priority !== assessment.data.priority) throw new Error("This muscle's priority changed. Run a new T3 review before applying the old option.");
+    if (currentPriority.priority === "MAINTAIN" && selectedOption.action === "INCREASE_VOLUME" &&
+        (assessment.data.priorityReview?.maintenanceBasis !== "PRESERVATION_CONCERN" ||
+         assessment.data.status !== "BELOW_EXPECTED_RESPONSE" || assessment.data.confidence === "LOW" || !assessment.data.evidence.some((row) => row.trim()))) {
+      throw new Error("This maintenance increase needs a new review establishing a preservation concern.");
+    }
     appliedPreview = previewT3Prescription(prescription.generationInput, decision.targetMuscleId, selectedOption, assessment.data.confidence, assessment.data.status);
+    const storedReview = ProgrammingRecommendationsSchema.pick({ assessments: true }).safeParse(activeBlock.t3Assessment);
+    if ((currentPriority.priority === "MAINTAIN" || currentPriority.priority === "INDIRECT_ONLY") && !storedReview.success) {
+      throw new Error("Run a new T3 review to check this lower-priority change against the whole block.");
+    }
+    if (storedReview.success) assertT3PriorityEffects(appliedPreview.muscles, decision.targetMuscleId, storedReview.data, {
+      targetByMuscle: new Map(activeBlock.musclePriorities.map((row) => [row.muscleId, { priority: row.priority,
+        target: Number(row.coachTargetWeeklySets), minimum: Number(row.rangeMinimumSets), maximum: Number(row.rangeMaximumSets) }])),
+    });
     if (JSON.stringify(appliedPreview) !== JSON.stringify(approvedPreview.data)) throw new Error("The prescription has changed since this option was reviewed. Run a new review to see its current effect before approving it.");
   }
 

@@ -31,7 +31,7 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
       <Card className="space-y-3">
         <h2 className="font-semibold text-slate-100">Week of {view.weekStart} · {view.program.name}</h2>
         {view.isUpcoming ? <p className="text-sm text-sky-200">Planning ahead. This week&apos;s remaining workouts stay in the logger until Monday. Only work completed within the selected week counts toward its dose.</p> : null}
-        <p className="text-sm text-slate-400">Existing templates give the coach a starting structure. Set your actual training availability and time limits. Exercise preferences, mesocycle priorities, recent workouts and metrics are read from the app.</p>
+        <p className="text-sm text-slate-400">The coach preserves the established workout structure within this mesocycle, adjusting dose before changing exercises. Templates provide the starting framework when no approved week is available. Set your actual training availability and time limits. Exercise preferences, mesocycle priorities, recent workouts and metrics are read from the app.</p>
         {view.completedSessions.length ? <div className="text-sm text-slate-300"><p className="font-semibold text-slate-200">Already completed in this selected week</p>
           {view.completedSessions.map((session) => <p key={session.id}>{session.date} · {view.templates.find((row) => row.id === session.templateId)?.name ?? "Workout"} · {session.physicalSets} physical / {session.effectiveSets.toFixed(1)} effective sets</p>)}
           <p className="mt-1 text-xs text-slate-400">These logged sets count toward the week&apos;s muscle doses. The coach plans only the dates you select below.</p>
@@ -71,6 +71,15 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
           {view.exerciseIssues.length} exercise {view.exerciseIssues.length === 1 ? "choice needs" : "choices need"} your decision. Exercises marked Avoid can be explicitly accepted; an unavailable exercise must be replaced before approval. The muscle estimates omit unavailable exercises until they are replaced.
         </p> : null}
         {view.allocated?.unallocatedSets ? <p className="rounded-lg border border-amber-500/30 p-2 text-xs text-amber-200">{view.allocated.unallocatedSets} physical sets from missed workouts could not fit into compatible remaining sessions.</p> : null}
+        {view.priorityChecks.length ? <div className="rounded-xl border border-amber-500/30 p-3 text-sm text-amber-200">
+          <p className="font-semibold">Allocation needs a look</p>
+          <ul className="mt-2 space-y-2 text-xs">{view.priorityChecks.map((check) => <li key={`${check.muscleId}:${check.code}`}>{check.message}</li>)}</ul>
+          <p className="mt-2 text-xs text-slate-400">These checks do not impose category set caps or block approval. Adjust the proposal below, or accept a tradeoff that fits your needs.</p>
+        </div> : null}
+        {view.plan.exerciseChanges?.length ? <div className="rounded-lg border border-slate-800 p-3 text-xs text-slate-300">
+          <p className="font-semibold">Exercise changes from the established structure</p>
+          {view.plan.exerciseChanges.filter((change) => view.plan?.workouts.some((day) => day.date === change.date && day.items.some((item) => item.exerciseId === change.toExerciseId))).map((change) => <p className="mt-1" key={`${change.date}:${change.sourceSlotId}`}>{change.date} · {view.exerciseNames[change.fromExerciseId] ?? "Previous exercise"} → {view.exerciseNames[change.toExerciseId] ?? "Replacement"}: {change.reason}</p>)}
+        </div> : null}
         <WeeklyDoseComparison rows={view.muscleSummary} exerciseTotal={view.weekEffectiveTotal} userEdited={view.plan.userEdited} />
         <div className="grid gap-3 md:grid-cols-2">
           {(view.allocated?.workouts ?? view.plan.workouts).map((day) => {

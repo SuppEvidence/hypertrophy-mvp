@@ -14,6 +14,7 @@ export function carryForwardWeek(input: {
   introducibleSetTypeIdsByExercise?: Record<string, string[]>;
   actual: ActualWorkout[];
   missedIds: string[];
+  priorities?: Record<string, string>;
 }): WeeklyCoachPlan | null {
   const { previous, availability, templates, candidates, exercises, regularSetTypeIds, actual } = input;
   const allowed = new Map(exercises.filter((row) => !row.avoided).map((row) => [row.id, row]));
@@ -21,9 +22,9 @@ export function carryForwardWeek(input: {
   const completed = new Map(actual.map((row) => [row.occurrenceId, row]));
   const regular = new Set(regularSetTypeIds);
   const baseType = regularSetTypeIds[0];
-  if (!baseType || !actual.length) return null;
+  if (!baseType) return null;
   const sources = previous.workouts.filter((day) => !input.missedIds.includes(day.id));
-  if (!sources.some((day) => completed.has(day.id))) return null;
+  if (!sources.length) return null;
   const workouts = availability.map((day, index) => {
     const weekday = new Date(`${day.date}T12:00:00Z`).getUTCDay();
     const matching = sources.find((row) => new Date(`${row.date}T12:00:00Z`).getUTCDay() === weekday);
@@ -77,16 +78,25 @@ export function carryForwardWeek(input: {
     while (items.length) {
       const total = items.reduce((sum, item) => sum + item.sets, 0);
       if (total <= 36 && total * 1.5 + items.length <= day.minutes * 1.2) break;
-      const last = items[items.length - 1];
-      last.sets -= 1;
-      last.setTypeIds.pop();
-      if (!last.sets) items.pop();
+      const priorityScore = (item: (typeof items)[number]) => {
+        const exercise = allowed.get(item.exerciseId);
+        const score = (id: string) => input.priorities?.[id] === "SPECIALIZE" ? 3 : input.priorities?.[id] === "GROW" ? 2 : input.priorities?.[id] === "MAINTAIN" ? 1 : 0;
+        return Math.max(0, ...(exercise?.primaryMuscleIds.map(score) ?? []),
+          ...(exercise?.secondaryMuscles.map((row) => score(row.muscleId) * row.fraction) ?? []));
+      };
+      // Shared growth work stays protected; trim lower-priority work first.
+      // Prefer removing a spare set over deleting a complete exercise at equal priority.
+      const index = items.map((item, index) => ({ index, rank: priorityScore(item), lastSet: item.sets === 1 ? 1 : 0 }))
+        .sort((a, b) => a.rank - b.rank || a.lastSet - b.lastSet || b.index - a.index)[0].index;
+      items[index].sets -= 1;
+      items[index].setTypeIds.pop();
+      if (!items[index].sets) items.splice(index, 1);
     }
     return { id: day.id, date: day.date, templateId, durationMinutes: day.minutes,
-      rationale: "Starting structure from last week's accepted and completed training; coach adjusts where useful.", items };
+      rationale: "Established accepted structure, updated from completed training where available; coach adjusts where useful.", items };
   });
   if (workouts.some((day) => !day.items.length)) return null;
-  return { version: "W1", weekStart: input.weekStart, summary: "Based on last week's accepted and completed training.", workouts };
+  return { version: "W1", weekStart: input.weekStart, summary: "Based on the established accepted structure, with completed choices where available.", workouts };
 }
 
 export function applyWeeklyCoachDelta(base: WeeklyCoachPlan, delta: WeeklyCoachDelta): WeeklyCoachPlan | null {
@@ -95,8 +105,42 @@ export function applyWeeklyCoachDelta(base: WeeklyCoachPlan, delta: WeeklyCoachD
   if (new Set(delta.changes.map((change) => change.date)).size !== delta.changes.length ||
       delta.changes.some((change) => !days.has(change.date))) return null;
   const changes = new Map(delta.changes.map((change) => [change.date, change]));
-  return { ...base, summary: delta.summary, doseReviews: delta.doseReviews, userEdited: false, workouts: base.workouts.map((day) => {
+  return { ...base, summary: delta.summary, doseReviews: delta.doseReviews, exerciseChanges: delta.exerciseChanges, userEdited: false, workouts: base.workouts.map((day) => {
     const change = changes.get(day.date);
     return change ? { ...day, templateId: change.templateId, rationale: change.rationale, items: change.items } : day;
   }) };
+}
+
+/** Keep accepted exercises unless the coach identifies a specific, reviewable reason. */
+export function preserveWeeklyExerciseChoices(base: WeeklyCoachPlan | null, proposed: WeeklyCoachPlan,
+  exercises: WeeklyExercise[]) {
+  if (!base) return { plan: proposed, restored: [] as string[] };
+  const allowed = new Map(exercises.filter((row) => !row.avoided).map((row) => [row.id, row]));
+  const byId = new Map(exercises.map((row) => [row.id, row]));
+  const restored: string[] = [];
+  const plan = { ...proposed, workouts: proposed.workouts.map((day) => {
+    const prior = base.workouts.find((row) => row.date === day.date);
+    if (!prior) return day;
+    const claimedPrior = new Set<string>();
+    const items = day.items.map((item) => {
+      const group = byId.get(item.exerciseId)?.movementGroupId;
+      const samePattern = prior.items.filter((old) => byId.get(old.exerciseId)?.movementGroupId === group &&
+        !day.items.some((next) => next.exerciseId === old.exerciseId));
+      const old = prior.items.find((row) => row.sourceSlotId === item.sourceSlotId) ??
+        (samePattern.length === 1 ? samePattern[0] : undefined);
+      if (!old || old.exerciseId === item.exerciseId || !allowed.has(old.exerciseId) ||
+          day.items.some((row) => row !== item && row.exerciseId === old.exerciseId)) return item;
+      if (claimedPrior.has(old.exerciseId)) return item;
+      claimedPrior.add(old.exerciseId);
+      const justified = proposed.exerciseChanges?.some((change) => change.date === day.date &&
+        (change.sourceSlotId === item.sourceSlotId || change.sourceSlotId === old.sourceSlotId) &&
+        change.fromExerciseId === old.exerciseId && change.toExerciseId === item.exerciseId && change.reason.trim());
+      if (justified) return item;
+      restored.push(`${day.date}: kept ${allowed.get(old.exerciseId)?.name ?? old.exerciseId}; no specific reason was supplied for changing the established exercise.`);
+      return { ...item, sourceSlotId: old.sourceSlotId, exerciseId: old.exerciseId,
+        reason: "Established exercise retained; weekly dose adjusted without an unexplained swap." };
+    });
+    return { ...day, templateId: prior.templateId, items };
+  }) };
+  return { plan, restored };
 }

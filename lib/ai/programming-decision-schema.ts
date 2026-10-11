@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PriorityReviewSchema } from "../coaching/priority-dose-policy";
 import { PhaseRecommendationSchema } from "./phase-recommendation-schema";
 
 export const ProgrammingConfidenceSchema = z.enum([
@@ -28,6 +29,8 @@ export const T3MuscleAssessmentSchema = z.object({
   muscleName: z.string(),
   priority: T3MusclePrioritySchema,
   status: T3VolumeStatusSchema,
+  // Optional for historical assessments; required by the current T3 model schema.
+  priorityReview: PriorityReviewSchema.optional(),
   confidence: ProgrammingConfidenceSchema,
   recommendedRangeMinimum: z.number().min(0).max(60),
   recommendedRangeMaximum: z.number().min(0).max(60),

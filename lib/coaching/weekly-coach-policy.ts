@@ -16,11 +16,17 @@ export const WeeklyCoachWorkoutSchema = z.object({
   items: z.array(WeeklyCoachItemSchema).min(1).max(16),
 });
 export const WeeklyDoseReviewSchema = z.object({ muscleId: z.string(), reason: z.string().max(400) });
+export const WeeklyExerciseChangeSchema = z.object({
+  date: z.iso.date(), sourceSlotId: z.string().max(160), fromExerciseId: z.string().uuid(), toExerciseId: z.string().uuid(),
+  basis: z.enum(["PAIN_OR_TOLERANCE", "EQUIPMENT_OR_AVAILABILITY", "USER_REQUEST", "STIMULUS_LIMITATION", "PRIORITY_REALLOCATION"]),
+  reason: z.string().min(1).max(300),
+});
 export const WeeklyCoachPlanSchema = z.object({
   version: z.literal("W1"),
   weekStart: z.iso.date(),
   summary: z.string().max(1800),
   doseReviews: z.array(WeeklyDoseReviewSchema).max(30).optional(),
+  exerciseChanges: z.array(WeeklyExerciseChangeSchema).max(40).optional(),
   userEdited: z.boolean().optional(),
   // Written by the manual editor only; never part of AI output schemas.
   manualSetTypeOverrides: z.array(z.object({
@@ -43,6 +49,7 @@ export const WeeklyCoachDeltaSchema = z.object({
   weekStart: z.iso.date(),
   summary: z.string().max(1800),
   doseReviews: z.array(WeeklyDoseReviewSchema).max(30).optional(),
+  exerciseChanges: z.array(WeeklyExerciseChangeSchema).max(40).optional(),
   changes: z.array(z.object({
     date: z.iso.date(),
     templateId: z.string().uuid(),

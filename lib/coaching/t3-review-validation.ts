@@ -27,6 +27,11 @@ function validateOption(option: ProgrammingOption, muscleId: string,
   if (option.action === "INCREASE_VOLUME" && option.deltaWeeklySets <= 0) throw new Error("Increase has no positive dose change");
   if (option.action === "DECREASE_VOLUME" && option.deltaWeeklySets >= 0) throw new Error("Decrease has no negative dose change");
   if (option.action === "REALLOCATE_VOLUME" && option.deltaWeeklySets !== 0) throw new Error("Reallocation changes the muscle target");
+  if (target.priority === "MAINTAIN" && option.action === "INCREASE_VOLUME" &&
+      (assessment.priorityReview?.maintenanceBasis !== "PRESERVATION_CONCERN" ||
+       assessment.status !== "BELOW_EXPECTED_RESPONSE" || !assessment.evidence.some((row) => row.trim()))) {
+    throw new Error("Maintenance increases need evidence of losing the maintained result, not a growth plateau");
+  }
   const protectiveReduction = option.action === "DECREASE_VOLUME" && assessment.status === "RECOVERABILITY_CONCERN";
   if ((assessment.confidence === "LOW" || assessment.status === "INSUFFICIENT_EVIDENCE") && !protectiveReduction) {
     throw new Error("Evidence is too uncertain for this change");
@@ -76,6 +81,23 @@ export function validateT3Review(input: ProgrammingRecommendations, validation: 
         row.recommendedRangeMinimum >= 0 && row.recommendedRangeMaximum >= row.recommendedRangeMinimum &&
         row.recommendedRangeMaximum <= T3_RANGE_CEILING) {
       usable.add(muscleId);
+      if (target.priority === "MAINTAIN") {
+        const basis = row.priorityReview?.maintenanceBasis;
+        const unsupportedRaise = row.recommendedRangeMinimum > (target.minimum ?? target.target ?? 0) + .1;
+        if (unsupportedRaise && (basis !== "PRESERVATION_CONCERN" || row.confidence === "LOW" ||
+            row.status !== "BELOW_EXPECTED_RESPONSE" || !row.evidence.some((item) => item.trim()))) {
+          notes.push(`${row.muscleName}: an unsupported increase in the estimated maintenance minimum was withheld. Growth-dose history does not establish a maintenance requirement.`);
+          return { ...row, muscleName: validation.canonicalMuscleNames.get(muscleId) ?? row.muscleName,
+            recommendedRangeMinimum: target.minimum ?? target.target ?? 0,
+            recommendedRangeMaximum: target.maximum ?? target.target ?? 0,
+            status: "INSUFFICIENT_EVIDENCE" as const, confidence: "LOW" as const,
+            priorityReview: { maintenanceBasis: "UNREVIEWED_BASELINE" as const },
+            rationale: "The retained range is provisional. This review did not justify raising a maintenance requirement.", evidence: [] };
+        }
+        if (!basis || basis === "UNREVIEWED_BASELINE" || basis === "NOT_MAINTENANCE") {
+          notes.push(`${row.muscleName}: the maintenance dose is still a provisional baseline, not a proven minimum requirement.`);
+        }
+      }
       return { ...row, muscleName: validation.canonicalMuscleNames.get(muscleId) ?? row.muscleName };
     }
     const muscleName = validation.canonicalMuscleNames.get(muscleId) ?? muscleId;
@@ -113,4 +135,20 @@ export function validateT3Review(input: ProgrammingRecommendations, validation: 
     return proposal.options.length > 0;
   });
   return { parsed, notes: [...new Set(notes)] };
+}
+
+/** Check realized compound effects, including changes outside the decision's muscle. */
+export function assertT3PriorityEffects(muscles: Array<{ muscleId: string; before: number; after: number }>,
+  targetMuscleId: string, review: Pick<ProgrammingRecommendations, "assessments">, validation: Pick<DecisionValidationContext, "targetByMuscle">) {
+  const target = validation.targetByMuscle.get(targetMuscleId);
+  if (target?.priority !== "MAINTAIN" && target?.priority !== "INDIRECT_ONLY") return;
+  for (const muscle of muscles) {
+    const priority = validation.targetByMuscle.get(muscle.muscleId)?.priority;
+    if ((priority !== "SPECIALIZE" && priority !== "GROW") || muscle.after >= muscle.before - .1) continue;
+    const assessment = review.assessments.find((row) => row.muscleId === muscle.muscleId);
+    if (!assessment || assessment.confidence === "LOW" || !assessment.evidence.some((row) => row.trim()) ||
+        (assessment.status !== "ABOVE_NEEDED_DOSE" && assessment.status !== "RECOVERABILITY_CONCERN")) {
+      throw new Error("A lower-priority change would reduce growth-priority work without that muscle's own supported reason.");
+    }
+  }
 }

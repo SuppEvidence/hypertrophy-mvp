@@ -131,9 +131,9 @@ assert.equal(changed?.workouts[0].items[0].sets, 2, "An unchanged day must remai
 assert.equal(changed?.workouts[1].items[0].sets, 4);
 assert.equal(applyWeeklyCoachDelta(carry, { version: "WD1", weekStart: carry.weekStart, summary: "Invalid",
   changes: [{ date: "2026-10-10", templateId: template, rationale: "Unknown date", items: carry.workouts[0].items }] }), null);
-assert.equal(carryForwardWeek({ previous: plan, weekStart: "2026-10-05",
+assert.ok(carryForwardWeek({ previous: plan, weekStart: "2026-10-05",
   availability: [{ id: a, date: "2026-10-05", minutes: 60 }], templates: [template], candidates: evidence.candidates,
-  exercises: evidence.exercises, regularSetTypeIds: [type], missedIds: [], actual: [] }), null);
+  exercises: evidence.exercises, regularSetTypeIds: [type], missedIds: [], actual: [] }), "An approved structure remains usable before any occurrence is completed");
 const mislabeledOriginal = { ...evidence, candidates: [{ ...evidence.candidates[0], movementGroupId: "programmed-pattern" }] };
 assert.equal(validateWeeklyCoachPlan(plan, mislabeledOriginal).ok, true,
   "Keeping the exercise already in a slot must work even if its template movement label differs");
