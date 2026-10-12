@@ -305,11 +305,11 @@ export default async function VolumeRecommendationsPage({
                             {option.rationale ? <><span className="font-semibold text-slate-300">Why: </span>{option.rationale}</> : null}
                           </p>
                           {preview.success ? <div className="mt-3 space-y-1 text-xs text-slate-300">
-                            <p className="font-semibold">Changes if approved</p>
-                            {preview.data.slots.map((slot) => <p key={slot.id}>{slot.template} · {slot.exercise}: {slot.before} → {slot.after} sets</p>)}
+                            <p className="font-semibold">Changes if approved{preview.data.implementationKind === "MESOCYCLE_STRUCTURE" ? " · this mesocycle" : ""}</p>
+                            {preview.data.slots.map((slot) => <p key={slot.id}>{slot.template} · {slot.exercise}: {slot.before} → {slot.after} sets{slot.before === 0 ? " · add slot" : slot.after === 0 ? " · remove slot" : ""}</p>)}
                             {preview.data.muscles.map((muscle) => <p key={muscle.muscleId}>{muscle.name}: {muscle.before} → {muscle.after} effective sets/week</p>)}
                             <p className="text-slate-500">Later reviews assess this change using your logged response across comparable exposures.</p>
-                            <p className="text-slate-500">Physical set changes follow the template’s repeat frequency. Secondary-muscle effects are included above.</p>
+                            <p className="text-slate-500">Physical changes follow workout repeat frequency and may differ from the requested effective-set increment. Secondary effects are included above. These edits apply to this mesocycle; base templates and already approved weekly workouts are not overwritten.</p>
                           </div> : <p className="mt-2 text-xs text-amber-200">Run a new volume review to preview this older option.</p>}
 
                           {!selected ? (

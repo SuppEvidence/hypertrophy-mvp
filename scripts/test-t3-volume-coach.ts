@@ -110,7 +110,7 @@ const preview = previewT3Prescription(fixture, "chest", option, "MODERATE", "BEL
 assert.equal(preview.slots[0].before, 3); assert.equal(preview.slots[0].after, 4);
 assert.equal(preview.muscles[0].after, 4);
 const blocked = structuredClone(fixture); blocked.templateExercises[0].autoAdjustable = false;
-assert.throws(() => previewT3Prescription(blocked, "chest", option, "MODERATE", "BELOW_EXPECTED_RESPONSE"), /cannot be implemented/);
+assert.equal(previewT3Prescription(blocked, "chest", option, "MODERATE", "BELOW_EXPECTED_RESPONSE").slots[0].after, 4, "An approved mesocycle change can override a fixed template slot");
 assert.doesNotThrow(() => assertT3WeeklyBudget(preview, [preview, preview, preview]));
 assert.throws(() => assertT3WeeklyBudget(preview, [preview, preview, preview, preview]), /seven days/);
 console.log("T3 range, option recovery, adaptive limits, prescription preview and rolling budget regressions passed.");

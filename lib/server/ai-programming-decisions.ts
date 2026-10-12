@@ -10,6 +10,8 @@ import { hasT3EarlyReviewEvidence } from "@/lib/coaching/t3-early-review";
 import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
 import { getApprovedWeekDoseContext } from "@/lib/server/weekly-coach-dose-context";
 
+import { t3ExerciseType } from "@/lib/coaching/t3-exercise-type";
+import { reconcileT3ApprovalSummary } from "@/lib/coaching/t3-review-summary";
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 
 import { randomUUID } from "node:crypto";
@@ -50,7 +52,7 @@ import { getEnergyPhaseContext, getEnergyPhaseTimeline } from "@/lib/server/ener
 import { loadCoachingHistory, coachingExposure, summarizeMovementReadiness } from "@/lib/server/coaching-evidence";
 import { inferBodyCompositionTrend, summarizeGlobalRecovery } from "@/lib/coaching/pre-workout-coach-policy";
 import { summarizeExerciseHistory } from "@/lib/calculations/training-analytics";
-import { previewT3Prescription, assertT3WeeklyBudget, readAppliedPreview, T3PlanPreviewSchema, type T3PlanPreview } from "@/lib/coaching/t3-prescription-preview";
+import { t3PreviewEffectsSignature, previewT3Prescription, assertT3WeeklyBudget, readAppliedPreview, T3PlanPreviewSchema, type T3PlanPreview } from "@/lib/coaching/t3-prescription-preview";
 
 const RECENT_AI_SESSIONS = 6;
 const DECISION_MEMORY_LIMIT = 10;
@@ -166,8 +168,7 @@ function buildCandidatePatterns(
   const byMuscle = new Map<string, Map<string, CandidatePattern>>();
 
   for (const exercise of exercises) {
-    const type: "COMPOUND" | "ISOLATION" =
-      exercise.secondaryMuscles.length > 0 ? "COMPOUND" : "ISOLATION";
+    const type = t3ExerciseType(exercise.movementGroup.name);
 
     const add = (muscleId: string, role: "primary" | "secondary") => {
       const patternMap = byMuscle.get(muscleId) ?? new Map<string, CandidatePattern>();
@@ -183,8 +184,8 @@ function buildCandidatePatterns(
       if (role === "primary") existing.primaryExerciseCount += 1;
       else existing.secondaryExerciseCount += 1;
 
-      if (!existing.availableExerciseTypes.includes(type)) {
-        existing.availableExerciseTypes.push(type);
+      for (const candidate of type ? [type] : ["COMPOUND", "ISOLATION"] as const) {
+        if (!existing.availableExerciseTypes.includes(candidate)) existing.availableExerciseTypes.push(candidate);
       }
       if (
         existing.exampleExercises.length < 4 &&
@@ -723,7 +724,7 @@ async function buildProgrammingContext(userId: string) {
         setsPerOccurrence: row.adjustedPlannedSets, occurrencesPerWindow: Number(row.expectedOccurrences),
         primaryMuscleIds: row.primaryMuscles.map((link) => link.muscleId),
         minimumSets: row.minSets, maximumSets: row.maxSets, autoAdjustable: row.autoAdjustable,
-        exerciseType: row.secondaryMuscles.length ? "COMPOUND" : "ISOLATION",
+        exerciseType: t3ExerciseType(row.movementGroupName, row.slotRole) ?? "UNKNOWN",
         secondaryMuscleEstimates: row.secondaryMuscles.map((link) => ({ muscleId: link.muscleId, estimatedFraction: link.contributionEstimate == null ? null : Number(link.contributionEstimate) })),
       })),
       movementPatternPrimaryMuscleCoverage: [...candidatePatternsByMuscle.entries()].map(([muscleId, patterns]) => ({
@@ -815,18 +816,18 @@ CURRENT TASK
 - deltaWeeklySets describes an APPROVAL-REQUIRED change to the current muscle effective-set target. Usually propose 1–2 sets. With HIGH confidence, an increase may reach min(4, max(2, floor(currentTarget * 0.20))). With HIGH confidence, or MODERATE confidence plus RECOVERABILITY_CONCERN, a reduction may reach min(6, max(2, ceil(currentTarget * 0.25))). Larger desired changes must be staged. Never increase under LOW confidence. Under uncertainty, an observed symptom concern may justify a protective reduction of at most two sets.
 - INCREASE_VOLUME requires a positive deltaWeeklySets. DECREASE_VOLUME requires a negative deltaWeeklySets. REALLOCATE_VOLUME requires deltaWeeklySets = 0.
 - movementChanges are changes to WEEKLY MOVEMENT effective-set targets, not physical set counts. Muscle targets include primary/secondary overlap, so those units need not sum one-to-one. The deterministic planner previews physical sets and muscle effects before exposing a selectable option. A reallocation needs a real source and destination and should preserve the target muscle dose. Limit total movement additions to four and removals to six per option.
-- Use the current prescribed movement dose to check removals, not the amount completed in a recent window. Prefer a feasible existing slot. If no slot can implement it, describe the structural need in the assessment and keep the current plan; do not create an unusable option.
+- Use the current prescribed movement dose to check removals, not recent completed work. Prefer existing slots; a missing slot or fixed template limit alone is not a reason to withhold a useful recommendation. Discrete physical sets, occurrence frequency and multipliers can prevent an exact weekly increment; propose a staged feasible movement allocation and rely on the realized preview, not a claim of exact physical counts.
 - No more than +4/-6 effective sets per muscle and +12/-16 physical sets across the block can be approved in a rolling seven days. Recent selections and their actual effects are provided. Do not repeat a previous adjustment before observing its response.
 - Numeric range estimates describe uncertainty about a useful dose; never reject a modest, supported trial solely because a previous or newly inferred endpoint is crossed. Still stage every proposed training change and require user approval.
 - For priority muscles, use EARLIER_IF_LOGICAL when work should be protected from overlapping fatigue; otherwise KEEP_CURRENT. Review existing placement as well as newly added work: if specialization exercises are consistently late and performance or execution suffers, call out a sensible earlier placement even when the weekly dose stays unchanged.
-- Placement is advisory: this layer changes set counts inside existing slots and does not reorder exercises. Explain any proposed order change as a separate future implementation consideration, not an effect of approving a dose option.
-- Do not recommend exact workout/template edits yet. The deterministic planner will handle legal implementation later.
+- Preserve the order of established exercises when changing their set counts. A necessary new slot may be placed early when EARLIER_IF_LOGICAL is selected. Broader reordering of existing exercises remains a separate implementation consideration; do not promise that approving a dose option reorders unchanged exercises.
+- Recommend the desired effective-muscle change and movement allocation, not exact exercise-slot IDs. The deterministic executor previews mesocycle-only set changes, removals down to zero and necessary new slots. Template min/max and auto-adjust flags are starting-framework settings, not approval limits. Prefer established exercises, regular sets for newly added work and a minimal change. Explicit approved doses are fixed for this mesocycle; later reviews may propose another approved change. Application staging, overlap, duplicate-exercise and physical capacity checks still apply.
 - Do not recommend global deloads.
 - This is hypertrophy programming, not logbook progression. Do not create a volume decision merely because load/reps failed to improve or because one session underperformed. Weight/reps are supporting evidence only after execution quality, intended RIR, stimulus, fatigue, symptoms, recovery, bodyweight context, and exercise/movement history are considered together.
 - If recent training is producing good stimulus with stable execution and manageable fatigue, KEEP AS IS can be correct even when load/reps are flat or noisy.
 - Treat execution-compromised evidence as lower-quality performance evidence. Repeated compromise for the same exercise/pattern can support reallocation or implementation review; one isolated compromised set should not drive a programming change.
 - Athlete-facing decisionSummary and option rationales should explain only what materially changes the decision. Do not spotlight trivial rep/load fluctuations or create implied "beat this next time" targets.
-- Keep rationales evidence-based and concise.
+- globalSummary contains coaching observations and the useful implications, not instructions to approve a particular option or claims that an option is available. The app reconciles approval guidance after implementation checks. Keep rationales evidence-based and concise.
 `;
 
 
@@ -890,6 +891,13 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
     if (!decision.options.some((option) => option.optionKey === decision.recommendedOptionKey)) decision.recommendedOptionKey = "KEEP_AS_IS";
   }
   parsed.decisions = parsed.decisions.filter((decision) => decision.options.length > 0);
+  const proposedOptions = output.decisions.reduce((sum, decision) => sum + decision.options.length, 0);
+  const usableOptions = parsed.decisions.reduce((sum, decision) => sum + decision.options.length, 0);
+  const guidanceChanged = output.decisions.some((proposal) => {
+    const kept = parsed.decisions.find((row) => row.targetMuscleId === proposal.targetMuscleId);
+    return !kept || kept.recommendedOptionKey !== proposal.recommendedOptionKey || kept.targetMuscleName !== proposal.targetMuscleName;
+  });
+  if (usableOptions < proposedOptions || guidanceChanged) parsed.globalSummary = reconcileT3ApprovalSummary(parsed, true);
 
   const generationId = randomUUID();
   const now = new Date();
@@ -1194,7 +1202,7 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
   const approvedPreview = T3PlanPreviewSchema.safeParse(previews[selectionKey]);
   let appliedPreview: T3PlanPreview | null = null;
   if (selectedOption) {
-    if (!prescription || !assessment.success || !approvedPreview.success) throw new Error("This older recommendation needs a new T3 review before it can be applied.");
+    if (!prescription || !assessment.success || !approvedPreview.success || approvedPreview.data.implementationKind !== "MESOCYCLE_STRUCTURE") throw new Error("This older recommendation needs a new T3 review before it can be applied.");
     const currentPriority = activeBlock.musclePriorities.find((row) => row.muscleId === decision.targetMuscleId);
     if (!currentPriority || currentPriority.priority !== assessment.data.priority) throw new Error("This muscle's priority changed. Run a new T3 review before applying the old option.");
     if (currentPriority.priority === "MAINTAIN" && selectedOption.action === "INCREASE_VOLUME" &&
@@ -1202,7 +1210,7 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
          assessment.data.status !== "BELOW_EXPECTED_RESPONSE" || assessment.data.confidence === "LOW" || !assessment.data.evidence.some((row) => row.trim()))) {
       throw new Error("This maintenance increase needs a new review establishing a preservation concern.");
     }
-    appliedPreview = previewT3Prescription(prescription.generationInput, decision.targetMuscleId, selectedOption, assessment.data.confidence, assessment.data.status);
+    appliedPreview = previewT3Prescription(prescription.generationInput, decision.targetMuscleId, selectedOption, assessment.data.confidence, assessment.data.status, approvedPreview.data.slots);
     const storedReview = ProgrammingRecommendationsSchema.pick({ assessments: true }).safeParse(activeBlock.t3Assessment);
     if ((currentPriority.priority === "MAINTAIN" || currentPriority.priority === "INDIRECT_ONLY") && !storedReview.success) {
       throw new Error("Run a new T3 review to check this lower-priority change against the whole block.");
@@ -1211,7 +1219,7 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
       targetByMuscle: new Map(activeBlock.musclePriorities.map((row) => [row.muscleId, { priority: row.priority,
         target: Number(row.coachTargetWeeklySets), minimum: Number(row.rangeMinimumSets), maximum: Number(row.rangeMaximumSets) }])),
     });
-    if (JSON.stringify(appliedPreview) !== JSON.stringify(approvedPreview.data)) throw new Error("The prescription has changed since this option was reviewed. Run a new review to see its current effect before approving it.");
+    if (t3PreviewEffectsSignature(appliedPreview) !== t3PreviewEffectsSignature(approvedPreview.data)) throw new Error("The prescription has changed since this option was reviewed. Run a new review to see its current effect before approving it.");
   }
 
   await prisma.$transaction(async (tx) => {
@@ -1220,6 +1228,10 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
       data: { updatedAt: selectedAt },
     });
     if (unchanged.count !== 1) throw new Error("The block changed while approving this option. Refresh and review the current plan.");
+    if (appliedPreview?.structureOverrides) {
+      await tx.programMesocycle.update({ where: { id: decision.mesocycleId! },
+        data: { structureOverrides: appliedPreview.structureOverrides as unknown as Prisma.InputJsonValue } });
+    }
     if (appliedPreview) {
       const previous = await tx.aiProgrammingDecision.findMany({
         where: { userId, mesocycleId: decision.mesocycleId, status: "SELECTED", selectedAt: { gte: new Date(selectedAt.getTime() - 7 * DAY_MS) } },

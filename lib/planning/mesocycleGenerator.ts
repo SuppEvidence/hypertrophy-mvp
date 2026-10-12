@@ -540,7 +540,7 @@ function appliedAddItem(args: {
   const movementGroupId = args.action.movementGroupId;
   const movementGroupName = source?.movementGroupName ?? fallback?.movementGroupName ?? "Movement slot";
   const movementGroupSortOrder = source?.movementGroupSortOrder ?? fallback?.movementGroupSortOrder ?? 0;
-  const repBucket = source?.repBucket ?? "ISOLATION";
+  const repBucket = args.action.repBucket ?? source?.repBucket ?? "ISOLATION";
   const movementPolicy = movementRepPolicyFor(movementGroupId, args.movementRepPolicies);
   const bucketPolicy = repPolicyFor(repBucket, args.repPolicies);
   const setPlans = args.action.setPlans
@@ -569,9 +569,9 @@ function appliedAddItem(args: {
     movementGroupSortOrder,
     defaultMinReps: actionExercise?.defaultMinReps ?? source?.defaultMinReps ?? fallback?.defaultMinReps ?? null,
     defaultMaxReps: actionExercise?.defaultMaxReps ?? source?.defaultMaxReps ?? fallback?.defaultMaxReps ?? null,
-    sortOrder: 1000 + template.sequenceIndex * 100 + args.baseItems.filter((row) => row.templateId === template.id).length,
+    sortOrder: args.action.sortOrder ?? 1000 + template.sequenceIndex * 100 + args.baseItems.filter((row) => row.templateId === template.id).length,
     plannedSets: args.action.plannedSets,
-    minSets: 0,
+    minSets: args.action.fixedSets ? args.action.plannedSets : 0,
     maxSets: args.action.maxSets,
     minReps: source?.minReps ?? null,
     maxReps: source?.maxReps ?? null,
@@ -581,9 +581,9 @@ function appliedAddItem(args: {
     defaultSetTypeIsIntensifier: defaultSetType.isIntensifier,
     setPlans,
     slotPriority: source?.slotPriority ?? "STANDARD",
-    slotRole: source?.slotRole ?? "ISOLATION",
+    slotRole: args.action.slotRole ?? source?.slotRole ?? "ISOLATION",
     repBucket,
-    autoAdjustable: true,
+    autoAdjustable: !args.action.fixedSets,
     primaryMuscles: actionExercise?.primaryMuscles ?? source?.primaryMuscles ?? fallback?.primaryMuscles ?? [],
     secondaryMuscles: actionExercise?.secondaryMuscles ?? source?.secondaryMuscles ?? fallback?.secondaryMuscles ?? [],
     basePlannedSets: 0,

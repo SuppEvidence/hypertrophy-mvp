@@ -14,6 +14,11 @@ export type MesocycleStructureAddAction = {
   plannedSets: number;
   maxSets: number;
   setPlans: MesocycleStructureSetPlan[];
+  // T3's explicit approved dose takes precedence over template adjustment bounds.
+  fixedSets?: boolean;
+  sortOrder?: number;
+  slotRole?: string;
+  repBucket?: string;
 };
 
 export type MesocycleStructureRemoveAction = {
@@ -91,6 +96,10 @@ function parseAction(value: unknown): MesocycleStructureAction | null {
       plannedSets,
       maxSets,
       setPlans: parseSetPlans(candidate.setPlans),
+      ...(candidate.fixedSets === true ? { fixedSets: true } : {}),
+      ...(Number.isFinite(candidate.sortOrder) ? { sortOrder: Number(candidate.sortOrder) } : {}),
+      ...(typeof candidate.slotRole === "string" ? { slotRole: candidate.slotRole } : {}),
+      ...(typeof candidate.repBucket === "string" ? { repBucket: candidate.repBucket } : {}),
     };
   }
 
