@@ -38,9 +38,15 @@ for (const workload of COACHING_WORKLOADS) {
   assert.ok(!source.includes("getOpenAIModel"));
 }
 const duration = (path: string) => Number(readFileSync(path, "utf8").match(/export const maxDuration = (\d+)/)?.[1]) * 1000;
-const pipeline = ["WORKOUT_ANALYSIS", "T3_VOLUME", "T3_MESOCYCLE"] as const;
+// Post-workout automation runs workout analysis then T3 volume; meso is manual.
+const pipeline = ["WORKOUT_ANALYSIS", "T3_VOLUME"] as const;
 assert.ok(pipeline.reduce((sum, workload) => sum + getCoachingModelConfig(workload, {}).options.timeout, 0) + 30_000 <= duration("app/(protected)/log/page.tsx"));
 assert.ok(getCoachingModelConfig("T2", {}).options.timeout + 20_000 <= duration("app/api/pre-workout-coach/route.ts"));
 assert.ok(getCoachingModelConfig("T3_VOLUME", {}).options.timeout + 30_000 <= duration("app/(protected)/ai-analysis/volume/page.tsx"));
 assert.ok(getCoachingModelConfig("WEEKLY_PLAN", {}).options.timeout + 30_000 <= duration("app/(protected)/plan/week/page.tsx"));
+for (const page of ["app/(protected)/ai-analysis/mesocycle/page.tsx", "app/(protected)/plan/blocks/page.tsx"]) {
+  assert.ok(getCoachingModelConfig("T3_MESOCYCLE", {}).options.timeout + 45_000 <= duration(page));
+}
+assert.ok(getCoachingModelConfig("T3_VOLUME", {}).options.timeout + 30_000 <= duration("app/(protected)/programs/[programId]/page.tsx"));
+assert.ok(!readFileSync("lib/server/automatic-coaching.ts", "utf8").includes("generateMesocycleRecommendationForUser"), "Meso is not part of the sequential automatic pipeline");
 console.log("Tier routing, isolated overrides, invalid configuration and route-budget checks passed.");

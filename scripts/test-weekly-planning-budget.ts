@@ -24,6 +24,6 @@ for (const carried of [false, true]) {
 }
 assert.equal(getCoachingModelConfig("T1", {}).options.timeout, 20000);
 assert.equal(getCoachingModelConfig("T2", {}).options.timeout, 45000);
-assert.equal(getCoachingModelConfig("T3_VOLUME", {}).options.timeout, 90000);
-assert.equal(getCoachingModelConfig("T3_MESOCYCLE", {}).options.timeout, 110000);
+assert.equal(getCoachingModelConfig("T3_VOLUME", {}).options.timeout, 210000);
+assert.equal(getCoachingModelConfig("T3_MESOCYCLE", {}).options.timeout, 255000);
 console.log("Weekly full/carry budgets, deployment margin, explicit overrides and other tiers passed.");

@@ -15,7 +15,7 @@ import {
   selectAdvisorProgrammingDecisionAction,
 } from "@/lib/server/ai-advisor-actions";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 function label(value: string) {
   return value.toLowerCase().replaceAll("_", " ");

@@ -6,7 +6,7 @@ import { MesocyclePanel } from "@/components/programs/MesocyclePanel";
 import { PageHeader } from "@/components/ui/PageHeader";
 import Link from "next/link";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 export default async function EditProgramPage({
   params,
