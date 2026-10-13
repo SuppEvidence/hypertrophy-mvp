@@ -13,6 +13,7 @@ export const WeeklyCoachWorkoutSchema = z.object({
   templateId: z.string().uuid(),
   durationMinutes: z.number().int().min(20).max(120),
   rationale: z.string().max(400),
+  estimatedMinutes: z.number().min(1).max(240).nullable().optional(),
   items: z.array(WeeklyCoachItemSchema).min(1).max(16),
 });
 export const WeeklyDoseReviewSchema = z.object({ muscleId: z.string(), reason: z.string().max(400) });
@@ -54,6 +55,7 @@ export const WeeklyCoachDeltaSchema = z.object({
     date: z.iso.date(),
     templateId: z.string().uuid(),
     rationale: z.string().max(400),
+    estimatedMinutes: z.number().min(1).max(240).nullable().optional(),
     items: z.array(WeeklyCoachItemSchema).min(1).max(16),
   })).max(7),
 });
@@ -77,42 +79,6 @@ export function consolidateWeeklyExercises(plan: WeeklyCoachPlan): WeeklyCoachPl
       existing.reason = `${existing.reason.slice(0, 202)} Combined repeated slots.`;
     }
     return { ...day, items };
-  }) };
-}
-
-// The model can propose a set type that was valid for the source slot but not
-// for its chosen exercise. Replace only that set type; keep the exercise and
-// physical workload visible in the proposal for the athlete to review.
-export function normalizeWeeklySetTypes(plan: WeeklyCoachPlan, input: {
-  candidates: WeeklyCandidate[];
-  regularSetTypeIds: string[];
-  introducibleSetTypeIdsByExercise: Record<string, string[]>;
-  multipliers: Record<string, number>;
-}): WeeklyCoachPlan {
-  const candidates = new Map(input.candidates.map((row) => [row.id, row]));
-  const regular = new Set(input.regularSetTypeIds.filter((id) =>
-    Number.isFinite(input.multipliers[id]) && input.multipliers[id] > 0));
-  const valid = (id: string) => Number.isFinite(input.multipliers[id]) && input.multipliers[id] > 0;
-  const defaultType = input.regularSetTypeIds.find((id) => regular.has(id));
-  if (!defaultType) return plan;
-  return { ...plan, workouts: plan.workouts.map((day) => {
-    return { ...day, items: day.items.map((item) => {
-      const source = candidates.get(item.sourceSlotId);
-      let changed = false;
-      const setTypeIds = item.setTypeIds.map((id, index) => {
-        const retained = source?.exerciseId === item.exerciseId && source.setTypeIds[index] === id;
-        if (valid(id) && (regular.has(id) || retained)) return id;
-        if (valid(id) && input.introducibleSetTypeIdsByExercise[item.exerciseId]?.includes(id)) {
-          return id;
-        }
-        changed = true;
-        const sourceType = source?.exerciseId === item.exerciseId ? source.setTypeIds[index] : null;
-        return sourceType && regular.has(sourceType) ? sourceType : defaultType;
-      });
-      return changed ? { ...item, setTypeIds,
-        reason: `${item.reason.slice(0, 158)} Incompatible set types changed to regular sets.`.slice(0, 240) }
-        : item;
-    }) };
   }) };
 }
 
@@ -181,14 +147,7 @@ export function validateWeeklyCoachPlan(plan: WeeklyCoachPlan, input: {
         errors.push(`${workout.date}: ${exercise.name ?? item.exerciseId} does not match the movement of slot ${source.name ?? source.id}; use a compatible slot or exercise:${item.exerciseId}.`);
       }
       if (item.setTypeIds.length !== item.sets) errors.push("Every physical set must have a set type.");
-      for (const [index, typeId] of item.setTypeIds.entries()) {
-        const retainingExisting = source && source.exerciseId === item.exerciseId && source.setTypeIds[index] === typeId;
-        const manuallyChosen = input.manualSetTypeOverrides?.some((override) =>
-          override.occurrenceId === workout.id && override.sourceSlotId === item.sourceSlotId &&
-          override.exerciseId === item.exerciseId && override.setTypeIds[index] === typeId);
-        if (!input.regularSetTypeIds.includes(typeId) && !retainingExisting && !manuallyChosen) {
-          if (!input.introducibleSetTypeIdsByExercise?.[item.exerciseId]?.includes(typeId)) errors.push(`${workout.date}: set type ${typeId} is unsuitable for this exercise or its coaching preferences.`);
-        }
+      for (const typeId of item.setTypeIds) {
         if (!Number.isFinite(input.multipliers[typeId]) || input.multipliers[typeId] <= 0) errors.push("Unknown set type.");
       }
       totalSets += item.sets;
@@ -202,7 +161,7 @@ export function validateWeeklyCoachPlan(plan: WeeklyCoachPlan, input: {
       weeklyMuscles.set(muscleId, (weeklyMuscles.get(muscleId) ?? 0) + effective);
       peakMuscles.set(muscleId, Math.max(peakMuscles.get(muscleId) ?? 0, effective));
     }
-    if (totalSets > 36 || totalSets * 1.5 + workout.items.length > workout.durationMinutes * 1.2) errors.push("Workout exceeds plausible session capacity.");
+    if (totalSets > 36) errors.push("Workout exceeds the physical-set sanity ceiling.");
   }
   if ([...weeklyMuscles.values()].some((sets) => sets > 60)) errors.push("Weekly muscle dose exceeds the application sanity ceiling.");
   if (plan.workouts.length + (input.completedMuscles?.length ?? 0) > 1) for (const [muscleId, weekly] of weeklyMuscles) {

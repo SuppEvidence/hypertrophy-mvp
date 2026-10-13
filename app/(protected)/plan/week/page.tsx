@@ -87,7 +87,10 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
             const started = view.startedIds.includes(day.id);
             return <div key={day.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
               <h3 className="font-semibold text-slate-100">{day.date} · {view.templates.find((row) => row.id === day.templateId)?.name ?? "Workout"}</h3>
-              <p className="text-xs text-slate-400">{day.durationMinutes} minutes · {day.items.reduce((sum, item) => sum + item.sets, 0)} physical sets · {missed ? "Missed" : view.completedIds.includes(day.id) ? "Completed" : started ? "Started" : "Planned"}</p>
+              <p className="text-xs text-slate-400">{day.durationMinutes} minutes available · {day.items.reduce((sum, item) => sum + item.sets, 0)} physical sets · {missed ? "Missed" : view.completedIds.includes(day.id) ? "Completed" : started ? "Started" : "Planned"}</p>
+              <p className={`mt-1 text-xs ${day.estimatedMinutes != null && day.estimatedMinutes > day.durationMinutes ? "text-amber-200" : "text-slate-400"}`}>
+                {day.estimatedMinutes != null ? `Coach estimate: about ${Math.round(day.estimatedMinutes)} minutes${day.estimatedMinutes > day.durationMinutes ? " · exceeds available time; review the tradeoff before approval" : ""}` : "Time not estimated for this version of the workout."}
+              </p>
               <p className="mt-1 text-xs text-slate-500">{day.rationale}</p>
               <ul className="mt-2 space-y-2 text-xs text-slate-300">{day.items.map((item) => {
                 const issue = view.status === "PROPOSED" ? view.exerciseIssues.find((row) => row.occurrenceId === day.id && row.sourceSlotId === item.sourceSlotId) : null;

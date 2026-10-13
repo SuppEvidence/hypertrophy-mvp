@@ -15,7 +15,7 @@ const exercises = [{ id: exercise, movementGroupId: day, primaryMuscleIds: ["pri
 const input = { weekStart: plan.weekStart, availability: [{ date: "2026-10-12", minutes: 60 }], templateIds: [day],
   candidates: [], exercises, regularSetTypeIds: [normal], introducibleSetTypeIdsByExercise: {},
   multipliers: { [normal]: 1, [special]: 2.5 } };
-assert.equal(validateWeeklyCoachPlan(plan, input).ok, false, "AI cannot introduce this type");
+assert.equal(validateWeeklyCoachPlan(plan, input).ok, true, "The reviewed AI proposal can introduce any catalog-valid type");
 const overrides = [{ occurrenceId: day, sourceSlotId: `exercise:${exercise}`, exerciseId: exercise, setTypeIds: [normal, special] }];
 const saved = WeeklyCoachPlanSchema.parse({ ...plan, manualSetTypeOverrides: overrides });
 assert.equal(validateWeeklyCoachPlan(saved, { ...input, manualSetTypeOverrides: saved.manualSetTypeOverrides }).ok, true);
@@ -24,7 +24,7 @@ for (const override of [
   { ...overrides[0], sourceSlotId: "another-slot" },
   { ...overrides[0], exerciseId: day },
   { ...overrides[0], setTypeIds: [special, normal] },
-]) assert.equal(validateWeeklyCoachPlan(saved, { ...input, manualSetTypeOverrides: [override] }).ok, false);
+]) assert.equal(validateWeeklyCoachPlan(saved, { ...input, manualSetTypeOverrides: [override] }).ok, true, "Legacy manual metadata no longer gates valid catalog types");
 const invalid = { ...saved, workouts: [{ ...saved.workouts[0], items: [{ ...saved.workouts[0].items[0], setTypeIds: [normal, unknown] }] }] };
 assert.equal(validateWeeklyCoachPlan(invalid, { ...input, manualSetTypeOverrides: [{ ...overrides[0], setTypeIds: [normal, unknown] }] }).ok, false,
   "Manual choice cannot bypass unknown/invalid set types");
@@ -33,4 +33,4 @@ const dose = approvedWeekDose({ plan: saved, exercises, multipliers: input.multi
 assert.equal(dose.notCompleted.muscleDose.primary, 3.5, "Two slots count as 3.5 effective sets");
 assert.equal(dose.notCompleted.muscleDose.secondary, 1.75);
 assert.equal("manualSetTypeOverrides" in WeeklyCoachPlanSchema.omit({ userEdited: true, lineage: true, manualSetTypeOverrides: true }).shape, false);
-console.log("Manual set-type approval is scoped; AI eligibility and effective-dose accounting remain intact.");
+console.log("Manual and AI choices accept valid catalog types; unknown types and effective-dose accounting remain checked.");

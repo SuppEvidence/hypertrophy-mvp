@@ -1,4 +1,4 @@
-export const T3_VOLUME_POLICY_VERSION = "t3-priority-volume-v4";
+export const T3_VOLUME_POLICY_VERSION = "t3-priority-volume-v5";
 // Application guardrails, not claims about a universal physiological optimum.
 export const T3_RANGE_CEILING = 60;
 export const T3_REVIEW_LEASE_MS = 5 * 60_000;

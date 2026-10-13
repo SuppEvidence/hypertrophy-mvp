@@ -304,6 +304,11 @@ export default async function VolumeRecommendationsPage({
                           <p className="mt-2 text-xs leading-5 text-slate-500">
                             {option.rationale ? <><span className="font-semibold text-slate-300">Why: </span>{option.rationale}</> : null}
                           </p>
+                          {option.painOpportunity ? <p className="mt-2 rounded-lg border border-sky-400/20 bg-sky-400/5 p-2 text-xs leading-5 text-sky-200">
+                            Optional growth opportunity from pain-related reductions to {option.painOpportunity.sourceMuscleIds.map((id) => mesocycle?.musclePriorities.find((row) => row.muscleId === id)?.muscle.name ?? id).join(", ")}.
+                            {decision.status === "PENDING" ? " Approve sufficient supporting reductions first; previously accepted reductions can count while still in place." : " Supporting reductions and available capacity were checked at approval."}
+                            {" This trial does not change the recipient's priority or establish a new maintenance requirement."}
+                          </p> : null}
                           {preview.success ? <div className="mt-3 space-y-1 text-xs text-slate-300">
                             <p className="font-semibold">Changes if approved{preview.data.implementationKind === "MESOCYCLE_STRUCTURE" ? " · this mesocycle" : ""}</p>
                             {preview.data.slots.map((slot) => <p key={slot.id}>{slot.template} · {slot.exercise}: {slot.before} → {slot.after} sets{slot.before === 0 ? " · add slot" : slot.after === 0 ? " · remove slot" : ""}</p>)}

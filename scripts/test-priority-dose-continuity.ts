@@ -48,11 +48,11 @@ assert.equal(typedDose.notCompleted.muscleDose.upper, 4);
 assert.equal(typedDose.notCompleted.primaryMuscleDose.upper, 4);
 assert.equal(typedDose.notCompleted.secondaryMuscleDose.mid, 2);
 
-// A short session needs trimming, but priority work at the end must be protected.
+// Carry-forward must not underdose based on a generic minutes-per-physical-set guess.
 const dense = structuredClone(previous); dense.workouts[0].items = [item(curl, "curl-slot", 8), item(press, "press-slot", 8)];
 const trimmed = carryForwardWeek({ ...input, previous: dense, availability: [{ id: id(8), date: "2026-10-12", minutes: 20 }] })!;
 assert.equal(trimmed.workouts[0].items.find((row) => row.exerciseId === press)?.sets, 8);
-assert.equal(trimmed.workouts[0].items.find((row) => row.exerciseId === curl)?.sets, 6);
+assert.equal(trimmed.workouts[0].items.find((row) => row.exerciseId === curl)?.sets, 8);
 
 const checks = auditWeeklyPriorities([
   { id: "lats", name: "Lats", priority: "GROW", target: 20.5, weekly: 16.5, directRemaining: 16.5, secondaryRemaining: 0 },

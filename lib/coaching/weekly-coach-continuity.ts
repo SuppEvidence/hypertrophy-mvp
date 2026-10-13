@@ -77,7 +77,7 @@ export function carryForwardWeek(input: {
     }).slice(0, 16);
     while (items.length) {
       const total = items.reduce((sum, item) => sum + item.sets, 0);
-      if (total <= 36 && total * 1.5 + items.length <= day.minutes * 1.2) break;
+      if (total <= 36) break;
       const priorityScore = (item: (typeof items)[number]) => {
         const exercise = allowed.get(item.exerciseId);
         const score = (id: string) => input.priorities?.[id] === "SPECIALIZE" ? 3 : input.priorities?.[id] === "GROW" ? 2 : input.priorities?.[id] === "MAINTAIN" ? 1 : 0;
@@ -93,6 +93,8 @@ export function carryForwardWeek(input: {
       if (!items[index].sets) items.splice(index, 1);
     }
     return { id: day.id, date: day.date, templateId, durationMinutes: day.minutes,
+      estimatedMinutes: JSON.stringify(items.map(({ exerciseId, setTypeIds }) => ({ exerciseId, setTypeIds }))) ===
+        JSON.stringify(prior.items.map(({ exerciseId, setTypeIds }) => ({ exerciseId, setTypeIds }))) ? prior.estimatedMinutes ?? null : null,
       rationale: "Established accepted structure, updated from completed training where available; coach adjusts where useful.", items };
   });
   if (workouts.some((day) => !day.items.length)) return null;
@@ -107,7 +109,7 @@ export function applyWeeklyCoachDelta(base: WeeklyCoachPlan, delta: WeeklyCoachD
   const changes = new Map(delta.changes.map((change) => [change.date, change]));
   return { ...base, summary: delta.summary, doseReviews: delta.doseReviews, exerciseChanges: delta.exerciseChanges, userEdited: false, workouts: base.workouts.map((day) => {
     const change = changes.get(day.date);
-    return change ? { ...day, templateId: change.templateId, rationale: change.rationale, items: change.items } : day;
+    return change ? { ...day, templateId: change.templateId, rationale: change.rationale, estimatedMinutes: change.estimatedMinutes ?? null, items: change.items } : day;
   }) };
 }
 

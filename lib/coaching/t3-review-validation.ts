@@ -1,4 +1,5 @@
 import type { ProgrammingOption, ProgrammingRecommendations } from "../ai/programming-decision-schema";
+import { assertPainOpportunity, type PainOpportunityEvidence } from "./t3-pain-opportunity";
 import { nextT3CoachTarget, T3_RANGE_CEILING, type T3MusclePriority } from "./t3-volume-policy";
 
 export type CandidatePattern = {
@@ -10,6 +11,7 @@ export type CandidatePattern = {
   exampleExercises: string[];
 };
 export type DecisionValidationContext = {
+  painOpportunityEvidence?: PainOpportunityEvidence;
   validMuscleIds: Set<string>;
   canonicalMuscleNames: Map<string, string>;
   validPatternsByMuscle: Map<string, Map<string, CandidatePattern>>;
@@ -24,10 +26,11 @@ function validateOption(option: ProgrammingOption, muscleId: string,
   assessment: ProgrammingRecommendations["assessments"][number],
   validation: DecisionValidationContext) {
   const target = validation.targetByMuscle.get(muscleId)!;
+  assertPainOpportunity(option, muscleId, assessment, validation.painOpportunityEvidence);
   if (option.action === "INCREASE_VOLUME" && option.deltaWeeklySets <= 0) throw new Error("Increase has no positive dose change");
   if (option.action === "DECREASE_VOLUME" && option.deltaWeeklySets >= 0) throw new Error("Decrease has no negative dose change");
   if (option.action === "REALLOCATE_VOLUME" && option.deltaWeeklySets !== 0) throw new Error("Reallocation changes the muscle target");
-  if (target.priority === "MAINTAIN" && option.action === "INCREASE_VOLUME" &&
+  if (target.priority === "MAINTAIN" && option.action === "INCREASE_VOLUME" && !option.painOpportunity &&
       (assessment.priorityReview?.maintenanceBasis !== "PRESERVATION_CONCERN" ||
        assessment.status !== "BELOW_EXPECTED_RESPONSE" || !assessment.evidence.some((row) => row.trim()))) {
     throw new Error("Maintenance increases need evidence of losing the maintained result, not a growth plateau");
@@ -134,6 +137,18 @@ export function validateT3Review(input: ProgrammingRecommendations, validation: 
     if (!proposal.options.some((option) => option.optionKey === proposal.recommendedOptionKey)) proposal.recommendedOptionKey = "KEEP_AS_IS";
     return proposal.options.length > 0;
   });
+  for (const proposal of parsed.decisions) {
+    proposal.options = proposal.options.filter((option) => {
+      if (!option.painOpportunity) return true;
+      const supported = option.painOpportunity.sourceMuscleIds.every((id) => validation.painOpportunityEvidence?.approvedSourceMuscleIds?.includes(id) ||
+        (parsed.assessments.some((a) => a.muscleId === id && a.status === "RECOVERABILITY_CONCERN") &&
+          parsed.decisions.some((d) => d.targetMuscleId === id && d.options.some((o) => o.action === "DECREASE_VOLUME"))));
+      if (!supported) notes.push(`${proposal.targetMuscleName}: the opportunity increase lacked a supporting pain-reduction option and was withheld.`);
+      return supported;
+    });
+    if (!proposal.options.some((o) => o.optionKey === proposal.recommendedOptionKey)) proposal.recommendedOptionKey = "KEEP_AS_IS";
+  }
+  parsed.decisions = parsed.decisions.filter((proposal) => proposal.options.length);
   return { parsed, notes: [...new Set(notes)] };
 }
 

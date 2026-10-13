@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { consolidateWeeklyExercises, normalizeWeeklySetTypes, validateWeeklyCoachPlan, weeklyExerciseIssues, type WeeklyCoachPlan } from "../lib/coaching/weekly-coach-policy";
+import { consolidateWeeklyExercises, validateWeeklyCoachPlan, weeklyExerciseIssues, type WeeklyCoachPlan } from "../lib/coaching/weekly-coach-policy";
 import { reallocateMissedWeeklyWork } from "../lib/coaching/weekly-coach-runtime";
 import { coachedWeek, helsinkiDate } from "../lib/coaching/weekly-coach-calendar";
 import { completedWeekBaseline } from "../lib/coaching/weekly-coach-baseline";
@@ -43,7 +43,7 @@ const kinds = [
 const lateral = { id: exercise, movementGroupName: "Lateral raise", primaryMuscleIds: ["side-delts"],
   secondaryMuscleIds: [], preference: "NEUTRAL" as const, intensifierPreference: "DEFAULT" as const, allowedIntensifierIds: [] };
 const eligible = weeklyIntroducibleSetTypes([lateral], kinds);
-assert.deepEqual(eligible[exercise], [drop], "EDT needs explicit per-exercise selection, even if categorized as a base type");
+assert.deepEqual(eligible[exercise], [type, drop, edt], "All valid active types are available for user-reviewed weekly proposals");
 assert.deepEqual(regularWeeklySetTypeIds(kinds), [type], "EDT should not be counted as a regular set");
 const intensifierEvidence = { ...evidence, introducibleSetTypeIdsByExercise: eligible,
   multipliers: { [type]: 1, [drop]: 1.25, [edt]: 1 } };
@@ -51,48 +51,20 @@ const withDrop: WeeklyCoachPlan = { ...plan, workouts: plan.workouts.map((row, i
   ...row, items: [{ ...row.items[0], setTypeIds: [type, type, drop] }],
 }) };
 assert.equal(validateWeeklyCoachPlan(withDrop, intensifierEvidence).ok, true);
-const normalizedDrop = normalizeWeeklySetTypes(withDrop, {
-  candidates: evidence.candidates, regularSetTypeIds: [type], introducibleSetTypeIdsByExercise: eligible,
-  multipliers: intensifierEvidence.multipliers,
-});
-assert.deepEqual(normalizedDrop.workouts[0].items[0].setTypeIds, [type, type, drop],
-  "A suitable intensifier must remain in the reviewed proposal");
-const incompatible = normalizeWeeklySetTypes(withDrop, {
-  candidates: evidence.candidates, regularSetTypeIds: [type], introducibleSetTypeIdsByExercise: {},
-  multipliers: intensifierEvidence.multipliers,
-});
-assert.deepEqual(incompatible.workouts[0].items[0].setTypeIds, [type, type, type]);
-assert.equal(incompatible.workouts[0].items[0].sets, 3, "The exercise and physical workload must remain intact");
-assert.match(incompatible.workouts[0].items[0].reason, /Incompatible set types changed/);
-assert.equal(validateWeeklyCoachPlan(incompatible, { ...intensifierEvidence, introducibleSetTypeIdsByExercise: {} }).ok, true);
-const swappedSet: WeeklyCoachPlan = { ...withDrop, workouts: withDrop.workouts.map((row, index) => index ? row : {
-  ...row, items: [{ ...row.items[0], exerciseId: b }],
-}) };
-const allowedSwap = { ...intensifierEvidence,
-  candidates: [{ ...evidence.candidates[0], setTypeIds: [type, type, drop] }],
-  exercises: [...evidence.exercises, { ...evidence.exercises[0], id: b }] };
-const safeSwap = normalizeWeeklySetTypes(swappedSet, {
-  candidates: allowedSwap.candidates, regularSetTypeIds: [type], introducibleSetTypeIdsByExercise: eligible,
-  multipliers: allowedSwap.multipliers,
-});
-assert.deepEqual(safeSwap.workouts[0].items[0].setTypeIds, [type, type, type],
-  "An intensifier inherited from the source slot must not pass through to an incompatible substitute");
-assert.equal(validateWeeklyCoachPlan(safeSwap, allowedSwap).ok, true);
+assert.equal(validateWeeklyCoachPlan(withDrop, { ...intensifierEvidence, introducibleSetTypeIdsByExercise: {} }).ok, true,
+  "A catalog-valid intensifier does not need a per-exercise permission");
 const tooMany = { ...withDrop, workouts: withDrop.workouts.map((row, index) => index ? row : {
   ...row, items: [{ ...row.items[0], setTypeIds: [type, drop, drop] }],
 }) };
-assert.equal(validateWeeklyCoachPlan(tooMany, intensifierEvidence).ok, true, "Eligible intensifier count alone does not imply recovery impairment");
-const capped = normalizeWeeklySetTypes(tooMany, {
-  candidates: evidence.candidates, regularSetTypeIds: [type], introducibleSetTypeIdsByExercise: eligible,
-  multipliers: intensifierEvidence.multipliers,
-});
-assert.deepEqual(capped.workouts[0].items[0].setTypeIds, [type, drop, drop],
-  "Eligible intensified work is preserved instead of silently reducing its effective dose");
-assert.equal(validateWeeklyCoachPlan(capped, intensifierEvidence).ok, true);
-assert.equal(validateWeeklyCoachPlan(withDrop, evidence).ok, false, "Unapproved intensifiers cannot be introduced");
-assert.deepEqual(weeklyIntroducibleSetTypes([{ ...lateral, movementGroupName: "Squat" }], kinds)[exercise], []);
-assert.deepEqual(weeklyIntroducibleSetTypes([{ ...lateral, intensifierPreference: "NONE" }], kinds)[exercise], []);
-assert.deepEqual(weeklyIntroducibleSetTypes([{ ...lateral, intensifierPreference: "ONLY_SELECTED", allowedIntensifierIds: [edt] }], kinds)[exercise], [edt]);
+assert.equal(validateWeeklyCoachPlan(tooMany, intensifierEvidence).ok, true, "Intensifier count alone does not imply recovery impairment");
+assert.equal(validateWeeklyCoachPlan(withDrop, evidence).ok, false, "A type absent from the catalog remains invalid");
+for (const variant of [
+  { ...lateral, movementGroupName: "Squat" },
+  { ...lateral, intensifierPreference: "NONE" as const },
+  { ...lateral, intensifierPreference: "ONLY_SELECTED" as const, allowedIntensifierIds: [edt] },
+  { ...lateral, primaryMuscleIds: ["a", "b"], secondaryMuscleIds: ["c"] },
+]) assert.deepEqual(weeklyIntroducibleSetTypes([variant], kinds)[exercise], [type, drop, edt],
+  "Suitability and preference are coaching evidence, not a catalog gate");
 const carriedIntensity = carryForwardWeek({ previous: withDrop, weekStart: "2026-10-05",
   availability: [{ id: a, date: "2026-10-05", minutes: 60 }], templates: [template],
   candidates: evidence.candidates, exercises: evidence.exercises,

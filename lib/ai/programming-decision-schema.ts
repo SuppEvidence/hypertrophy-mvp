@@ -61,7 +61,11 @@ export const MovementChangeSchema = z.object({
   deltaSets: z.number().int().min(-6).max(4),
 });
 
+export const PainOpportunitySchema = z.object({ sourceMuscleIds: z.array(z.string()).min(1).max(4) });
+
 export const ProgrammingOptionSchema = z.object({
+  // Optional for existing decisions; current models can return null for ordinary changes.
+  painOpportunity: PainOpportunitySchema.nullable().optional(),
   optionKey: z.enum(["OPTION_A", "OPTION_B"]),
   title: z.string().max(140),
   action: ProgrammingActionSchema,

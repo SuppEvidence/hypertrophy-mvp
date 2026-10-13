@@ -11,6 +11,7 @@ import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
 import { getApprovedWeekDoseContext } from "@/lib/server/weekly-coach-dose-context";
 
 import { t3ExerciseType } from "@/lib/coaching/t3-exercise-type";
+import { buildPainOpportunityEvidence, PainOpportunityEvidenceSchema, assertPainOpportunity, assertPainOpportunityPreview, assertPainOpportunityApprovedCapacity, type PainApproval } from "@/lib/coaching/t3-pain-opportunity";
 import { reconcileT3ApprovalSummary } from "@/lib/coaching/t3-review-summary";
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 
@@ -53,6 +54,37 @@ import { loadCoachingHistory, coachingExposure, summarizeMovementReadiness } fro
 import { inferBodyCompositionTrend, summarizeGlobalRecovery } from "@/lib/coaching/pre-workout-coach-policy";
 import { summarizeExerciseHistory } from "@/lib/calculations/training-analytics";
 import { t3PreviewEffectsSignature, previewT3Prescription, assertT3WeeklyBudget, readAppliedPreview, T3PlanPreviewSchema, type T3PlanPreview } from "@/lib/coaching/t3-prescription-preview";
+
+function painApprovalsFromRows(rows: Array<{ targetMuscleId: string | null; selectedAt: Date | null; selectedOptionKey: string | null; options: unknown; outcome: unknown; context: unknown }>): PainApproval[] {
+  return rows.flatMap((row) => {
+    if (!row.targetMuscleId || !row.selectedAt) return [];
+    const options = StoredProgrammingOptionsSchema.safeParse(row.options);
+    const snapshot = row.context && typeof row.context === "object" && !Array.isArray(row.context) ? row.context as Record<string, unknown> : {};
+    const evidence = PainOpportunityEvidenceSchema.safeParse(snapshot.painOpportunityEvidence);
+    const assessment = T3MuscleAssessmentSchema.safeParse(snapshot.assessment);
+    return [{ muscleId: row.targetMuscleId, selectedAt: row.selectedAt,
+      option: options.success ? options.data.find((o) => o.optionKey === row.selectedOptionKey) ?? null : null,
+      preview: readAppliedPreview(row.outcome)[0] ?? null,
+      sourceEvidence: evidence.success && assessment.success && assessment.data.status === "RECOVERABILITY_CONCERN" ? evidence.data : null }];
+  });
+}
+
+function painOpportunitySlotCounts(items: Array<{ templateId: string; exerciseId: string; adjustedPlannedSets: number; isMesocycleSuppressed: boolean }>) {
+  const counts = new Map<string, number>();
+  for (const item of items.filter((row) => !row.isMesocycleSuppressed)) {
+    const key = `${item.templateId}:${item.exerciseId}`; counts.set(key, (counts.get(key) ?? 0) + item.adjustedPlannedSets);
+  }
+  return counts;
+}
+
+function systemicPainOpportunityConcern(history: Awaited<ReturnType<typeof loadCoachingHistory>>, globalStatus: string) {
+  if (globalStatus !== "HIGH_FATIGUE") return false;
+  const byExercise = new Map<string, typeof history>();
+  for (const row of history) { const rows = byExercise.get(row.exerciseId) ?? []; rows.push(row); byExercise.set(row.exerciseId, rows); }
+  const down = new Set([...byExercise.values()].filter((rows) => summarizeExerciseHistory(rows.map(coachingExposure)).performanceDirection === "DOWN")
+    .map((rows) => rows[0].exercise.movementGroupId));
+  return down.size >= 2;
+}
 
 const RECENT_AI_SESSIONS = 6;
 const DECISION_MEMORY_LIMIT = 10;
@@ -528,6 +560,7 @@ async function buildProgrammingContext(userId: string) {
   const declaredEnergyPhase = await getEnergyPhaseContext(userId);
   const energyPhaseTimeline = await getEnergyPhaseTimeline(userId);
   const globalRecovery = summarizeGlobalRecovery(currentMetrics.map((row) => ({ ...row, sleepDuration: finiteNumber(row.sleepDuration) })));
+  const painOpportunityEvidence = buildPainOpportunityEvidence(rawHistory, systemicPainOpportunityConcern(rawHistory, globalRecovery.status));
   const bodyComposition = inferBodyCompositionTrend(currentMetrics.filter((row) => row.loggedAt.getTime() >= Date.now() - 42 * DAY_MS &&
     (!declaredEnergyPhase || row.loggedAt.toISOString().slice(0, 10) >= declaredEnergyPhase.startDate))
     .map((row) => ({ loggedAt: row.loggedAt, bodyweight: finiteNumber(row.bodyweight), waist: finiteNumber(row.waist) })));
@@ -668,6 +701,7 @@ async function buildProgrammingContext(userId: string) {
           action: option.action,
           deltaWeeklySets: option.deltaWeeklySets,
           movementChanges: option.movementChanges,
+          painOpportunity: option.painOpportunity ?? null,
         }))
       : [],
     aiPreferred: decision.recommendedOptionKey,
@@ -754,6 +788,7 @@ async function buildProgrammingContext(userId: string) {
       globalRecovery,
       recoveryObservations: currentMetrics.slice(0, 42).map((row) => ({ ...row, loggedAt: row.loggedAt.toISOString(), bodyweight: finiteNumber(row.bodyweight), waist: finiteNumber(row.waist), sleepDuration: finiteNumber(row.sleepDuration) })),
       localizedReadiness,
+      painOpportunityEvidence,
       rawExerciseEvidence,
       exposureTolerance: summarizeExposureTolerance(rawHistory, energyPhaseTimeline),
       evidenceCautions: "AI stimulus/readiness and set multipliers are estimates. Completed volume is not prescribed capacity. Circumference is not direct proof of hypertrophy. Legacy Chest (unclassified) priorities and targets predate the upper/mid/lower split; never treat them as region-specific history. Mapped exercise exposures can provide provisional regional dose history, but their old classification was less precise. Consider adherence, recent changes and measurement noise. Low confidence defaults to HOLD, except a modest protective reduction for observed symptoms.",
@@ -769,6 +804,7 @@ async function buildProgrammingContext(userId: string) {
         "Past selections are contextual preferences. Follow-ups record completed dose, symptoms or target attainment, NOT a causal hypertrophy benefit. Compare later raw exercise evidence and Metrics with selection dates cautiously.",
     },
     validation: {
+      painOpportunityEvidence,
       validMuscleIds: new Set(currentMuscleVolumes.map((row) => row.muscleId)),
       canonicalMuscleNames,
       validPatternsByMuscle: candidatePatternsByMuscle,
@@ -792,7 +828,7 @@ ${PRIORITY_DOSE_POLICY}
 
 CURRENT TASK
 - Every assessment must include priorityReview.maintenanceBasis. For non-maintenance muscles use NOT_MAINTENANCE. For MAINTAIN use LOWER_DOSE_HISTORY only when lower-dose outcomes actually support preservation; PRESERVATION_CONCERN only for repeated evidence of losing the maintained result, not slowing growth; PRIORITY_OVERLAP for unavoidable dose from useful priority work; REDUCTION_TRIAL for a supported monitored efficiency test; otherwise UNREVIEWED_BASELINE. Cite the actual dated observations in evidence and distinguish primary work from incidental contribution in the rationale when material. Do not certify an inherited baseline as necessary maintenance.
-- A maintenance range increase or additional maintenance work requires PRESERVATION_CONCERN with non-LOW confidence and BELOW_EXPECTED_RESPONSE, meaning declining preservation rather than a growth plateau. A supported reduction trial can have MODERATE confidence without proving an exact minimum. Keep the trial staged and approval-required; protect growth work sharing the same movements.
+- A maintenance range increase or additional work claimed necessary for preservation requires PRESERVATION_CONCERN with non-LOW confidence and BELOW_EXPECTED_RESPONSE, meaning declining preservation rather than a growth plateau. The explicit pain-related opportunity below may instead propose an optional growth trial without changing the maintenance minimum. A supported reduction trial can have MODERATE confidence without proving an exact minimum. Keep the trial staged and approval-required; protect growth work sharing the same movements.
 - Assess EVERY configured muscle against its outcome priority: SPECIALIZE, GROW, MAINTAIN, or INDIRECT_ONLY.
 - Upper, Mid, and Lower chest are separate coaching targets. Their exercise classification is an emphasis proxy, not exclusive anatomical recruitment or three independent recovery budgets. Chest (unclassified) is legacy or manually unassigned work; do not add it to a chest-region dose or infer that old total-chest targets prove a region-specific response.
 - Use intraMesocycleCircumferences (including OPTIONAL_CHECKIN observations) as supporting evidence of the current block response. Compare dated observations to the baseline when available, or clearly identify a first-observation reference when it is missing. Account for elapsed days, measurement noise, fat loss/gain, glycogen/water and measurement consistency. Flat circumference over a short interval is not failed stimulus; an isolated increase is not proof of growth. Cross-check execution, performance, recovery and completed dose before suggesting any volume change. Aggregate chest, shoulder, arm and thigh measurements cannot identify individual regional muscles or prove secondary-contribution fractions. Mention these observations only when they materially affect confidence or a recommendation.
@@ -822,6 +858,11 @@ CURRENT TASK
 - For priority muscles, use EARLIER_IF_LOGICAL when work should be protected from overlapping fatigue; otherwise KEEP_CURRENT. Review existing placement as well as newly added work: if specialization exercises are consistently late and performance or execution suffers, call out a sensible earlier placement even when the weekly dose stays unchanged.
 - Preserve the order of established exercises when changing their set counts. A necessary new slot may be placed early when EARLIER_IF_LOGICAL is selected. Broader reordering of existing exercises remains a separate implementation consideration; do not promise that approving a dose option reorders unchanged exercises.
 - Recommend the desired effective-muscle change and movement allocation, not exact exercise-slot IDs. The deterministic executor previews mesocycle-only set changes, removals down to zero and necessary new slots. Template min/max and auto-adjust flags are starting-framework settings, not approval limits. Prefer established exercises, regular sets for newly added work and a minimal change. Explicit approved doses are fixed for this mesocycle; later reviews may propose another approved change. Application staging, overlap, duplicate-exercise and physical capacity checks still apply.
+PAIN-RELATED OPPORTUNITY
+- If repeated localized pain justifies reducing one or more muscles, actively assess whether unaffected muscles could use a modest growth trial beyond their current targets. First consider unaffected SPECIALIZE/GROW muscles, then a willing maintenance muscle with productive/tolerated history. This is an opportunity, never missed-volume debt or mandatory one-for-one compensation. Less knee loading does not prove improved elbow recovery or systemic recovery.
+- painOpportunityEvidence provides repeated-pain sources and recently tolerated exercise IDs, plus approved source reductions when available. Symptoms are an exercise-footprint proxy, not a diagnosis. Decide whether the pain is genuinely local and whether recipient performance, execution, phase, shared joints/support muscles, time and recovery justify extra work. Do not add work when a broader recovery limitation or recipient symptoms dominate. Missing pain reports alone do not prove suitability.
+- For an opportunity INCREASE_VOLUME option set painOpportunity to {sourceMuscleIds:[the supporting pain-reduced muscles]}; ordinary options use null. Include supported RECOVERABILITY_CONCERN reduction cards for not-yet-approved sources. Existing approved sources may be reused only while their verified headroom remains. The app requires source reductions approved first and enforces remaining implemented physical capacity; it does not exchange effective sets between different muscles as equal recovery units. Make the relationship clear in the card rationale and expected benefit.
+- A maintenance recipient may receive this optional growth opportunity while its priority stays MAINTAIN. Do not label it a preservation deficit, raise its maintenance minimum or imply it needs this dose to maintain. Keep the prior useful range provisional; approved targets can exceed it for this monitored trial. Do not target INDIRECT_ONLY muscles. Respect staged changes and total capacity, including other recent increases. When localized pain resolves, reassess whether to return discretionary work to the original priorities; do not turn a temporary opportunity into an indefinite automatic escalation. If no suitable opportunity exists, leave the released capacity unused and say nothing ceremonial.
 - Do not recommend global deloads.
 - This is hypertrophy programming, not logbook progression. Do not create a volume decision merely because load/reps failed to improve or because one session underperformed. Weight/reps are supporting evidence only after execution quality, intended RIR, stimulus, fatigue, symptoms, recovery, bodyweight context, and exercise/movement history are considered together.
 - If recent training is producing good stimulus with stable execution and manageable fatigue, KEEP AS IS can be correct even when load/reps are flat or noisy.
@@ -834,6 +875,17 @@ CURRENT TASK
 export async function generateProgrammingRecommendationsForUser(userId: string) {
   const { context, validation, mesocycleId, mesocycleName, prescription, mesocycleUpdatedAt } =
     await buildProgrammingContext(userId);
+  const recentChanges = await prisma.aiProgrammingDecision.findMany({
+    where: { userId, mesocycleId, status: "SELECTED", selectedAt: { gte: new Date(Date.now() - 7 * DAY_MS) } },
+    select: { outcome: true, context: true, options: true, selectedOptionKey: true, selectedAt: true, targetMuscleId: true },
+  });
+  const previousPreviews = recentChanges.flatMap((row) => readAppliedPreview(row.outcome));
+  const previousApprovals = painApprovalsFromRows(recentChanges);
+  const currentDose = new Map(prescription.generated.volumeRows.map((row) => [row.muscleId, row.planned * 7 / prescription.generationInput.program.volumeWindowDays]));
+  const approvedSources = previousApprovals.filter((row) => row.option?.action === "DECREASE_VOLUME" && row.sourceEvidence?.sourceMuscleIds.includes(row.muscleId) &&
+    row.preview?.muscles.some((m) => m.muscleId === row.muscleId && m.after < m.before - .05 && (currentDose.get(m.muscleId) ?? Infinity) <= m.after + .1)).map((row) => row.muscleId);
+  context.painOpportunityEvidence.approvedSourceMuscleIds = approvedSources;
+  validation.painOpportunityEvidence!.approvedSourceMuscleIds = approvedSources;
   const client = getOpenAIClient();
   const aiConfig = getCoachingModelConfig("T3_VOLUME");
   const model = aiConfig.request.model;
@@ -868,11 +920,6 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
   const { parsed, notes: reviewNotes } = validateT3Review(output, validation);
   parsed.phaseRecommendation = validatePhaseRecommendation(parsed.phaseRecommendation, context.declaredEnergyPhase, context.rawExerciseEvidence.map((row) => row.movementPatternId));
   const optionPreviews: Record<string, Record<string, T3PlanPreview>> = {};
-  const recentChanges = await prisma.aiProgrammingDecision.findMany({
-    where: { userId, mesocycleId, status: "SELECTED", selectedAt: { gte: new Date(Date.now() - 7 * DAY_MS) } },
-    select: { outcome: true },
-  });
-  const previousPreviews = recentChanges.flatMap((row) => readAppliedPreview(row.outcome));
   for (const decision of parsed.decisions) {
     const assessment = parsed.assessments.find((row) => row.muscleId === decision.targetMuscleId)!;
     optionPreviews[decision.targetMuscleId] = {};
@@ -881,6 +928,7 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
         const preview = previewT3Prescription(prescription.generationInput, decision.targetMuscleId, option, assessment.confidence, assessment.status);
         assertT3WeeklyBudget(preview, previousPreviews);
         assertT3PriorityEffects(preview.muscles, decision.targetMuscleId, parsed, validation);
+        assertPainOpportunityPreview(option, preview, context.painOpportunityEvidence);
         optionPreviews[decision.targetMuscleId][option.optionKey] = preview;
         return true;
       } catch (error) {
@@ -889,6 +937,33 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
       }
     });
     if (!decision.options.some((option) => option.optionKey === decision.recommendedOptionKey)) decision.recommendedOptionKey = "KEEP_AS_IS";
+  }
+  for (const decision of parsed.decisions) {
+    decision.options = decision.options.filter((option) => {
+      if (!option.painOpportunity) return true;
+      try {
+        const sources: PainApproval[] = [...previousApprovals];
+        const forecastDose = new Map(currentDose);
+        const forecastSlots = painOpportunitySlotCounts(prescription.generated.items);
+        for (const id of option.painOpportunity.sourceMuscleIds) {
+          const source = parsed.decisions.find((row) => row.targetMuscleId === id);
+          const candidates = source?.options.filter((o) => o.action === "DECREASE_VOLUME").map((o) => ({
+            option: o, preview: optionPreviews[id][o.optionKey], muscleId: id, sourceEvidence: context.painOpportunityEvidence, selectedAt: new Date(),
+          })).filter((row) => row.preview?.muscles.some((m) => m.muscleId === id && m.after < m.before - .05))
+            .sort((a, b) => (b.preview.weeklyPhysicalSetsRemoved - b.preview.weeklyPhysicalSetsAdded) - (a.preview.weeklyPhysicalSetsRemoved - a.preview.weeklyPhysicalSetsAdded)) ?? [];
+          if (candidates[0] && parsed.assessments.some((a) => a.muscleId === id && a.status === "RECOVERABILITY_CONCERN")) {
+            sources.push(candidates[0]); forecastDose.set(id, candidates[0].preview.muscles.find((m) => m.muscleId === id)!.after);
+            for (const slot of candidates[0].preview.slots.filter((s) => s.after < s.before)) forecastSlots.set(`${slot.templateId}:${slot.exerciseId}`, slot.after);
+          }
+        }
+        assertPainOpportunityApprovedCapacity(option, optionPreviews[decision.targetMuscleId][option.optionKey], sources, forecastDose, forecastSlots);
+        return true;
+      } catch (error) {
+        reviewNotes.push(`${decision.targetMuscleName}: opportunity withheld. ${error instanceof Error ? error.message : "No implementable pain-reduction headroom."}`);
+        return false;
+      }
+    });
+    if (!decision.options.some((o) => o.optionKey === decision.recommendedOptionKey)) decision.recommendedOptionKey = "KEEP_AS_IS";
   }
   parsed.decisions = parsed.decisions.filter((decision) => decision.options.length > 0);
   const proposedOptions = output.decisions.reduce((sum, decision) => sum + decision.options.length, 0);
@@ -945,6 +1020,7 @@ export async function generateProgrammingRecommendationsForUser(userId: string) 
         muscle: currentMuscle ?? null,
         recoveryAndFatigue: context.recoveryAndFatigue,
         relevantRecentAiEvidence: context.recentAiEvidence.slice(0, 5),
+        painOpportunityEvidence: context.painOpportunityEvidence,
         assessment: parsed.assessments.find((row) => row.muscleId === decision.targetMuscleId),
         optionPreviews: optionPreviews[decision.targetMuscleId],
       };
@@ -1201,16 +1277,29 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
   const previews = snapshot.optionPreviews && typeof snapshot.optionPreviews === "object" && !Array.isArray(snapshot.optionPreviews) ? snapshot.optionPreviews : {};
   const approvedPreview = T3PlanPreviewSchema.safeParse(previews[selectionKey]);
   let appliedPreview: T3PlanPreview | null = null;
+  let currentPainEvidence: ReturnType<typeof buildPainOpportunityEvidence> | null = null;
   if (selectedOption) {
     if (!prescription || !assessment.success || !approvedPreview.success || approvedPreview.data.implementationKind !== "MESOCYCLE_STRUCTURE") throw new Error("This older recommendation needs a new T3 review before it can be applied.");
     const currentPriority = activeBlock.musclePriorities.find((row) => row.muscleId === decision.targetMuscleId);
     if (!currentPriority || currentPriority.priority !== assessment.data.priority) throw new Error("This muscle's priority changed. Run a new T3 review before applying the old option.");
-    if (currentPriority.priority === "MAINTAIN" && selectedOption.action === "INCREASE_VOLUME" &&
+    if (currentPriority.priority === "MAINTAIN" && selectedOption.action === "INCREASE_VOLUME" && !selectedOption.painOpportunity &&
         (assessment.data.priorityReview?.maintenanceBasis !== "PRESERVATION_CONCERN" ||
          assessment.data.status !== "BELOW_EXPECTED_RESPONSE" || assessment.data.confidence === "LOW" || !assessment.data.evidence.some((row) => row.trim()))) {
       throw new Error("This maintenance increase needs a new review establishing a preservation concern.");
     }
     appliedPreview = previewT3Prescription(prescription.generationInput, decision.targetMuscleId, selectedOption, assessment.data.confidence, assessment.data.status, approvedPreview.data.slots);
+    if (selectedOption.painOpportunity) {
+      const [history, metrics] = await Promise.all([
+        loadCoachingHistory(userId, activeBlock.programId, new Date(Date.now() - 21 * DAY_MS)),
+        prisma.metricLog.findMany({ where: { userId, isDraft: false, loggedAt: { gte: new Date(Date.now() - 14 * DAY_MS), lte: new Date() } },
+          orderBy: { loggedAt: "desc" }, take: 5,
+          select: { loggedAt: true, sleepDuration: true, sleepQuality: true, readiness: true, stress: true, manualFatigue: true, sorenessJointIrritation: true } }),
+      ]);
+      const recovery = summarizeGlobalRecovery(metrics.map((row) => ({ ...row, sleepDuration: finiteNumber(row.sleepDuration) })));
+      currentPainEvidence = buildPainOpportunityEvidence(history, systemicPainOpportunityConcern(history, recovery.status));
+      assertPainOpportunity(selectedOption, decision.targetMuscleId!, assessment.data, currentPainEvidence);
+      assertPainOpportunityPreview(selectedOption, appliedPreview, currentPainEvidence);
+    }
     const storedReview = ProgrammingRecommendationsSchema.pick({ assessments: true }).safeParse(activeBlock.t3Assessment);
     if ((currentPriority.priority === "MAINTAIN" || currentPriority.priority === "INDIRECT_ONLY") && !storedReview.success) {
       throw new Error("Run a new T3 review to check this lower-priority change against the whole block.");
@@ -1235,9 +1324,13 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
     if (appliedPreview) {
       const previous = await tx.aiProgrammingDecision.findMany({
         where: { userId, mesocycleId: decision.mesocycleId, status: "SELECTED", selectedAt: { gte: new Date(selectedAt.getTime() - 7 * DAY_MS) } },
-        select: { outcome: true },
+        select: { outcome: true, context: true, options: true, selectedOptionKey: true, selectedAt: true, targetMuscleId: true },
       });
       assertT3WeeklyBudget(appliedPreview, previous.flatMap((row) => readAppliedPreview(row.outcome)));
+      if (selectedOption?.painOpportunity && prescription && currentPainEvidence) {
+        const doses = new Map(prescription.generated.volumeRows.map((row) => [row.muscleId, row.planned * 7 / prescription.generationInput.program.volumeWindowDays]));
+        assertPainOpportunityApprovedCapacity(selectedOption, appliedPreview, painApprovalsFromRows(previous), doses, painOpportunitySlotCounts(prescription.generated.items));
+      }
     }
     const claimed = await tx.aiProgrammingDecision.updateMany({
       where: { id: decision.id, userId, status: "PENDING" },
@@ -1284,6 +1377,7 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
         where: { id: priority.id },
         data: {
           coachTargetWeeklySets: nextTarget,
+          ...(selectedOption.painOpportunity ? { rationale: `Optional pain-related growth trial: ${selectedOption.rationale}`.slice(0, 900) } : {}),
           lastAdjustedAt: selectedAt,
           coachingStatus: "USER_APPROVED_CHANGE",
         },

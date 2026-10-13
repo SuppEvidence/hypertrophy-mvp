@@ -1,4 +1,4 @@
-import { canIntroduceSetType, type CoachSetType } from "@/lib/coaching/pre-workout-coach-policy";
+import { type CoachSetType } from "@/lib/coaching/pre-workout-coach-policy";
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 
 export type WeeklySetTypeExercise = {
@@ -15,8 +15,9 @@ export function regularWeeklySetTypeIds(types: CoachSetType[]) {
   return types.filter((type) => !type.isIntensifier && !isEdtSetType(type) && Math.abs(type.multiplier - 1) < .001).map((type) => type.id);
 }
 
+/** Weekly proposals are user-reviewed: availability is catalog validity, not a format whitelist.
+ * Preferences and exercise suitability are reasoning inputs, never hard set-type gates. */
 export function weeklyIntroducibleSetTypes(exercises: WeeklySetTypeExercise[], types: CoachSetType[]) {
-  return Object.fromEntries(exercises.map((exercise) => [exercise.id, types.filter((type) =>
-    (type.isIntensifier || isEdtSetType(type)) && type.multiplier <= 1.35 &&
-    canIntroduceSetType(exercise, type)).map((type) => type.id)])) as Record<string, string[]>;
+  const ids = types.filter((type) => Number.isFinite(type.multiplier) && type.multiplier > 0).map((type) => type.id);
+  return Object.fromEntries(exercises.map((exercise) => [exercise.id, ids])) as Record<string, string[]>;
 }

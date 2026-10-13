@@ -51,6 +51,7 @@ export function reallocateMissedWeeklyWork(plan: WeeklyCoachPlan, missedIds: str
           if (target.sets === 0) targetDay.items.pop();
           continue;
         }
+        targetDay.estimatedMinutes = null;
         target.sets += 1;
         target.setTypeIds.push(typeId);
         remaining -= 1;
