@@ -88,8 +88,6 @@ async function main() {
         defaultMaxReps: exercise.defaultMaxReps,
         tags: exercise.tags,
         isSeed: true,
-        isActive: true,
-        isArchived: false,
       },
       create: {
         name: exercise.name,

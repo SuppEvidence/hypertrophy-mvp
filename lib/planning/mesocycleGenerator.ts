@@ -530,6 +530,8 @@ function appliedAddItem(args: {
   const actionExercise = args.movementDefaults.find(
     (row) => row.movementGroupId === args.action.movementGroupId && row.exerciseId === args.action.exerciseId,
   ) ?? null;
+  // An explicit archived/unavailable choice must not reappear through a source or fallback.
+  if (args.action.exerciseId && !actionExercise && !args.baseItems.some((item) => item.exerciseId === args.action.exerciseId)) return null;
   const fallback = actionExercise ?? args.movementDefaults.find((row) => row.movementGroupId === args.action.movementGroupId) ?? null;
   if (!source && !fallback) return null;
 

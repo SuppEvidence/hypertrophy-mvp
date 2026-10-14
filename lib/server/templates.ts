@@ -1,5 +1,7 @@
 "use server";
 
+import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
+
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -143,9 +145,7 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
     selectedProgram ? ensureProgramTemplates(selectedProgram.id, userId, selectedProgram) : Promise.resolve([]),
     prisma.exercise.findMany({
       where: {
-        isArchived: false,
-        isActive: true,
-        OR: [{ isSeed: true, userId: null }, { userId }],
+        ...activeExerciseWhere(userId),
       },
       orderBy: [{ isSeed: "desc" }, { name: "asc" }],
       include: {
@@ -551,9 +551,7 @@ async function findFirstExerciseForMovementGroup(movementGroupId: string, userId
   return prisma.exercise.findFirst({
     where: {
       movementGroupId,
-      isArchived: false,
-      isActive: true,
-      OR: [{ isSeed: true, userId: null }, { userId }],
+      ...activeExerciseWhere(userId),
     },
     orderBy: [{ isSeed: "desc" }, { name: "asc" }],
   });

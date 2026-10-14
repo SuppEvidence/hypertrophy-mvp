@@ -1,5 +1,7 @@
 "use server";
 
+import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
+
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 
 import { Prisma } from "@prisma/client";
@@ -99,9 +101,7 @@ async function getActiveProgramAndMesocycle(userId: string) {
 async function movementGroupsForUser(userId: string) {
   const exercises = await prisma.exercise.findMany({
     where: {
-      isArchived: false,
-      isActive: true,
-      OR: [{ isSeed: true, userId: null }, { userId }],
+      ...activeExerciseWhere(userId),
     },
     orderBy: [{ isSeed: "asc" }, { name: "asc" }],
     select: {
@@ -312,9 +312,7 @@ async function preferredExerciseForMovement(
       where: {
         id: currentExerciseId,
         movementGroupId,
-        isActive: true,
-        isArchived: false,
-        OR: [{ isSeed: true, userId: null }, { userId }],
+        ...activeExerciseWhere(userId),
       },
       select: { id: true },
     });
@@ -326,8 +324,7 @@ async function preferredExerciseForMovement(
       session: { userId, status: "COMPLETED" },
       exercise: {
         movementGroupId,
-        isActive: true,
-        isArchived: false,
+        ...activeExerciseWhere(userId),
       },
     },
     orderBy: [
@@ -341,9 +338,7 @@ async function preferredExerciseForMovement(
   const fallback = await prisma.exercise.findFirst({
     where: {
       movementGroupId,
-      isActive: true,
-      isArchived: false,
-      OR: [{ userId }, { isSeed: true, userId: null }],
+      ...activeExerciseWhere(userId),
     },
     orderBy: [{ userId: "desc" }, { isSeed: "asc" }, { name: "asc" }],
     select: { id: true },

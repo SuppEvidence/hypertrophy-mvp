@@ -1,5 +1,7 @@
 "use server";
 
+import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -156,7 +158,7 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
   const [templates, exercises, setTypes, draftSessions, requestedSession] = await Promise.all([
     selectedProgram ? ensureProgramTemplates(selectedProgram.id, userId, selectedProgram) : Promise.resolve([]),
     prisma.exercise.findMany({
-      where: { isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
+      where: { ...activeExerciseWhere(userId) },
       orderBy: [{ isSeed: "desc" }, { name: "asc" }],
       select: {
         id: true,
@@ -378,6 +380,10 @@ export async function startWorkout(formData: FormData) {
   const prescription = await getTemplatePrescription(input.programId, input.templateId, userId, input.occurrenceId);
   const template = prescription?.program.templates.find((item: any) => item.id === input.templateId) ?? null;
   if (!prescription || !template || prescription.program.id !== input.programId) redirect("/log");
+
+  const plannedIds = [...new Set(prescription.generated.items.filter((item) => item.templateId === input.templateId && !item.isMesocycleSuppressed).map((item) => item.exerciseId))];
+  const available = await prisma.exercise.findMany({ where: { id: { in: plannedIds }, ...activeExerciseWhere(userId) }, select: { id: true } });
+  if (available.length !== plannedIds.length) throw new Error("This saved workout includes an archived or unavailable exercise. Replace it or review the weekly plan before starting.");
 
   const previousTemplateChoices = await rememberedTemplateExerciseChoices(userId, input.programId, input.templateId);
 
@@ -762,7 +768,7 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
   });
 
   const exercise = await prisma.exercise.findFirst({
-    where: { id: input.exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
+    where: { id: input.exerciseId, ...activeExerciseWhere(userId) },
   });
   if (!exercise) redirect(`/log?sessionId=${existing.sessionId}`);
 
@@ -797,7 +803,7 @@ export async function addSessionExercise(formData: FormData) {
   if (!session) redirect("/log");
 
   const exercise = await prisma.exercise.findFirst({
-    where: { id: exerciseId, isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
+    where: { id: exerciseId, ...activeExerciseWhere(userId) },
   });
   if (!exercise) redirect(`/log?sessionId=${session.id}`);
 

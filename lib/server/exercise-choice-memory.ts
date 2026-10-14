@@ -24,7 +24,7 @@ export async function rememberedTemplateExerciseChoices(userId: string, programI
         select: {
           templateExerciseId: true, exerciseId: true, exerciseChoiceIntent: true, isSubstitution: true,
           notes: true, prescriptionNote: true,
-          exercise: { select: { name: true, movementGroupId: true, isActive: true, isArchived: true } },
+          exercise: { select: { name: true, movementGroupId: true, isActive: true, isArchived: true, coachingProfiles: { where: { userId }, select: { isArchived: true } } } },
         },
       },
     },
@@ -35,7 +35,7 @@ export async function rememberedTemplateExerciseChoices(userId: string, programI
     return { coached, exercises: session.exercises.map((item) => ({
       templateExerciseId: item.templateExerciseId, exerciseId: item.exerciseId,
       exerciseName: item.exercise.name, movementGroupId: item.exercise.movementGroupId,
-      active: item.exercise.isActive && !item.exercise.isArchived,
+      active: item.exercise.isActive && !item.exercise.isArchived && !item.exercise.coachingProfiles[0]?.isArchived,
       isSubstitution: item.isSubstitution, intent: item.exerciseChoiceIntent,
       note: item.notes ?? (coached ? item.prescriptionNote : null),
     })) };

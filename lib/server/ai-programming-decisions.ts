@@ -1,5 +1,7 @@
 "use server";
 
+import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
+
 import { PRIORITY_DOSE_POLICY, PriorityReviewSchema } from "@/lib/coaching/priority-dose-policy";
 import { ModelPhaseRecommendationSchema } from "@/lib/ai/phase-recommendation-schema";
 import { validatePhaseRecommendation } from "@/lib/coaching/phase-recommendation";
@@ -444,9 +446,7 @@ async function buildProgrammingContext(userId: string) {
       }),
       prisma.exercise.findMany({
         where: {
-          isActive: true,
-          isArchived: false,
-          OR: [{ userId: null }, { userId }],
+          ...activeExerciseWhere(userId),
         },
         select: {
           id: true,

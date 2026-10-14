@@ -1,5 +1,7 @@
 "use server";
 
+import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
+
 import { z } from "zod";
 import { PRIORITY_DOSE_POLICY, auditWeeklyPriorities, readMaintenanceBases } from "@/lib/coaching/priority-dose-policy";
 import { summarizeExposureTolerance } from "@/lib/coaching/exposure-tolerance";
@@ -76,8 +78,7 @@ function canReviewWithSessions(sessions: Awaited<ReturnType<typeof currentWeekSe
 }
 
 async function activeExerciseOptions(userId: string) {
-  const rows = await prisma.exercise.findMany({ where: { isActive: true, isArchived: false,
-    OR: [{ isSeed: true, userId: null }, { userId }] },
+  const rows = await prisma.exercise.findMany({ where: { ...activeExerciseWhere(userId) },
     select: { id: true, name: true, movementGroupId: true, movementGroup: { select: { name: true } },
       primaryMuscles: { select: { muscleId: true } },
       secondaryMuscles: { select: { muscleId: true, contributionEstimate: true } },
@@ -569,7 +570,7 @@ export async function markWeeklyOccurrenceMissedAction(formData: FormData) {
   if (existingMissed.includes(occurrenceId)) redirect(plannerUrl(week.weekStart));
   const missed = [...existingMissed, occurrenceId];
   const currentPlan = parseWeeklyCoachPlan(record.allocation) ?? plan;
-  const catalog = await prisma.exercise.findMany({ where: { isActive: true, isArchived: false, OR: [{ isSeed: true, userId: null }, { userId }] }, select: { id: true, movementGroupId: true } });
+  const catalog = await prisma.exercise.findMany({ where: { ...activeExerciseWhere(userId) }, select: { id: true, movementGroupId: true } });
   const regularTypes = await prisma.setType.findMany({ where: { isActive: true, OR: [{ userId: null }, { userId }], isIntensifier: false }, select: { id: true, name: true, slug: true, multiplier: true } });
   const startedIds = sessions.map((session) => weeklyOccurrenceFromSummary(session.prescriptionSummary)).filter((id): id is string => Boolean(id));
   const redistributed = reallocateMissedWeeklyWork(currentPlan, [occurrenceId], startedIds, new Map(catalog.map((item) => [item.id, item.movementGroupId])),

@@ -271,6 +271,7 @@ model Exercise {
 }
 
 model ExerciseCoachingProfile {
+  isArchived               Boolean @default(false) @map("is_archived")
   id                       String @id @default(uuid()) @db.Uuid
   userId                   String @db.Uuid @map("user_id")
   exerciseId               String @db.Uuid @map("exercise_id")

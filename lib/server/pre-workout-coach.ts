@@ -1,3 +1,4 @@
+import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
 import "server-only";
 import { randomUUID } from "node:crypto";
@@ -135,7 +136,7 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
     prisma.exercise.findMany({
       where: {
         movementGroupId: { in: movementGroups.map((movement) => movement.id) },
-        isActive: true, isArchived: false, OR: [{ isSeed: true, userId: null }, { userId }],
+        ...activeExerciseWhere(userId),
       },
       orderBy: [{ isSeed: "desc" }, { name: "asc" }],
       select: {
@@ -244,6 +245,9 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
   });
   const itemBySlot = new Map(items.map((item) => [slotId(item), item]));
   const candidateBySlot = new Map(candidates.map((item) => [item.id, item]));
+  if (items.some((item) => !catalog.some((exercise) => exercise.id === item.exerciseId))) {
+    throw new Error("The saved workout contains an archived or unavailable exercise. Replace it or review the weekly plan first.");
+  }
   const exerciseById = new Map(catalog.map((exercise) => [exercise.id, exercise]));
   return {
     now, input, prescription, templates, requestedTemplate, items, candidates, itemBySlot, candidateBySlot,

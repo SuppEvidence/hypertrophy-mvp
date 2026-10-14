@@ -1,5 +1,7 @@
 "use server";
 
+import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
+
 import { ModelPhaseRecommendationSchema } from "@/lib/ai/phase-recommendation-schema";
 import { validatePhaseRecommendation } from "@/lib/coaching/phase-recommendation";
 import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
@@ -452,7 +454,7 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
       },
     }),
     prisma.exercise.findMany({
-      where: { isActive: true, isArchived: false, OR: [{ isSeed: true, userId: null }, { userId }] },
+      where: { ...activeExerciseWhere(userId) },
       select: { name: true, movementGroup: { select: { name: true } },
         primaryMuscles: { select: { muscle: { select: { name: true } } } },
         coachingProfiles: { where: { userId }, select: { preference: true }, take: 1 } },

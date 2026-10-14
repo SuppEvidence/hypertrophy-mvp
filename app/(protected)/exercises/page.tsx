@@ -40,7 +40,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
       <div className="flex items-start justify-between gap-3">
         <PageHeader
           title="Exercise Database"
-          description="Classification-focused exercise catalog. Seed exercises are global; edited seed items are saved as user-owned copies."
+          description="Classification-focused exercise catalog. Archive any exercise from your catalog. Workout history remains available. Shared exercise edits create custom copies."
         />
         <Link href="/exercises/new" className="shrink-0">
           <Button className="gap-2 px-3">
@@ -120,7 +120,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
 
       <div className="flex items-center justify-between text-sm text-slate-400">
         <span>{exercises.length} exercises</span>
-        <span>Seed edits create custom copies</span>
+        <span>Archived exercises stay in workout history</span>
       </div>
 
       <div className="space-y-3">
@@ -133,7 +133,6 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
         {exercises.map((exercise: any) => {
           const primary = exercise.primaryMuscles.map((link: any) => link.muscle.name).join(", ") || "—";
           const secondary = exercise.secondaryMuscles.map((link: any) => link.muscle.name).join(", ") || "—";
-          const canArchive = !exercise.isSeed;
 
           return (
             <Card key={exercise.id}>
@@ -156,6 +155,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
                 </Link>
               </div>
 
+              {exercise.isArchived && exercise._count.templateExercises > 0 ? <p className="mt-3 text-xs text-amber-200">Referenced by {exercise._count.templateExercises} active template slots. Archived exercises are omitted from new prescriptions; update those slots if their work is still needed.</p> : null}
               <div className="mt-3 grid gap-2 text-sm text-slate-400">
                 <p>
                   <span className="text-slate-500">Primary:</span> {primary}
@@ -176,14 +176,14 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
                 ) : null}
               </div>
 
-              {canArchive ? (
+              {(
                 <form action={exercise.isArchived ? restoreExercise : archiveExercise} className="mt-4">
                   <input type="hidden" name="exerciseId" value={exercise.id} />
                   <Button variant="ghost" className="w-full gap-2">
                     <Archive size={16} /> {exercise.isArchived ? "Restore" : "Archive"}
                   </Button>
                 </form>
-              ) : null}
+              )}
             </Card>
           );
         })}

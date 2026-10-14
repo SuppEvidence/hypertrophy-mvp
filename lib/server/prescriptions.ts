@@ -1,5 +1,7 @@
 "use server";
 
+import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
+
 import { prisma } from "@/lib/db/prisma";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { generateMesocyclePrescriptionWithQuickOverrides as generateMesocyclePrescription } from "@/lib/planning/mesocycleQuickOverrides";
@@ -61,6 +63,7 @@ export async function buildProgramPrescription(
           orderBy: { sequenceIndex: "asc" },
           include: {
             exercises: {
+              where: { exercise: activeExerciseWhere(userId) },
               orderBy: { sortOrder: "asc" },
               include: {
                 defaultSetType: true,
@@ -109,7 +112,7 @@ export async function buildProgramPrescription(
       select: { id: true, name: true, slug: true, multiplier: true, isIntensifier: true, sortOrder: true },
     }),
     prisma.exercise.findMany({
-      where: { isArchived: false, isActive: true, OR: [{ isSeed: true, userId: null }, { userId }] },
+      where: { ...activeExerciseWhere(userId) },
       orderBy: [{ isSeed: "desc" }, { name: "asc" }],
       select: {
         id: true,

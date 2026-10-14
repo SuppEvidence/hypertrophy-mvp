@@ -1,3 +1,4 @@
+import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 import "server-only";
 import { z } from "zod";
 import { zodTextFormat } from "openai/helpers/zod";
@@ -58,7 +59,7 @@ export async function assessExerciseSecondaryContributions(exerciseId: string) {
 /** Called after exercise catalog reads to assess older links gradually without delaying the UI. */
 export async function assessPendingSecondaryContributions(userId: string) {
   const pending = await prisma.exerciseSecondaryMuscle.findMany({
-    where: { contributionEstimate: null, exercise: { OR: [{ userId }, { userId: null, isSeed: true }] } },
+    where: { contributionEstimate: null, exercise: activeExerciseWhere(userId) },
     select: { exerciseId: true }, distinct: ["exerciseId"], take: 2,
   });
   for (const row of pending) {

@@ -1,5 +1,7 @@
 "use server";
 
+import { activeExerciseWhere, exerciseAccessWhere, exerciseArchivedWhere } from "@/lib/server/exercise-catalog-policy";
+
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -42,14 +44,14 @@ export async function listExercises(searchParams?: {
       ? { isSeed: true, userId: null }
       : source === "custom"
         ? { userId }
-        : { OR: [{ isSeed: true, userId: null }, { userId }] };
+        : exerciseAccessWhere(userId);
 
   const statusWhere =
     status === "archived"
-      ? { isArchived: true }
+      ? exerciseArchivedWhere(userId)
       : status === "all"
         ? {}
-        : { isArchived: false, isActive: true };
+        : activeExerciseWhere(userId);
 
   const andFilters: Prisma.ExerciseWhereInput[] = [sourceWhere, statusWhere];
   if (q) {
@@ -78,15 +80,18 @@ export async function listExercises(searchParams?: {
     } catch (error) { console.error("Secondary contribution backfill failed", error); }
   });
 
-  return prisma.exercise.findMany({
+  const rows = await prisma.exercise.findMany({
     where: { AND: andFilters },
     orderBy: [{ isSeed: "desc" }, { name: "asc" }],
     include: {
+      coachingProfiles: { where: { userId }, select: { isArchived: true } },
+      _count: { select: { templateExercises: { where: { template: { userId, isArchived: false } } } } },
       movementGroup: true,
       primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
       secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
     },
   });
+  return rows.map((row) => ({ ...row, isArchived: row.isArchived || row.coachingProfiles[0]?.isArchived === true }));
 }
 
 export async function getExerciseForEdit(exerciseId: string) {
@@ -95,7 +100,7 @@ export async function getExerciseForEdit(exerciseId: string) {
   return prisma.exercise.findFirst({
     where: {
       id: exerciseId,
-      OR: [{ isSeed: true, userId: null }, { userId }],
+      ...exerciseAccessWhere(userId),
     },
     include: {
       movementGroup: true,
@@ -114,7 +119,7 @@ const coachingProfileInput = z.object({
 
 export async function saveExerciseCoachingProfile(exerciseId: string, formData: FormData) {
   const userId = await requireUserId();
-  const exercise = await prisma.exercise.findFirst({ where: { id: exerciseId, OR: [{ isSeed: true, userId: null }, { userId }] } });
+  const exercise = await prisma.exercise.findFirst({ where: { id: exerciseId, ...exerciseAccessWhere(userId) } });
   if (!exercise) throw new Error("Exercise not found.");
   const input = coachingProfileInput.parse({
     preference: formData.get("preference"),
@@ -271,7 +276,7 @@ export async function createExercise(formData: FormData) {
 export async function saveExercise(exerciseId: string, formData: FormData) {
   const userId = await requireUserId();
   const existing = await prisma.exercise.findFirst({
-    where: { id: exerciseId, OR: [{ isSeed: true, userId: null }, { userId }] },
+    where: { id: exerciseId, ...exerciseAccessWhere(userId) },
     include: { primaryMuscles: true, secondaryMuscles: true },
   });
 
@@ -281,7 +286,7 @@ export async function saveExercise(exerciseId: string, formData: FormData) {
   const muscles = await resolveChestMuscles(input.movementGroupId, primaryMuscleIds, secondaryMuscleIds);
 
   const saved = await prisma.$transaction(async (tx) => {
-    if (existing.isSeed) {
+    if (existing.userId === null) {
       const copy = await tx.exercise.create({
         data: {
           userId,
@@ -344,22 +349,19 @@ export async function saveExercise(exerciseId: string, formData: FormData) {
   redirect(`/exercises/${saved.id}`);
 }
 
-export async function archiveExercise(formData: FormData) {
+async function setExerciseArchived(formData: FormData, archived: boolean) {
   const userId = await requireUserId();
   const exerciseId = String(formData.get("exerciseId") ?? "");
-  const exercise = await prisma.exercise.findFirst({ where: { id: exerciseId, userId, isSeed: false } });
+  const exercise = await prisma.exercise.findFirst({ where: { id: exerciseId, ...exerciseAccessWhere(userId) } });
   if (!exercise) redirect("/exercises");
-
-  await prisma.exercise.update({ where: { id: exercise.id }, data: { isArchived: true, isActive: false } });
-  revalidatePath("/exercises");
+  if (exercise.userId === null) {
+    await prisma.exerciseCoachingProfile.upsert({ where: { userId_exerciseId: { userId, exerciseId } },
+      create: { userId, exerciseId, isArchived: archived }, update: { isArchived: archived } });
+  } else {
+    await prisma.exercise.update({ where: { id: exercise.id }, data: { isArchived: archived, isActive: !archived } });
+  }
+  for (const path of ["/exercises", `/exercises/${exerciseId}`, "/templates", "/programs", "/plan", "/plan/week", "/log", "/ai-analysis"]) revalidatePath(path, "layout");
 }
 
-export async function restoreExercise(formData: FormData) {
-  const userId = await requireUserId();
-  const exerciseId = String(formData.get("exerciseId") ?? "");
-  const exercise = await prisma.exercise.findFirst({ where: { id: exerciseId, userId, isSeed: false } });
-  if (!exercise) redirect("/exercises");
-
-  await prisma.exercise.update({ where: { id: exercise.id }, data: { isArchived: false, isActive: true } });
-  revalidatePath("/exercises");
-}
+export async function archiveExercise(formData: FormData) { await setExerciseArchived(formData, true); }
+export async function restoreExercise(formData: FormData) { await setExerciseArchived(formData, false); }
