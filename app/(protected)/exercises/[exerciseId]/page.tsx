@@ -1,3 +1,5 @@
+import { ExerciseMechanicsCoach } from "@/components/exercises/ExerciseMechanicsCoach";
+import { mechanicsBasis } from "@/lib/coaching/exercise-mechanics";
 import { Button } from "@/components/ui/Button";
 import { notFound } from "next/navigation";
 import { archiveExercise, restoreExercise, saveExercise, saveExerciseCoachingProfile, getExerciseForEdit, getExerciseReferenceData } from "@/lib/server/exercises";
@@ -26,6 +28,9 @@ export default async function EditExercisePage({ params }: { params: Promise<{ e
         <p className="mt-2 text-xs text-slate-400">Archiving removes this exercise from future selections and coaching suggestions. Logged workouts remain available.</p>
       </form>
       <ExerciseForm exercise={exercise} muscles={referenceData.muscles} movementGroups={referenceData.movementGroups} action={action} />
+      <ExerciseMechanicsCoach key={`${exercise.id}:${exercise.coachingProfiles[0]?.mechanicsRevision ?? 0}`} exerciseId={exercise.id}
+        profile={exercise.coachingProfiles[0] ?? null} muscles={referenceData.muscles} archived={archived}
+        currentBasis={mechanicsBasis(exercise, exercise.coachingProfiles[0]?.executionSetup ?? null)} />
       <ExerciseCoachingProfileForm profile={exercise.coachingProfiles[0] ?? null} setTypes={referenceData.setTypes} action={saveExerciseCoachingProfile.bind(null, exercise.id)} />
     </div>
   );

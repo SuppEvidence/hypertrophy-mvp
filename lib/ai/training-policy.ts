@@ -1,3 +1,4 @@
+import { EXERCISE_MECHANICS_POLICY } from "@/lib/coaching/exercise-mechanics";
 export const TRAINING_POLICY_VERSION = "1.6";
 
 /**
@@ -38,6 +39,7 @@ TRAINING PROGRAMMING POLICY v${TRAINING_POLICY_VERSION}
 
 ${COACH_COMMUNICATION_POLICY}
 ${ATHLETE_RESPONSE_COACHING_POLICY}
+${EXERCISE_MECHANICS_POLICY}
 
 OBJECTIVE
 - Maximize useful hypertrophic stimulus while controlling fatigue, pain risk, execution quality, session complexity, and unnecessary volume.

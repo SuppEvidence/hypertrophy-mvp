@@ -1,3 +1,4 @@
+import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { evaluateLiveCoachEligibility } from "@/lib/coaching/live-coaching";
@@ -60,6 +61,7 @@ export async function buildLiveExerciseCoachingContext(params: {
       session: { select: { id: true, status: true, performedAt: true } },
       exercise: {
         include: {
+          coachingProfiles: { where: { userId: params.userId }, select: { mechanicsProfile: true, executionSetup: true }, take: 1 },
           movementGroup: true,
           primaryMuscles: { include: { muscle: true } },
           secondaryMuscles: { include: { muscle: true } },
@@ -220,6 +222,7 @@ export async function buildLiveExerciseCoachingContext(params: {
     exercise: {
       id: current.exerciseId,
       name: current.exercise.name,
+      exerciseMechanics: summarizeExerciseMechanics(current.exercise.coachingProfiles[0]?.mechanicsProfile, mechanicsBasis(current.exercise, current.exercise.coachingProfiles[0]?.executionSetup ?? null)),
       minimumWeightIncrement: numberOrNull(current.exercise.minimumWeightIncrement),
       pain: current.painFlag,
       movementPatternId: current.exercise.movementGroupId,

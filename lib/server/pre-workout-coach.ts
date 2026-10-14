@@ -1,3 +1,4 @@
+import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
 import "server-only";
@@ -141,9 +142,9 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
       orderBy: [{ isSeed: "desc" }, { name: "asc" }],
       select: {
         id: true, name: true, movementGroupId: true, setupNotes: true, tags: true,
-        primaryMuscles: { select: { muscle: { select: { id: true, name: true } } } },
-        secondaryMuscles: { select: { contributionEstimate: true, muscle: { select: { id: true, name: true } } } },
-        coachingProfiles: { where: { userId }, select: { preference: true, intensifierPreference: true, allowedIntensifierIds: true, notes: true }, take: 1 },
+        primaryMuscles: { select: { muscleId: true, muscle: { select: { id: true, name: true } } } },
+        secondaryMuscles: { select: { muscleId: true, contributionEstimate: true, muscle: { select: { id: true, name: true } } } },
+        coachingProfiles: { where: { userId }, select: { mechanicsProfile: true, executionSetup: true, preference: true, intensifierPreference: true, allowedIntensifierIds: true, notes: true }, take: 1 },
       },
     }),
     loadHistory(userId, input.programId, since),
@@ -404,6 +405,7 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
       primaryMuscles: exercise.primaryMuscles.map((link) => link.muscle.name),
       secondaryMuscles: exercise.secondaryMuscles.map((link) => ({ name: link.muscle.name, estimatedFraction: link.contributionEstimate === null ? null : Number(link.contributionEstimate) })),
       eligibleNewIntensifierSetTypeIds: eligibleByExercise.get(exercise.id) ?? [],
+      exerciseMechanics: summarizeExerciseMechanics(exercise.coachingProfiles[0]?.mechanicsProfile, mechanicsBasis(exercise, exercise.coachingProfiles[0]?.executionSetup ?? null)),
       coachingPreference: exercise.coachingProfiles[0]?.preference ?? "NEUTRAL",
       coachingNotes: exercise.coachingProfiles[0]?.notes ?? null,
     })),

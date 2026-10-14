@@ -1,5 +1,7 @@
 "use server";
 
+import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
+
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 
 import { ModelPhaseRecommendationSchema } from "@/lib/ai/phase-recommendation-schema";
@@ -455,9 +457,10 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
     }),
     prisma.exercise.findMany({
       where: { ...activeExerciseWhere(userId) },
-      select: { name: true, movementGroup: { select: { name: true } },
-        primaryMuscles: { select: { muscle: { select: { name: true } } } },
-        coachingProfiles: { where: { userId }, select: { preference: true }, take: 1 } },
+      select: { id: true, name: true, setupNotes: true, movementGroupId: true, movementGroup: { select: { name: true } },
+        secondaryMuscles: { select: { muscleId: true } },
+        primaryMuscles: { select: { muscleId: true, muscle: { select: { name: true } } } },
+        coachingProfiles: { where: { userId }, select: { mechanicsProfile: true, executionSetup: true, preference: true }, take: 1 } },
     }),
   ]);
 
@@ -636,6 +639,8 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
       })),
       hasStoredAiRecommendation: Boolean(prior.aiRecommendation),
     })),
+    exerciseMechanicsCatalog: candidateExercises.map(exercise => ({ id: exercise.id, name: exercise.name,
+      exerciseMechanics: summarizeExerciseMechanics(exercise.coachingProfiles[0]?.mechanicsProfile, mechanicsBasis(exercise, exercise.coachingProfiles[0]?.executionSetup ?? null)) })).filter(x => x.exerciseMechanics),
     availablePrimaryMovementPatterns: [...primaryPatternMap.values()],
   };
 

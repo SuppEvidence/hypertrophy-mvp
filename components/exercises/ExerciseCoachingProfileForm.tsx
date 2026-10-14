@@ -19,7 +19,7 @@ export function ExerciseCoachingProfileForm({ profile, setTypes, action }: {
     <Card>
       <form action={action} className="space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-slate-100">Coach exercise profile</h2>
+          <h2 className="text-base font-semibold text-slate-100">Exercise preferences</h2>
           <p className="mt-1 text-sm text-slate-400">Your preferences apply to this exercise, including seed exercises. They guide future workout proposals without changing past logs or templates.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">

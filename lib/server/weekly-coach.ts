@@ -1,5 +1,7 @@
 "use server";
 
+import { mechanicsBasis, summarizeExerciseMechanics, EXERCISE_MECHANICS_POLICY } from "@/lib/coaching/exercise-mechanics";
+
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 
 import { z } from "zod";
@@ -79,15 +81,16 @@ function canReviewWithSessions(sessions: Awaited<ReturnType<typeof currentWeekSe
 
 async function activeExerciseOptions(userId: string) {
   const rows = await prisma.exercise.findMany({ where: { ...activeExerciseWhere(userId) },
-    select: { id: true, name: true, movementGroupId: true, movementGroup: { select: { name: true } },
+    select: { id: true, name: true, setupNotes: true, movementGroupId: true, movementGroup: { select: { name: true } },
       primaryMuscles: { select: { muscleId: true } },
       secondaryMuscles: { select: { muscleId: true, contributionEstimate: true } },
-      coachingProfiles: { where: { userId }, select: { preference: true, intensifierPreference: true, allowedIntensifierIds: true, notes: true }, take: 1 } },
+      coachingProfiles: { where: { userId }, select: { mechanicsProfile: true, executionSetup: true, preference: true, intensifierPreference: true, allowedIntensifierIds: true, notes: true }, take: 1 } },
   });
   return rows.map((row) => ({ id: row.id, name: row.name, movementGroupId: row.movementGroupId,
     movementGroupName: row.movementGroup.name, preference: row.coachingProfiles[0]?.preference ?? "NEUTRAL",
     intensifierPreference: row.coachingProfiles[0]?.intensifierPreference ?? "DEFAULT",
     allowedIntensifierIds: row.coachingProfiles[0]?.allowedIntensifierIds ?? [],
+    exerciseMechanics: summarizeExerciseMechanics(row.coachingProfiles[0]?.mechanicsProfile, mechanicsBasis(row, row.coachingProfiles[0]?.executionSetup ?? null)),
     coachingNotes: row.coachingProfiles[0]?.notes?.slice(0, 400) ?? null,
     primaryMuscleIds: row.primaryMuscles.map((link) => link.muscleId),
     secondaryMuscleIds: row.secondaryMuscles.map((link) => link.muscleId),
@@ -277,7 +280,8 @@ export async function generateWeeklyCoachAction(formData: FormData) {
     const movementChoices = Object.fromEntries([...new Set(catalog.map((row) => row.movementGroupId))].map((id) => [id,
       catalog.filter((row) => row.movementGroupId === id).map((row) => row.exerciseId)]));
     const modelInput = [
-      { role: "system" as const, content: `${COACH_COMMUNICATION_POLICY}
+      { role: "system" as const, content: `${EXERCISE_MECHANICS_POLICY}
+${COACH_COMMUNICATION_POLICY}
 ${ATHLETE_RESPONSE_COACHING_POLICY}
 ${RECOVERY_EVIDENCE_POLICY}
 ${PRIORITY_DOSE_POLICY}

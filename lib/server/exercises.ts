@@ -1,5 +1,7 @@
 "use server";
 
+import { mechanicsBasis, readMechanics } from "@/lib/coaching/exercise-mechanics";
+
 import { activeExerciseWhere, exerciseAccessWhere, exerciseArchivedWhere } from "@/lib/server/exercise-catalog-policy";
 
 import type { Prisma } from "@prisma/client";
@@ -84,14 +86,21 @@ export async function listExercises(searchParams?: {
     where: { AND: andFilters },
     orderBy: [{ isSeed: "desc" }, { name: "asc" }],
     include: {
-      coachingProfiles: { where: { userId }, select: { isArchived: true } },
+      coachingProfiles: { where: { userId }, select: { isArchived: true, mechanicsProfile: true, mechanicsDraft: true, mechanicsRevision: true, executionSetup: true } },
       _count: { select: { templateExercises: { where: { template: { userId, isArchived: false } } } } },
       movementGroup: true,
       primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
       secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
     },
   });
-  return rows.map((row) => ({ ...row, isArchived: row.isArchived || row.coachingProfiles[0]?.isArchived === true }));
+  return rows.map((row) => {
+    const profile = row.coachingProfiles[0];
+    const accepted = readMechanics(profile?.mechanicsProfile);
+    const draft = readMechanics(profile?.mechanicsDraft);
+    const basis = mechanicsBasis(row, profile?.executionSetup ?? null);
+    const mechanicsStatus = draft ? "PROPOSAL" : accepted?.acceptedAt ? (accepted.basis === basis ? "ACCEPTED" : "STALE") : "MISSING";
+    return { ...row, isArchived: row.isArchived || profile?.isArchived === true, mechanicsStatus, mechanicsRevision: profile?.mechanicsRevision ?? 0 };
+  });
 }
 
 export async function getExerciseForEdit(exerciseId: string) {
@@ -315,6 +324,7 @@ export async function saveExercise(exerciseId: string, formData: FormData) {
           intensifierPreference: coachingProfile.intensifierPreference,
           allowedIntensifierIds: coachingProfile.allowedIntensifierIds,
           notes: coachingProfile.notes,
+          executionSetup: coachingProfile.executionSetup,
           lastConfirmedAt: coachingProfile.lastConfirmedAt,
         } });
       }

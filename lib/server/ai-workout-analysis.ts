@@ -1,5 +1,7 @@
 "use server";
 
+import { mechanicsBasis, summarizeExerciseMechanics, EXERCISE_MECHANICS_POLICY } from "@/lib/coaching/exercise-mechanics";
+
 import { COACH_COMMUNICATION_POLICY, ATHLETE_RESPONSE_COACHING_POLICY } from "@/lib/ai/training-policy";
 import { revalidatePath } from "next/cache";
 import { zodTextFormat } from "openai/helpers/zod";
@@ -266,6 +268,7 @@ function medianFirstSetRir(exposures: Array<{ sets: CompletedSet[] }>) {
 }
 
 const SYSTEM_INSTRUCTIONS = `
+${EXERCISE_MECHANICS_POLICY}
 ${COACH_COMMUNICATION_POLICY}
 ${ATHLETE_RESPONSE_COACHING_POLICY}
 You are the workout-analysis reasoning layer for a hypertrophy training application.
@@ -322,6 +325,7 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
         include: {
           exercise: {
             include: {
+              coachingProfiles: { where: { userId }, select: { mechanicsProfile: true, executionSetup: true }, take: 1 },
               movementGroup: true,
               primaryMuscles: { include: { muscle: true } },
               secondaryMuscles: { include: { muscle: true } },
@@ -487,6 +491,7 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
       sessionExerciseId: sessionExercise.id,
       exerciseId: sessionExercise.exerciseId,
       exerciseName: sessionExercise.exercise.name,
+      exerciseMechanics: summarizeExerciseMechanics(sessionExercise.exercise.coachingProfiles[0]?.mechanicsProfile, mechanicsBasis(sessionExercise.exercise, sessionExercise.exercise.coachingProfiles[0]?.executionSetup ?? null)),
       movementPattern: sessionExercise.exercise.movementGroup.name,
       derivedExerciseType:
         sessionExercise.exercise.secondaryMuscles.length > 0

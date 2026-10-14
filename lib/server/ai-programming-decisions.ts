@@ -1,5 +1,7 @@
 "use server";
 
+import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
+
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 
 import { PRIORITY_DOSE_POLICY, PriorityReviewSchema } from "@/lib/coaching/priority-dose-policy";
@@ -451,11 +453,12 @@ async function buildProgrammingContext(userId: string) {
         select: {
           id: true,
           name: true,
+          setupNotes: true,
           movementGroupId: true,
           movementGroup: { select: { name: true } },
           primaryMuscles: { select: { muscleId: true } },
           secondaryMuscles: { select: { muscleId: true, contributionEstimate: true } },
-          coachingProfiles: { where: { userId }, select: { preference: true, notes: true, intensifierPreference: true }, take: 1 },
+          coachingProfiles: { where: { userId }, select: { mechanicsProfile: true, executionSetup: true, preference: true, notes: true, intensifierPreference: true }, take: 1 },
         },
       }),
       prisma.programMesocycle.findMany({
@@ -774,6 +777,7 @@ async function buildProgrammingContext(userId: string) {
       })),
       exerciseCoachingProfiles: exerciseCatalog.filter((exercise) => exercise.coachingProfiles.length > 0).map((exercise) => ({
         exerciseId: exercise.id, exerciseName: exercise.name, movementPatternId: exercise.movementGroupId,
+        exerciseMechanics: summarizeExerciseMechanics(exercise.coachingProfiles[0].mechanicsProfile, mechanicsBasis(exercise, exercise.coachingProfiles[0].executionSetup ?? null)),
         preference: exercise.coachingProfiles[0].preference,
         intensifierPreference: exercise.coachingProfiles[0].intensifierPreference,
         notes: exercise.coachingProfiles[0].notes,

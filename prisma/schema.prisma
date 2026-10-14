@@ -271,6 +271,10 @@ model Exercise {
 }
 
 model ExerciseCoachingProfile {
+  mechanicsProfile         Json? @map("mechanics_profile")
+  mechanicsDraft           Json? @map("mechanics_draft")
+  mechanicsRevision        Int @default(0) @map("mechanics_revision")
+  executionSetup           String? @db.VarChar(1600) @map("execution_setup")
   isArchived               Boolean @default(false) @map("is_archived")
   id                       String @id @default(uuid()) @db.Uuid
   userId                   String @db.Uuid @map("user_id")

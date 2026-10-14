@@ -1,3 +1,4 @@
+import { ExerciseCoachBackfill } from "@/components/exercises/ExerciseCoachBackfill";
 import Link from "next/link";
 import { Archive, CheckCircle2, Copy, Pencil, Plus, Search } from "lucide-react";
 import { archiveExercise, getExerciseReferenceData, listExercises, restoreExercise } from "@/lib/server/exercises";
@@ -123,6 +124,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
         <span>Archived exercises stay in workout history</span>
       </div>
 
+      <ExerciseCoachBackfill candidates={exercises.filter(exercise => !exercise.isArchived && exercise.isActive && (exercise.mechanicsStatus === "MISSING" || exercise.mechanicsStatus === "STALE")).map(exercise => ({ id: exercise.id, name: exercise.name, revision: exercise.mechanicsRevision }))} />
       <div className="space-y-3">
         {exercises.length === 0 ? (
           <Card>
@@ -144,6 +146,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
                       {exercise.isSeed ? <Copy size={12} /> : <CheckCircle2 size={12} />}
                       {exercise.isSeed ? "Seed" : "Custom"}
                     </span>
+                    <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-400">{exercise.mechanicsStatus === "ACCEPTED" ? "Coach profile ready" : exercise.mechanicsStatus === "PROPOSAL" ? "Profile proposal" : exercise.mechanicsStatus === "STALE" ? "Profile needs review" : "Profile not assessed"}</span>
                     {exercise.isArchived ? (
                       <span className="rounded-full border border-amber-800 px-2 py-1 text-xs text-amber-200">Archived</span>
                     ) : null}
