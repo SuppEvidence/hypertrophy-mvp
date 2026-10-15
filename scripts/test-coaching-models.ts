@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { COACHING_WORKLOADS, getCoachingModelConfig } from "../lib/ai/coaching-models";
 
 const expected = {
+  PHYSIQUE_CHECKIN: ["gpt-5.6-sol", "high"],
   EXERCISE_PROFILE: ["gpt-5.6-terra", "medium"],
   T1: ["gpt-5.6-luna", "low"], T2: ["gpt-5.6-terra", "medium"],
   WORKOUT_ANALYSIS: ["gpt-5.6-terra", "medium"], T3_VOLUME: ["gpt-5.6-sol", "high"],
@@ -24,6 +25,7 @@ assert.throws(() => getCoachingModelConfig("T3_VOLUME", { OPENAI_T3_REASONING_EF
 
 // Regression: every model call must actually forward its tier request and budget.
 const files = {
+  PHYSIQUE_CHECKIN: "lib/server/physique-checkins.ts",
   EXERCISE_PROFILE: "lib/server/exercise-mechanics-coach.ts",
   T1: "lib/server/workout-coach-engine.ts", T2: "lib/server/pre-workout-coach.ts",
   WORKOUT_ANALYSIS: "lib/server/ai-workout-analysis.ts", T3_VOLUME: "lib/server/ai-programming-decisions.ts",
@@ -39,6 +41,7 @@ for (const workload of COACHING_WORKLOADS) {
   assert.ok(source.includes("}, aiConfig.options)"));
   assert.ok(!source.includes("getOpenAIModel"));
 }
+assert.ok(getCoachingModelConfig("PHYSIQUE_CHECKIN", {}).options.timeout + 60_000 <= 300_000);
 const duration = (path: string) => Number(readFileSync(path, "utf8").match(/export const maxDuration = (\d+)/)?.[1]) * 1000;
 // Post-workout automation runs workout analysis then T3 volume; meso is manual.
 const pipeline = ["WORKOUT_ANALYSIS", "T3_VOLUME"] as const;

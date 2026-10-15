@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MetricsForm } from "@/components/metrics/MetricsForm";
@@ -41,6 +42,7 @@ export default async function MetricsPage({
         <div className="rounded-2xl border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-100">Energy phase updated.</div>
       ) : null}
 
+      <Link href="/physique" className="inline-flex text-sm font-semibold text-orange-300">Photo check-ins and historical photos</Link>
       <EnergyPhaseHistory entries={phases} />
 
       {draft ? (
@@ -72,6 +74,7 @@ export default async function MetricsPage({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-slate-100">{formatDate(log.loggedAt)}</p>
+                    <Link className="text-xs text-orange-300" href={`/physique?date=${log.loggedAt.slice(0,10)}`}>Add or view photos for this date</Link>
                     <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{log.logType?.replaceAll("_", " ").toLowerCase()} · Fatigue: {log.fatigue.category}{log.fatigue.score !== null ? ` · ${log.fatigue.score}` : ""}</p>
                   </div>
                 </div>

@@ -143,6 +143,7 @@ model Profile {
   exerciseCoachingProfiles ExerciseCoachingProfile[]
   coachingInterventions CoachingIntervention[]
   energyPhases EnergyPhase[]
+  physiqueCheckins PhysiqueCheckin[]
   coachedWeeks WeeklyCoachPlan[]
 
   @@map("profiles")
@@ -154,6 +155,10 @@ model UserSettings {
   preferredUnit                PreferredUnit @default(KG) @map("preferred_unit")
   defaultSecondaryContribution Decimal       @default(0.5) @map("default_secondary_contribution") @db.Decimal(4, 2)
   advancedMuscleMode           Boolean       @default(false) @map("advanced_muscle_mode")
+  physiqueTrainingLevel        String @default("UNSPECIFIED") @map("physique_training_level")
+  physiqueGainWeeks            Int @default(10) @map("physique_gain_weeks")
+  physiqueMaintenanceWeeks     Int @default(6) @map("physique_maintenance_weeks")
+  physiqueGoal                 String? @db.VarChar(1200) @map("physique_goal")
   metricVisibility             Json?         @map("metric_visibility")
   createdAt                    DateTime      @default(now()) @map("created_at")
   updatedAt                    DateTime      @updatedAt @map("updated_at")
@@ -802,6 +807,41 @@ model WorkoutCoachAction {
 }
 
 
+model PhysiqueCheckin {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid @map("user_id")
+  takenOn DateTime @db.Date @map("taken_on")
+  metricLogId String? @db.Uuid @map("metric_log_id")
+  notes String? @db.VarChar(1600)
+  revision Int @default(0)
+  analysisDraft Json? @map("analysis_draft")
+  acceptedAnalysis Json? @map("accepted_analysis")
+  analysisToken String? @db.Uuid @map("analysis_token")
+  analysisStartedAt DateTime? @map("analysis_started_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metricLog MetricLog? @relation(fields: [metricLogId], references: [id], onDelete: SetNull)
+  photos PhysiquePhoto[]
+  @@unique([userId, takenOn])
+  @@index([userId, metricLogId])
+  @@index([metricLogId])
+  @@map("physique_checkins")
+}
+
+model PhysiquePhoto {
+  id String @id @default(uuid()) @db.Uuid
+  checkinId String @db.Uuid @map("checkin_id")
+  userId String @db.Uuid @map("user_id")
+  view String @db.VarChar(30)
+  objectPath String @unique @map("object_path")
+  createdAt DateTime @default(now()) @map("created_at")
+  checkin PhysiqueCheckin @relation(fields: [checkinId], references: [id], onDelete: Cascade)
+  @@unique([checkinId, view])
+  @@index([userId, checkinId])
+  @@map("physique_photos")
+}
+
 model MetricLog {
   id                      String   @id @default(uuid()) @db.Uuid
   userId                  String   @db.Uuid @map("user_id")
@@ -831,6 +871,8 @@ model MetricLog {
 
   @@index([userId, loggedAt])
   @@index([userId, isDraft, loggedAt])
+  physiqueCheckins PhysiqueCheckin[]
+
   @@index([userId, logType, loggedAt])
   @@map("metric_logs")
 }

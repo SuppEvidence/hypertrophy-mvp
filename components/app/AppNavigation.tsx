@@ -23,6 +23,7 @@ const planRoutes = ["/plan", "/programs", "/templates"];
 const progressRoutes = [
   "/progress",
   "/metrics",
+  "/physique",
   "/performance",
   "/ai-analysis",
 ];

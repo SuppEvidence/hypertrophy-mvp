@@ -1,5 +1,8 @@
 "use server";
 
+import { getPhysiqueEvidence } from "@/lib/server/physique-evidence";
+
+
 import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
 
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
@@ -736,6 +739,7 @@ async function buildProgrammingContext(userId: string) {
 
   return {
     context: {
+      physiqueEvidence: await getPhysiqueEvidence(userId),
       policyVersion: TRAINING_POLICY_VERSION,
       t3PolicyVersion: T3_VOLUME_POLICY_VERSION,
       generatedAt: new Date().toISOString(),

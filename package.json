@@ -24,11 +24,12 @@
     "@supabase/supabase-js": "latest",
     "clsx": "latest",
     "lucide-react": "latest",
-    "next": "16.3.3",
+    "next": "16.4.1",
     "openai": "^7.8.0",
     "pg": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "sharp": "0.35.5",
     "zod": "latest"
   },
   "devDependencies": {
@@ -40,7 +41,7 @@
     "autoprefixer": "latest",
     "dotenv": "latest",
     "eslint": "^9.39.4",
-    "eslint-config-next": "16.3.3",
+    "eslint-config-next": "16.4.1",
     "postcss": "latest",
     "prettier": "latest",
     "prisma": "7.10.0",

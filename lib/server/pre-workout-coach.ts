@@ -1,3 +1,4 @@
+import { getPhysiqueEvidence } from "@/lib/server/physique-evidence";
 import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
@@ -251,6 +252,7 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
   }
   const exerciseById = new Map(catalog.map((exercise) => [exercise.id, exercise]));
   return {
+    physiqueEvidence: await getPhysiqueEvidence(userId),
     now, input, prescription, templates, requestedTemplate, items, candidates, itemBySlot, candidateBySlot,
     catalog, exerciseById, history, recentAnalyses, bodyComposition, energyPhase, energyPhaseTimeline, globalRecovery, localizedReadiness, interventions, previousSameTemplate, rememberedChoices, coachedWeek,
   };
@@ -338,6 +340,7 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
       } : null,
       weeklyPlan: context.coachedWeek ? undefined : context.prescription.generated.weeklyPlan,
     },
+    physiqueEvidence: context.physiqueEvidence,
     bodyComposition: context.bodyComposition,
     declaredEnergyPhase: context.energyPhase,
     energyPhaseTimeline: context.energyPhaseTimeline,

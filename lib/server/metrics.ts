@@ -81,7 +81,7 @@ export async function createMetricLog(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/ai-analysis/mesocycle");
   revalidatePath("/programs", "layout");
-  redirect(intent === "draft" ? "/metrics?draft=1" : "/metrics?saved=1");
+  redirect(intent === "draft" ? "/metrics?draft=1" : formData.get("addPhotos") === "on" ? `/physique?date=${input.loggedAt}` : "/metrics?saved=1");
 }
 
 export async function getMetricsPageData() {

@@ -140,6 +140,7 @@ export function MetricsForm({
         />
       </label>
 
+      <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" name="addPhotos" /> Open photo check-in after saving measurements</label>
       <div className="grid grid-cols-2 gap-2">
         <Button type="submit" name="intent" value="draft" variant="secondary">Save draft</Button>
         <Button type="submit" name="intent" value="complete">Save metrics</Button>

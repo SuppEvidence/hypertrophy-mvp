@@ -52,6 +52,7 @@ export default async function ProgressPage() {
 
   return (
     <div className="space-y-5">
+      <Link href="/physique" className="inline-flex text-sm font-semibold text-orange-300">Physique photo check-ins and history</Link>
       <PageHeader
         title="Progress"
         description="Full volume, movement, performance, body-metric, and AI review without cluttering Home."

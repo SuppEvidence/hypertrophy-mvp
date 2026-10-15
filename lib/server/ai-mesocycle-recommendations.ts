@@ -1,5 +1,8 @@
 "use server";
 
+import { getPhysiqueEvidence } from "@/lib/server/physique-evidence";
+
+
 import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
 
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
@@ -538,6 +541,7 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
     }
   }
   const context = {
+    physiqueEvidence: await getPhysiqueEvidence(userId),
     policy: TRAINING_PROGRAMMING_POLICY,
     declaredEnergyPhase,
     energyPhaseTimeline,
