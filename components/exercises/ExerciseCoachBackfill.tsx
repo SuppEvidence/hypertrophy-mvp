@@ -23,7 +23,7 @@ export function ExerciseCoachBackfill({ candidates }: { candidates: Array<{ id: 
   }
   if (!batch.length && !messages.length) return null;
   return <Card><div className="space-y-3"><h2 className="font-semibold text-slate-100">Enrich existing exercises</h2>
-    <p className="text-sm text-slate-400">Generate description-based coaching proposals for up to three exercises from this filtered list. Each exercise uses one AI analysis. Review and accept each proposal on its exercise page; setup-dependent details can be clarified there.</p>
+    <p className="text-sm text-slate-400">Generate description-based coaching proposals for up to three exercises from this filtered list. Each exercise uses one AI analysis. Review and accept each proposal on its exercise page; setup-dependent details can be clarified there. Existing video profiles are updated from their exercise page.</p>
     {batch.length > 0 && <p className="text-xs text-slate-400">Next: {batch.map(x => x.name).join(", ")}</p>}
     <Button type="button" disabled={busy || !batch.length} onClick={enrich}>{busy ? "Generating proposals…" : `Propose profiles for ${batch.length} exercises`}</Button>
     <div role="status" className="space-y-2 text-sm text-slate-300">{messages.map((m, i) => m.id ? <p key={i}><Link className="underline" href={`/exercises/${m.id}`}>{m.text}</Link></p> : <p key={i}>{m.text}</p>)}</div>

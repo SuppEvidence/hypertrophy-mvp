@@ -10,7 +10,7 @@ const muscleId = fixtureProfile.targets[0].muscleId;
 let profile: Record<string, unknown> | undefined;
 let modelOutput = fixtureProfile;
 let mutateDuringAnalysis: (() => void) | undefined;
-let calls = 0; let writes = 0;
+let calls = 0; let writes = 0; let lastRequest = "";
 const exercise = { id: exerciseId, name: "Cable lateral", setupNotes: null as string | null, movementGroupId: "abduction",
   movementGroup: { name: "Abduction" }, isActive: true, isArchived: false,
   primaryMuscles: [{ muscleId, muscle: { name: "Side delts" } }], secondaryMuscles: [] };
@@ -41,7 +41,7 @@ async function main() {
   (globalThis as unknown as { prisma: unknown }).prisma = fake;
   const client = getOpenAIClient();
   (client.responses as unknown as { parse: (input: unknown) => Promise<unknown> }).parse = async input => {
-    calls++; const serialized = JSON.stringify(input);
+    calls++; const serialized = JSON.stringify(input); lastRequest = serialized;
     assert.ok(serialized.includes('"store":false')); assert.ok(serialized.includes("exercise_mechanics"));
     mutateDuringAnalysis?.(); return { output_parsed: modelOutput, status: "completed" };
   };
@@ -75,8 +75,50 @@ async function main() {
   await assert.rejects(run(userId, exerciseId, { operation: "ANALYZE", revision: 5, frames: frames.slice(0, 3) }), /at least four/);
   await run(userId, exerciseId, { operation: "ANALYZE", revision: 5, frames });
   assert.equal((profile?.mechanicsDraft as { source: string }).source, "VIDEO_FRAMES");
-  await run(userId, exerciseId, { operation: "CLEAR", revision: 6 }); assert.equal(profile?.mechanicsProfile, null);
-  assert.equal(profile?.mechanicsRevision, 7);
+  // Simulate the already-deployed video envelope, which had no provenance/history fields.
+  delete (profile!.mechanicsDraft as Record<string, unknown>).videoEvidence;
+  const originalVideo = JSON.parse(JSON.stringify(profile!.mechanicsDraft));
+  const callsBefore = calls;
+  modelOutput = { ...fixtureProfile, summary: "The pulley position is now clarified.", questions: [], observedExecution: ["Invented fresh observation"] };
+  await run(userId, exerciseId, { operation: "CLARIFY", revision: 6, clarification: "The pulley is at floor level." });
+  const refined = profile!.mechanicsDraft as typeof originalVideo;
+  assert.equal(calls, callsBefore + 1, "Clarifying uses exactly one explicit text request");
+  assert.equal(lastRequest.includes('"input_image"'), false, "Refinement never resends images");
+  assert.ok(lastRequest.includes("previousAnalysis")); assert.ok(lastRequest.includes("Observed shoulder abduction"));
+  assert.ok(lastRequest.includes("What is the pulley height?"));
+  assert.equal(refined.source, "VIDEO_FRAMES");
+  assert.deepEqual(refined.profile.observedExecution, originalVideo.profile.observedExecution, "Saved observations cannot be erased or replaced by model text");
+  assert.equal(refined.videoEvidence.assessedAt, originalVideo.assessedAt);
+  assert.deepEqual(refined.videoEvidence.profile, originalVideo.profile, "Full original analysis remains available for review");
+  assert.equal(refined.clarifications[0].answer, "The pulley is at floor level.");
+  assert.deepEqual(refined.clarifications[0].questions, originalVideo.profile.questions);
+  assert.deepEqual(refined.profile.questions, [], "Resolved questions are removed from the new proposal");
+  assert.equal(profile!.mechanicsProfile, accepted, "Clarification does not auto-accept");
+  await run(userId, exerciseId, { operation: "ACCEPT", revision: 7 });
+  assert.equal(calls, callsBefore + 1, "Acceptance does not call AI");
+  const acceptedVideo = profile!.mechanicsProfile;
+  await run(userId, exerciseId, { operation: "CLARIFY", revision: 8, clarification: "The cable starts slightly behind my torso." });
+  const twice = profile!.mechanicsDraft as typeof originalVideo;
+  assert.equal(twice.clarifications.length, 2);
+  assert.ok(lastRequest.includes("The pulley is at floor level."), "Earlier answers reach later refinements");
+  assert.equal(twice.videoEvidence.assessedAt, originalVideo.assessedAt);
+  assert.deepEqual(twice.videoEvidence.profile, originalVideo.profile);
+  assert.deepEqual(twice.profile.observedExecution, originalVideo.profile.observedExecution);
+  const safeCalls = calls;
+  await assert.rejects(run(userId, exerciseId, { operation: "ANALYZE", revision: 9, setup: "Only an answer" }), /Use Answer/);
+  assert.equal(calls, safeCalls, "Description-only replacement is blocked before any AI call");
+  await assert.rejects(run(userId, exerciseId, { operation: "CLARIFY", revision: 9, clarification: "Answer", frames }), /without new video/);
+  await assert.rejects(run(userId, exerciseId, { operation: "CLARIFY", revision: 9, clarification: "Answer", setup: "changed" }), /saved setup/);
+  exercise.setupNotes = "Different machine geometry";
+  await assert.rejects(run(userId, exerciseId, { operation: "CLARIFY", revision: 9, clarification: "Answer" }), /outdated/);
+  exercise.setupNotes = null;
+  const savedDraft = profile!.mechanicsDraft;
+  mutateDuringAnalysis = () => { throw new Error("Provider failed"); };
+  await assert.rejects(run(userId, exerciseId, { operation: "CLARIFY", revision: 9, clarification: "Answer" }), /Provider failed/);
+  assert.equal(profile!.mechanicsDraft, savedDraft); assert.equal(profile!.mechanicsProfile, acceptedVideo);
+  mutateDuringAnalysis = undefined;
+  await run(userId, exerciseId, { operation: "CLEAR", revision: 9 }); assert.equal(profile?.mechanicsProfile, null);
+  assert.equal(profile?.mechanicsRevision, 10);
   console.log("Exercise coach proposal/accept/discard/clear, ownership, archive, catalog validation and concurrent edit guards passed.");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

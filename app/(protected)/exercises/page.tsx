@@ -1,3 +1,4 @@
+import { readMechanics } from "@/lib/coaching/exercise-mechanics";
 import { ExerciseCoachBackfill } from "@/components/exercises/ExerciseCoachBackfill";
 import Link from "next/link";
 import { Archive, CheckCircle2, Copy, Pencil, Plus, Search } from "lucide-react";
@@ -124,7 +125,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
         <span>Archived exercises stay in workout history</span>
       </div>
 
-      <ExerciseCoachBackfill candidates={exercises.filter(exercise => !exercise.isArchived && exercise.isActive && (exercise.mechanicsStatus === "MISSING" || exercise.mechanicsStatus === "STALE")).map(exercise => ({ id: exercise.id, name: exercise.name, revision: exercise.mechanicsRevision }))} />
+      <ExerciseCoachBackfill candidates={exercises.filter(exercise => !exercise.isArchived && exercise.isActive && (exercise.mechanicsStatus === "MISSING" || exercise.mechanicsStatus === "STALE") && !exercise.coachingProfiles.some(profile => readMechanics(profile.mechanicsProfile)?.source === "VIDEO_FRAMES" || readMechanics(profile.mechanicsDraft)?.source === "VIDEO_FRAMES")).map(exercise => ({ id: exercise.id, name: exercise.name, revision: exercise.mechanicsRevision }))} />
       <div className="space-y-3">
         {exercises.length === 0 ? (
           <Card>

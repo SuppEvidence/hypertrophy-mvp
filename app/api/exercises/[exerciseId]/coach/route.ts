@@ -23,7 +23,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch (error) {
     // Surface safe validation/conflict messages; never provider payloads or credentials.
     const message = error instanceof Error ? error.message : "";
-    const safe = /^(Exercise not found|Profile changed|Restore this exercise|Provide at least|Frames must|Analysis incomplete|Coach returned|Analysis claimed|Draft is missing|Exercise changed|Exercise was archived)/.test(message);
+    const safe = /^(Exercise not found|Profile changed|Restore this exercise|Provide at least|Frames must|Analysis incomplete|Coach returned|Analysis claimed|Draft is missing|Exercise changed|Exercise was archived|Clarification|Use Answer)/.test(message);
     return NextResponse.json({ error: safe ? message : "Exercise coaching failed. Reload and try again; your accepted profile remains saved." }, { status: safe && /changed|outdated/.test(message) ? 409 : 400 });
   }
 }

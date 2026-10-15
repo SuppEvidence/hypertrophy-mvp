@@ -1,0 +1,9 @@
+app/(protected)/exercises/page.tsx
+app/api/exercises/[exerciseId]/coach/route.ts
+components/exercises/ExerciseCoachBackfill.tsx
+components/exercises/ExerciseMechanicsCoach.tsx
+lib/coaching/exercise-mechanics.ts
+lib/server/exercise-mechanics-coach.ts
+scripts/test-exercise-mechanics-service.ts
+EXERCISE-CLARIFICATION-README.md
+EXERCISE-CLARIFICATION-FILES.txt
