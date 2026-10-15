@@ -1,0 +1,5 @@
+lib/coaching/execution-video.ts
+components/exercises/ExerciseMechanicsCoach.tsx
+scripts/test-execution-video.ts
+EXERCISE-VIDEO-FIX-README.md
+EXERCISE-VIDEO-FIX-FILES.txt
