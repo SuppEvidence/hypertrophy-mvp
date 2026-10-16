@@ -20,6 +20,10 @@ export type ReferenceMuscle = {
   id: string;
   name: string;
   slug?: string;
+  accountingSlug?: string | null;
+  bodyRegion?: string;
+  aliases?: string[];
+  visualAssessable?: boolean;
   sortOrder?: number;
 };
 

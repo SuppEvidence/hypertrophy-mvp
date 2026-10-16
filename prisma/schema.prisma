@@ -191,6 +191,14 @@ model Muscle {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  bodyRegion       String   @default("Other") @map("body_region")
+  anatomyKind      String   @default("GROUP") @map("anatomy_kind")
+  accountingSlug   String?  @map("accounting_slug")
+  aliases          String[] @default([])
+  visualAssessable Boolean  @default(false) @map("visual_assessable")
+  accountingGroup  Muscle?  @relation("MuscleAccounting", fields: [accountingSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
+  anatomicalDetails Muscle[] @relation("MuscleAccounting")
+
   primaryExerciseLinks   ExercisePrimaryMuscle[]
   secondaryExerciseLinks ExerciseSecondaryMuscle[]
   programPriorityLinks   ProgramPriorityMuscle[]
@@ -198,6 +206,7 @@ model Muscle {
   mesocycleVolumeTargets MesocycleMuscleVolumeTarget[]
   mesocyclePriorities    MesocycleMusclePriority[]
 
+  @@index([accountingSlug])
   @@map("muscles")
 }
 

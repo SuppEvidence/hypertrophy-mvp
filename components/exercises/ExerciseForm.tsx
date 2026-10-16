@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { MusclePicker } from "@/components/muscles/MusclePicker";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -108,20 +110,8 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
           <h2 className="text-base font-semibold text-slate-100">Primary muscles</h2>
           <p className="mt-1 text-sm text-slate-400">Direct set exposure. Incline and low-to-high patterns default to Upper chest, flat presses to Mid chest, and decline/dip presses to Lower chest. Other movements need a primary muscle; classify Chest fly manually. Chest (unclassified) preserves older or ambiguous exercises.</p>
         </div>
-        <div className="grid gap-2 md:grid-cols-2">
-          {muscles.map((muscle: any) => (
-            <label key={muscle.id} className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">
-              <input
-                type="checkbox"
-                name="primaryMuscleIds"
-                value={muscle.id}
-                defaultChecked={primaryIds.has(muscle.id)}
-                className="h-5 w-5"
-              />
-              <span>{muscle.name}</span>
-            </label>
-          ))}
-        </div>
+        <MusclePicker muscles={muscles} name="primaryMuscleIds" selected={[...primaryIds] as string[]} />
+        <Link href="/muscles" className="mt-3 inline-block text-sm text-orange-300">Browse the full muscle catalogue</Link>
       </Card>
 
       <Card>
@@ -129,20 +119,7 @@ export function ExerciseForm({ exercise, muscles, movementGroups, action }: Prop
           <h2 className="text-base font-semibold text-slate-100">Secondary muscles</h2>
           <p className="mt-1 text-sm text-slate-400">Select anatomical secondary muscles. The coach estimates each exercise’s indirect contribution once, then uses the saved estimate throughout planning and reviews. Until assessed, indirect work counts as zero.</p>
         </div>
-        <div className="grid gap-2 md:grid-cols-2">
-          {muscles.map((muscle: any) => (
-            <label key={muscle.id} className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">
-              <input
-                type="checkbox"
-                name="secondaryMuscleIds"
-                value={muscle.id}
-                defaultChecked={secondaryIds.has(muscle.id)}
-                className="h-5 w-5"
-              />
-              <span>{muscle.name}{estimatedSecondary.get(muscle.id) ? (estimatedSecondary.get(muscle.id)?.contributionEstimate == null ? " · assessment pending" : ` · ${Number(estimatedSecondary.get(muscle.id)?.contributionEstimate) * 100}% estimated indirect`) : ""}</span>
-            </label>
-          ))}
-        </div>
+        <MusclePicker muscles={muscles} name="secondaryMuscleIds" selected={[...secondaryIds]} annotations={Object.fromEntries([...estimatedSecondary].map(([id, link]) => [id, link.contributionEstimate == null ? " · assessment pending" : ` · ${Number(link.contributionEstimate) * 100}% estimated indirect`]))} />
       </Card>
 
       <div className="sticky bottom-20 z-10 md:static">

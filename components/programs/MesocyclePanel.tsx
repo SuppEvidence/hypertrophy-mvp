@@ -1,3 +1,4 @@
+import { MuscleSearchList, MuscleSearchRow } from "@/components/muscles/MuscleSearchList";
 import Link from "next/link";
 import {
   approveMesocycleStructureProposal,
@@ -203,22 +204,22 @@ function MesocycleForm({ programId, mesocycle, activePhase, data }: { programId:
         <details open className="rounded-xl border border-orange-500/20 bg-orange-500/[0.035] p-3">
           <summary className="cursor-pointer text-sm font-semibold text-slate-100">Next-block muscle priorities</summary>
           <p className="mt-2 text-xs text-slate-400">Review these before creating the block. Coach suggestions are preselected when available; you make the final choice.</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <MuscleSearchList className="mt-3 grid gap-2 sm:grid-cols-2">
             {data.muscles.map((muscle) => {
               const suggested = suggestedMap.get(muscle.name.toLowerCase());
               const selected = suggested?.suggestedPriority ?? priorMap.get(muscle.id) ??
                 (priorityMuscles.has(muscle.id) ? "SPECIALIZE" : (targetMap.get(muscle.id) ?? 0) > 0 ? "GROW" : "INDIRECT_ONLY");
               return (
-                <label key={muscle.id} className="block space-y-1 rounded-xl border border-slate-800 bg-slate-950/60 p-2">
+                <MuscleSearchRow key={muscle.id} muscle={muscle}><label className="block space-y-1 rounded-xl border border-slate-800 bg-slate-950/60 p-2">
                   <span className="text-xs font-semibold text-slate-200">{muscle.name}{suggested ? " · coach suggestion" : ""}</span>
                   <select name={`priority:${muscle.id}`} defaultValue={selected} className={selectClass}>
                     {priorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                   {suggested ? <span className="block text-xs text-slate-500">{suggested.rationale}</span> : null}
-                </label>
+                </label></MuscleSearchRow>
               );
             })}
-          </div>
+          </MuscleSearchList>
         </details>
       ) : null}
       <div className="flex flex-wrap gap-2">
@@ -290,17 +291,17 @@ function MesocyclePrioritiesForm({ mesocycle, muscles, programTargets, programPr
       <div>
         <h4 className="font-semibold text-slate-100">T3 muscle priorities</h4>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          Set the intended outcome, not a weekly-set quota. On first save the coach captures the current prescription as the transition baseline, so enabling T3 during an ongoing block does not immediately rewrite it.
+          Set the intended outcome for each workload group. Detailed anatomical emphasis comes from exercise and photo assessments; it does not add a separate set budget. Newly listed groups default to no direct focus unless selected. On first save the coach captures the current prescription as the transition baseline, so enabling T3 during an ongoing block does not immediately rewrite it.
         </p>
       </div>
-      <div className="space-y-2">
+      <MuscleSearchList>
         {muscles.map((muscle) => {
           const target = priorityMap.get(muscle.id);
           const fallback = legacyMap.get(muscle.id) ?? programTargetMap.get(muscle.id) ?? 0;
           const planned = plannedMap.get(muscle.id) ?? 0;
           const defaultPriority = target?.priority ?? (programPrioritySet.has(muscle.id) ? "SPECIALIZE" : fallback > 0 ? "GROW" : planned > 0 ? "MAINTAIN" : "INDIRECT_ONLY");
           return (
-            <div key={muscle.id} className="grid gap-2 rounded-xl border border-slate-800 bg-slate-950/55 p-2 md:grid-cols-[1fr_180px] md:items-center">
+            <MuscleSearchRow key={muscle.id} muscle={muscle}><div className="grid gap-2 rounded-xl border border-slate-800 bg-slate-950/55 p-2 md:grid-cols-[1fr_180px] md:items-center">
               <div>
                 <p className="text-sm font-semibold text-slate-200">{muscle.name}</p>
                 <p className="mt-1 text-xs text-slate-500">
@@ -317,10 +318,10 @@ function MesocyclePrioritiesForm({ mesocycle, muscles, programTargets, programPr
                   ))}
                 </select>
               </label>
-            </div>
+            </div></MuscleSearchRow>
           );
         })}
-      </div>
+      </MuscleSearchList>
       <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
         {priorityOptions.map((option) => <p key={option.value}><span className="font-semibold text-slate-300">{option.label}:</span> {option.help}</p>)}
       </div>

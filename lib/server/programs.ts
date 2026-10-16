@@ -48,7 +48,7 @@ export async function getProgramForEdit(programId: string) {
 export async function getProgramFormReferenceData() {
   const userId = await requireUserId();
   const [muscles, defaultSecondaryContribution] = await Promise.all([
-    prisma.muscle.findMany({ where: { slug: { not: "chest" } }, orderBy: { sortOrder: "asc" } }),
+    prisma.muscle.findMany({ where: { accountingSlug: null, slug: { not: "chest" } }, orderBy: { sortOrder: "asc" } }),
     getDefaultSecondaryContribution(userId),
   ]);
   return { muscles, defaultSecondaryContribution };
@@ -118,7 +118,7 @@ function parseProgramForm(formData: FormData) {
   });
 }
 
-function parseMuscleConfig(formData: FormData) {
+async function parseMuscleConfig(formData: FormData) {
   const priorityMuscleIds = new Set(formData.getAll("priorityMuscleIds").map(String));
   const targetRows = Array.from(formData.entries())
     .filter(([key]) => key.startsWith("target:"))
@@ -129,13 +129,16 @@ function parseMuscleConfig(formData: FormData) {
     })
     .filter((row: any) => row.target > 0 || priorityMuscleIds.has(row.muscleId));
 
+  const ids = [...new Set([...priorityMuscleIds, ...targetRows.map(row => row.muscleId)])];
+  const valid = await prisma.muscle.count({ where: { id: { in: ids }, accountingSlug: null } });
+  if (valid !== ids.length) throw new Error("Program targets must use valid workload groups.");
   return { priorityMuscleIds: Array.from(priorityMuscleIds), targetRows };
 }
 
 export async function createProgram(formData: FormData) {
   const userId = await requireUserId();
   const input = parseProgramForm(formData);
-  const { priorityMuscleIds, targetRows } = parseMuscleConfig(formData);
+  const { priorityMuscleIds, targetRows } = await parseMuscleConfig(formData);
   const existingActive = await prisma.program.findFirst({ where: { userId, isActive: true, isArchived: false } });
 
   const program = await prisma.$transaction(async (tx) => {
@@ -172,7 +175,7 @@ export async function updateProgram(programId: string, formData: FormData) {
   if (!existing) redirect("/programs");
 
   const input = parseProgramForm(formData);
-  const { priorityMuscleIds, targetRows } = parseMuscleConfig(formData);
+  const { priorityMuscleIds, targetRows } = await parseMuscleConfig(formData);
 
   await prisma.$transaction(async (tx) => {
     await tx.program.update({

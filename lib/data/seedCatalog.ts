@@ -1,23 +1,6 @@
-export const defaultMuscles = [
-  "Chest (unclassified)",
-  "Upper chest",
-  "Mid chest",
-  "Lower chest",
-  "Lats",
-  "Upper back",
-  "Front delts",
-  "Side delts",
-  "Rear delts",
-  "Biceps",
-  "Brachialis / brachioradialis",
-  "Triceps",
-  "Quads",
-  "Hamstrings",
-  "Glutes",
-  "Calves",
-  "Abs",
-  "Spinal erectors",
-] as const;
+import { muscleCatalog } from "@/lib/muscles/catalog";
+
+export const defaultMuscles = muscleCatalog.map(m => m.name);
 
 export const defaultMovementGroups = [
   "Squat pattern",

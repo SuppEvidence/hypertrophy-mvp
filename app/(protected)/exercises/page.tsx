@@ -32,7 +32,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
     name: movement.name,
   }));
 
-  const typedMuscles: ReferenceMuscle[] = muscles.map((muscle: any) => ({
+  const typedMuscles: ReferenceMuscle[] = muscles.filter(m => !m.accountingSlug).map((muscle: any) => ({
     id: muscle.id,
     name: muscle.name,
   }));
@@ -51,6 +51,8 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
           </Button>
         </Link>
       </div>
+
+      <Link href="/muscles" className="inline-block text-sm text-orange-300">Browse muscle catalogue and anatomical targets</Link>
 
       <Card>
         <form className="space-y-3">

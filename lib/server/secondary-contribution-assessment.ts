@@ -1,3 +1,4 @@
+import { SHARED_MUSCLE_POLICY } from "@/lib/muscles/catalog";
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 import "server-only";
 import { z } from "zod";
@@ -30,7 +31,7 @@ export async function assessExerciseSecondaryContributions(exerciseId: string) {
     ...config.request,
     max_output_tokens: 4096,
     input: [
-      { role: "system", content: "Estimate the likely indirect training stimulus to each listed SECONDARY muscle from one standard hard set of this exercise. This is a rough accounting fraction of a direct set, never a measurement of muscle growth or an instruction to add sets. Use the movement pattern and mechanics, primary muscle targets and setup notes. Return 0 when the muscle is unlikely to get meaningful tension. Use only 0, 0.25, 0.5, 0.75, or 1; avoid assigning 1 except near-equivalent work. Output precisely one estimate per requested muscle ID and no others. Do not infer individual hypertrophy from circumference alone." },
+      { role: "system", content: SHARED_MUSCLE_POLICY + "\nEstimate the likely indirect training stimulus to each listed SECONDARY muscle from one standard hard set of this exercise. This is a rough accounting fraction of a direct set, never a measurement of muscle growth or an instruction to add sets. Use the movement pattern and mechanics, primary muscle targets and setup notes. Return 0 when the muscle is unlikely to get meaningful tension. Use only 0, 0.25, 0.5, 0.75, or 1; avoid assigning 1 except near-equivalent work. Output precisely one estimate per requested muscle ID and no others. Do not infer individual hypertrophy from circumference alone." },
       { role: "user", content: JSON.stringify({ exercise: exercise.name, movement: exercise.movementGroup.name,
         setup: exercise.setupNotes, primary: exercise.primaryMuscles.map((link) => link.muscle.name),
         secondary: pending.map((link) => ({ id: link.muscleId, name: link.muscle.name })) }) },

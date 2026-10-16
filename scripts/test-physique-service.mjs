@@ -17,7 +17,7 @@ function apply(r,data){for(const[k,v]of Object.entries(data)){if(k==="revision")
 const db={
  userSettings:{findUnique:async()=>settings,upsert:async({update})=>Object.assign(settings,update)},
  energyPhase:{findMany:async()=>[{phase:"GAINING",startDate:new Date("2026-07-01")}]},
- muscle:{findMany:async()=>[{id:muscleId,name:"Side delts"}]},
+ muscle:{findMany:async()=>[{id:muscleId,name:"Side delts",slug:"side-delts",accountingSlug:null,visualAssessable:true}]},
  metricLog:{findFirst:async({where})=>metrics.find(m=>m.id===where.id&&m.userId===where.userId&&!m.isDraft)??null,findMany:async({where})=>metrics.filter(m=>m.userId===where.userId&&m.loggedAt>=where.loggedAt.gte&&m.loggedAt<where.loggedAt.lt)},
  physiqueCheckin:{
   findFirst:async({where})=>full([...rows.values()].find(r=>valid(r,where))),

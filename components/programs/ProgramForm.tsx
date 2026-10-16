@@ -1,3 +1,4 @@
+import { MuscleSearchList, MuscleSearchRow } from "@/components/muscles/MuscleSearchList";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -102,11 +103,11 @@ export function ProgramForm({ muscles, program, action }: Props) {
         <div className="mb-4">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">Program defaults</p>
           <h2 className="mt-1 text-base font-semibold text-slate-100">Baseline weekly muscle targets</h2>
-          <p className="mt-1 text-sm text-slate-400">These are the normal targets for this program. A mesocycle inherits them automatically; enter a mesocycle target only when that block should differ.</p>
+          <p className="mt-1 text-sm text-slate-400">These are starting workload defaults. Use mesocycle priorities for T3 coaching. Detailed anatomical targets guide exercise choice within these groups and do not add another set budget.</p>
         </div>
-        <div className="space-y-2">
+        <MuscleSearchList>
           {muscles.map((muscle: any) => (
-            <div key={muscle.id} className="grid grid-cols-[1fr_96px] items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
+            <MuscleSearchRow key={muscle.id} muscle={muscle}><div className="grid grid-cols-[1fr_96px] items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
               <label className="flex items-center gap-3 text-sm text-slate-200">
                 <input type="checkbox" name="priorityMuscleIds" value={muscle.id} defaultChecked={priorityIds.has(muscle.id)} className="h-5 w-5" />
                 <span>{muscle.name}</span>
@@ -122,9 +123,9 @@ export function ProgramForm({ muscles, program, action }: Props) {
                 placeholder="sets"
                 className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-right text-base text-slate-100 outline-none focus:border-orange-400/80"
               />
-            </div>
+            </div></MuscleSearchRow>
           ))}
-        </div>
+        </MuscleSearchList>
       </Card>
 
       <div className="sticky bottom-20 z-10 md:static">

@@ -188,6 +188,11 @@ function parseExerciseForm(formData: FormData) {
 }
 
 async function resolveChestMuscles(movementGroupId: string, primaryMuscleIds: string[], secondaryMuscleIds: string[]) {
+  const selectedIds = [...new Set([...primaryMuscleIds, ...secondaryMuscleIds])];
+  const selected = await prisma.muscle.findMany({ where: { id: { in: selectedIds } }, select: { id: true, accountingSlug: true } });
+  if (selected.length !== selectedIds.length || selected.some(m => m.accountingSlug)) {
+    throw new Error("Choose workload groups in the exercise form. Detailed anatomical emphasis belongs in the Exercise Coach profile.");
+  }
   const movement = await prisma.movementGroup.findUnique({ where: { id: movementGroupId }, select: { name: true } });
   if (!movement) throw new Error("Movement group not found.");
   const regionName = chestRegionForMovement[movement.name];

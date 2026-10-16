@@ -34,13 +34,15 @@ export const visualAssessmentSchema = z.object({
   questions: z.array(z.string().max(220)).max(3), limitations: z.array(z.string().max(250)).min(1).max(6),
 });
 /** Constrain model output to this user's actual catalog, rather than arbitrary UUID-shaped strings. */
-export function visualAssessmentSchemaForCatalog(muscleIds: string[]) {
+export function visualAssessmentSchemaForCatalog(muscleIds: string[], priorityIds = muscleIds) {
   const ids = [...new Set(muscleIds)];
   if (!ids.length) throw new Error("Photo analysis needs a populated muscle catalog before it can suggest priorities.");
   const muscleId = z.enum(ids as [string, ...string[]]);
+  if (!priorityIds.length) throw new Error("Photo analysis needs visible planning targets in the muscle catalogue.");
+  const priorityId = z.enum([...new Set(priorityIds)] as [string, ...string[]]);
   return visualAssessmentSchema.extend({
     regions: z.array(visualAssessmentSchema.shape.regions.element.extend({ muscleId: muscleId.nullable() })).max(12),
-    priorities: z.array(visualAssessmentSchema.shape.priorities.element.extend({ muscleId })).max(4),
+    priorities: z.array(visualAssessmentSchema.shape.priorities.element.extend({ muscleId: priorityId })).max(4),
   });
 }
 

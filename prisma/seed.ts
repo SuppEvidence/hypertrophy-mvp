@@ -1,3 +1,4 @@
+import { muscleCatalog } from "../lib/muscles/catalog";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { config } from "dotenv";
@@ -5,7 +6,6 @@ import { Pool } from "pg";
 import {
   defaultExercises,
   defaultMovementGroups,
-  defaultMuscles,
   defaultSetTypes,
   slugify,
 } from "../lib/data/seedCatalog";
@@ -21,13 +21,11 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  for (const [index, name] of defaultMuscles.entries()) {
-    const slug = name === "Chest (unclassified)" ? "chest" : slugify(name);
-    await prisma.muscle.upsert({
-      where: { slug },
-      update: { name, sortOrder: index + 1 },
-      create: { name, slug, sortOrder: index + 1 },
-    });
+  // Roots precede detailed entries. Do not rewrite exercise classifications to add anatomy.
+  for (const muscle of muscleCatalog) {
+    const existing = await prisma.muscle.findFirst({ where: { OR: [{ slug: muscle.slug }, { name: muscle.name }] } });
+    if (existing) await prisma.muscle.update({ where: { id: existing.id }, data: muscle });
+    else await prisma.muscle.create({ data: muscle });
   }
 
   for (const [index, name] of defaultMovementGroups.entries()) {

@@ -92,7 +92,7 @@ export async function createMesocycle(programId: string, formData: FormData) {
     redirect("/plan/blocks?overlap=1");
   }
 
-  const muscles = await prisma.muscle.findMany({ where: { slug: { not: "chest" } }, select: { id: true } });
+  const muscles = await prisma.muscle.findMany({ where: { accountingSlug: null, slug: { not: "chest" } }, select: { id: true } });
   const priorities = muscles.map((muscle) => {
     const value = formData.get(`priority:${muscle.id}`);
     if (!isT3Priority(value)) throw new Error("Every muscle needs a valid priority.");
@@ -230,7 +230,7 @@ export async function updateMesocycleMusclePriorities(
   if (!mesocycle) redirect("/programs");
 
   const muscles = await prisma.muscle.findMany({
-    where: { slug: { not: "chest" } },
+    where: { accountingSlug: null, slug: { not: "chest" } },
     orderBy: { sortOrder: "asc" },
     select: { id: true },
   });
@@ -547,7 +547,7 @@ export async function getMesocyclePanelData(programId: string) {
         prescription: await buildProgramPrescription(program.id, userId, { mesocycleId, includeWeeklyPlan: false }),
       })),
     ),
-    prisma.muscle.findMany({ where: { slug: { not: "chest" } }, orderBy: { sortOrder: "asc" } }),
+    prisma.muscle.findMany({ where: { accountingSlug: null, slug: { not: "chest" } }, orderBy: { sortOrder: "asc" } }),
     prisma.movementGroup.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
   const lastBlock = mesocycles.reduce<(typeof mesocycles)[number] | null>((latest, block) =>

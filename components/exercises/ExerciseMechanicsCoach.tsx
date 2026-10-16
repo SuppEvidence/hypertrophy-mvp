@@ -1,4 +1,5 @@
 "use client";
+import { muscleDefinition } from "@/lib/muscles/catalog";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
@@ -16,7 +17,7 @@ function ProfileView({ envelope, muscles }: { envelope: MechanicsEnvelope; muscl
     {envelope.videoEvidence && <p className="text-xs text-slate-500">Video observations recorded {envelope.videoEvidence.assessedAt.slice(0, 10)}. Follow-up answers do not reprocess the clip.</p>}
     {!!envelope.clarifications?.length && envelope.videoEvidence?.profile && <details className="rounded-lg border border-slate-800 p-2"><summary className="cursor-pointer text-xs text-slate-400">Original video analysis</summary><ProfileView envelope={{ ...envelope, profile: envelope.videoEvidence.profile, assessedAt: envelope.videoEvidence.assessedAt, videoEvidence: undefined, clarifications: undefined }} muscles={muscles} /></details>}
     {!!envelope.clarifications?.length && <details className="text-xs text-slate-400"><summary className="cursor-pointer">Saved follow-up answers ({envelope.clarifications.length})</summary><div className="mt-2 space-y-3">{envelope.clarifications.map((item, i) => <div key={i}><p>{item.questions.join(" ")}</p><p className="whitespace-pre-wrap">{item.answer}</p></div>)}</div></details>}
-    <ul className="space-y-2">{p.targets.map((t, i) => <li key={i}><strong>{muscles.find(m => m.id === t.muscleId)?.name ?? "Unknown muscle"}</strong>{t.region ? ` (${t.region})` : ""} · {t.role.toLowerCase()} · {t.confidence.toLowerCase()} confidence<p className="text-xs text-slate-400">{t.rationale}</p></li>)}</ul>
+    <ul className="space-y-2">{p.targets.map((t, i) => <li key={i}><strong>{muscles.find(m => m.id === t.muscleId)?.name ?? t.muscleName}</strong>{t.region ? ` (${t.region})` : ""} {!t.muscleId && <span className="text-orange-300"> · reference needs review</span>} · {t.role.toLowerCase()} · {t.confidence.toLowerCase()} confidence<p className="text-xs text-slate-400">{t.rationale}</p>{muscleDefinition({ name: t.muscleName })?.accountingSlug && <p className="text-xs text-slate-500">Detailed emphasis; no additional sets are counted.</p>}</li>)}</ul>
     <p className="text-xs text-slate-400">Estimated demand peak: {p.resistanceProfile.peak === "UNKNOWN" ? "not established" : p.resistanceProfile.peak.toLowerCase().replaceAll("_", " ")}</p>
     <dl className="space-y-2">{fields.map(([label, field]) => <div key={label}><dt className="font-semibold">{label} · {field.confidence.toLowerCase()} confidence</dt><dd>{field.description}</dd></div>)}</dl>
     {p.observedExecution.length > 0 && <div><h4 className="font-semibold">{envelope.clarifications?.length ? "Earlier video observations" : "Observed execution"}</h4><ul className="list-disc pl-5">{p.observedExecution.map((x, i) => <li key={i}>{x}</li>)}</ul></div>}
