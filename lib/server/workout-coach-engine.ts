@@ -221,6 +221,7 @@ No added sets, exercise swaps, rest advice (sets may alternate), reordering or c
 For actionable advice, explain what to do and why in one short, plain sentence. Omit routine reassurance, metric inventories, repeated caveats and generic praise; routine KEEP may have an empty reason. Preserve material pain concerns and uncertainty affecting the decision.` },
       { role: "user", content: JSON.stringify({ context: {
         exercise: Object.fromEntries(Object.entries(context.exercise).filter(([key]) => key !== "minimumWeightIncrement")),
+        approvedMesocycleDesign: context.approvedMesocycleDesign,
         triggerSetNumber: trigger.setNumber, triggerPrescription,
         completedSets: context.currentSets.map((set) => Object.fromEntries(Object.entries(set).filter(([key]) => !["id", "rir"].includes(key)))),
         remainingSetCount: remaining.length,

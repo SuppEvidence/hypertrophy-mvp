@@ -1,5 +1,7 @@
 "use server";
 
+import { approvedDesignContext, designExcludedExerciseIds } from "@/lib/mesocycle-design/handoff";
+
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 
 
@@ -471,7 +473,6 @@ async function buildProgrammingContext(userId: string) {
       prisma.programMesocycle.findMany({
         where: {
           userId,
-          programId,
           isArchived: false,
           NOT: { id: mesocycleId },
           startDate: { lt: new Date() },
@@ -495,7 +496,7 @@ async function buildProgrammingContext(userId: string) {
     throw new Error("Configure T3 muscle priorities for the current mesocycle first.");
   }
 
-  const candidatePatternsByMuscle = buildCandidatePatterns(exerciseCatalog.filter((exercise) => exercise.coachingProfiles[0]?.preference !== "AVOID"));
+  const candidatePatternsByMuscle = buildCandidatePatterns(exerciseCatalog.filter((exercise) => exercise.coachingProfiles[0]?.preference !== "AVOID" && !designExcludedExerciseIds(mesocycle.approvedDesign).includes(exercise.id)));
   const completedHistory = historicalMesocycles.filter((block) => block.actualEndDate || block.startDate.getTime() + block.lengthWeeks * 7 * DAY_MS <= Date.now());
   const historicalMesocycleIds = completedHistory.map((item) => item.id);
   const earliestHistoricalStart = completedHistory.at(-1)?.startDate ?? mesocycle.startDate;
@@ -557,7 +558,7 @@ async function buildProgrammingContext(userId: string) {
         calves: true,
       },
     }),
-    loadCoachingHistory(userId, programId, new Date(Date.now() - 90 * DAY_MS)),
+    loadCoachingHistory(userId, null, new Date(Date.now() - 90 * DAY_MS)),
     prisma.metricLog.findMany({
       where: { userId, isDraft: false, loggedAt: { gte: new Date(Date.now() - 90 * DAY_MS), lte: new Date() } },
       orderBy: { loggedAt: "desc" }, take: 180,
@@ -743,6 +744,7 @@ async function buildProgrammingContext(userId: string) {
 
   return {
     context: {
+      approvedMesocycleDesign: approvedDesignContext(mesocycle.approvedDesign),
       physiqueEvidence: await getPhysiqueEvidence(userId),
       policyVersion: TRAINING_POLICY_VERSION,
       t3PolicyVersion: T3_VOLUME_POLICY_VERSION,
@@ -1305,7 +1307,7 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
     appliedPreview = previewT3Prescription(prescription.generationInput, decision.targetMuscleId, selectedOption, assessment.data.confidence, assessment.data.status, approvedPreview.data.slots);
     if (selectedOption.painOpportunity) {
       const [history, metrics] = await Promise.all([
-        loadCoachingHistory(userId, activeBlock.programId, new Date(Date.now() - 21 * DAY_MS)),
+        loadCoachingHistory(userId, null, new Date(Date.now() - 21 * DAY_MS)),
         prisma.metricLog.findMany({ where: { userId, isDraft: false, loggedAt: { gte: new Date(Date.now() - 14 * DAY_MS), lte: new Date() } },
           orderBy: { loggedAt: "desc" }, take: 5,
           select: { loggedAt: true, sleepDuration: true, sleepQuality: true, readiness: true, stress: true, manualFatigue: true, sorenessJointIrritation: true } }),

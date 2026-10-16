@@ -15,6 +15,7 @@ const exercise = { id: exerciseId, name: "Cable lateral", setupNotes: null as st
   movementGroup: { name: "Abduction" }, isActive: true, isArchived: false,
   primaryMuscles: [{ muscleId, muscle: { name: "Side delts" } }], secondaryMuscles: [] };
 const fake = {
+  programMesocycle: { findFirst: async () => null },
   exercise: { findFirst: async (args: { where: Record<string, unknown>; include: { coachingProfiles: { where: { userId: string } } } }) => {
     assert.equal(args.where.id, exerciseId); assert.equal(args.include.coachingProfiles.where.userId, userId);
     assert.ok(JSON.stringify(args.where).includes(userId), "Exercise access is scoped");

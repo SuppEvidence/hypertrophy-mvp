@@ -15,10 +15,10 @@ function executionCompromised(value: unknown) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).executionCompromised === true);
 }
 
-export async function loadCoachingHistory(userId: string, programId: string, since: Date) {
+export async function loadCoachingHistory(userId: string, programId: string | null, since: Date) {
   const prisma = getUserExercisePrisma(userId);
   return prisma.workoutSessionExercise.findMany({
-    where: { session: { userId, programId, status: "COMPLETED", performedAt: { gte: since, lte: new Date() } } },
+    where: { session: { userId, ...(programId ? { programId } : {}), status: "COMPLETED", performedAt: { gte: since, lte: new Date() } } },
     orderBy: { session: { performedAt: "desc" } },
     take: 500,
     select: {
@@ -29,7 +29,7 @@ export async function loadCoachingHistory(userId: string, programId: string, sin
       exercise: { select: { name: true, movementGroupId: true,
         primaryMuscles: { select: { muscleId: true } }, secondaryMuscles: { select: { muscleId: true, contributionEstimate: true } },
       } },
-      session: { select: { templateId: true, performedAt: true } },
+      session: { select: { templateId: true, programId: true, mesocycleId: true, performedAt: true } },
       sets: {
         where: { isCompleted: true }, orderBy: { setNumber: "asc" },
         select: {

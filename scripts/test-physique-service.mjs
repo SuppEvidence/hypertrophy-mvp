@@ -15,6 +15,7 @@ const full=r=>r?{...r,photos:[...r.photos].map(p=>({...p})),metricLog:metrics.fi
 function valid(r,w){return !!r&&(!w.id||r.id===w.id)&&(!w.userId||r.userId===w.userId)&&(w.revision===undefined||r.revision===w.revision)&&(!w.analysisToken||r.analysisToken===w.analysisToken);}
 function apply(r,data){for(const[k,v]of Object.entries(data)){if(k==="revision")r[k]+=v.increment;else if(k==="analysisDraft"&&v&&v.constructor?.name?.includes("DbNull"))r[k]=null;else r[k]=v;}r.updatedAt=new Date();}
 const db={
+ programMesocycle:{findFirst:async()=>null},
  userSettings:{findUnique:async()=>settings,upsert:async({update})=>Object.assign(settings,update)},
  energyPhase:{findMany:async()=>[{phase:"GAINING",startDate:new Date("2026-07-01")}]},
  muscle:{findMany:async()=>[{id:muscleId,name:"Side delts",slug:"side-delts",accountingSlug:null,visualAssessable:true}]},

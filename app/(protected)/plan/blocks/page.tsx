@@ -1,3 +1,4 @@
+import { ApprovedDesignSummary } from "@/components/programs/ApprovedDesignSummary";
 import { ReviewProgress } from "@/components/coaching/ReviewProgress";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
@@ -23,14 +24,17 @@ export default async function MesocyclePlanningPage({ searchParams }: {
   const [data, review] = program ? await Promise.all([
     getMesocyclePanelData(program.id), getCurrentMesocycleRecommendationForUser(userId),
   ]) : [null, null];
+  const designedBlock=program?await prisma.programMesocycle.findFirst({where:{userId,programId:program.id,isArchived:false,actualEndDate:null,startDate:{lte:new Date()}},orderBy:{startDate:"desc"},select:{approvedDesign:true,startDate:true,lengthWeeks:true}}):null;
   const ready = Boolean(review?.checkinStatus?.comparable && review.completedWorkoutsInBlock);
 
   return (
     <div className="space-y-5">
       <Link href="/plan" className="text-sm font-semibold text-orange-300 hover:text-orange-200">← Plan</Link>
       <PageHeader title="Mesocycle planning" description="Review the closing block and schedule the next one before it starts." />
+      <Card><Link href="/plan/design" className="font-semibold text-orange-300">Build a new program and mesocycle with the coach →</Link><p className="mt-2 text-sm text-slate-400">Start from goals and available days, discuss the proposal, then approve its structure.</p></Card>
       {query.error ? <Card className="border-rose-500/30 text-sm text-rose-200">{query.error}</Card> : null}
       {query.overlap ? <Card className="border-amber-500/30 text-sm text-amber-200">These dates overlap an existing block. Choose a start date after its end, or adjust the earlier block.</Card> : null}
+      {designedBlock&&<ApprovedDesignSummary value={designedBlock.approvedDesign} startDate={designedBlock.startDate} lengthWeeks={designedBlock.lengthWeeks} now={new Date().getTime()}/>}
       {query.saved ? <Card className="border-emerald-500/30 text-sm text-emerald-200">Next block saved. It starts automatically on its scheduled date.</Card> : null}
 
       {!program || !data ? (

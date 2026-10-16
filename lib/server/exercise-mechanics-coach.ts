@@ -1,4 +1,5 @@
 import "server-only";
+import { currentDesignIntent } from "./mesocycle-design-intent";
 import { classificationFromProfile } from "@/lib/coaching/exercise-classification";
 import type { MuscleReference } from "@/lib/muscles/catalog";
 import { muscleCatalogContext } from "@/lib/muscles/catalog";
@@ -51,7 +52,7 @@ export async function runExerciseMechanicsCoach(userId: string, exerciseId: stri
         select: { weight: true, reps: true, rir: true, setType: { select: { name: true } } } } } });
     const aiConfig = getCoachingModelConfig("EXERCISE_PROFILE");
     const start = Date.now();
-    const context = { exercise: exercise.name, movement: exercise.movementGroup.name, catalogMuscles: muscleCatalogContext(muscles),
+    const context = { approvedMesocycleDesign: await currentDesignIntent(userId,exerciseId), exercise: exercise.name, movement: exercise.movementGroup.name, catalogMuscles: muscleCatalogContext(muscles),
       currentPrimary: exercise.primaryMuscles.map(l => l.muscle.name), currentSecondary: exercise.secondaryMuscles.map(l => l.muscle.name),
       setupNotes: exercise.setupNotes, tags: exercise.tags, userSetup: setup, coachingNotes: existing?.notes,
       previousAccepted: acceptedBase?.profile ?? null,

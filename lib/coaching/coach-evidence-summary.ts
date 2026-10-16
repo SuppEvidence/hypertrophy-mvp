@@ -22,12 +22,18 @@ export function summarizeCoachAnalysis(analysis: WorkoutAnalysis, movementIds?: 
 
 /** Reuse conclusions only when they cover the newest evidence and remain recent. */
 export function freshT3Assessment(value: unknown, evaluatedAt: Date | null, latestEvidenceAt: Date, now = new Date()) {
-  if (!evaluatedAt || now.getTime() - evaluatedAt.getTime() > 7 * 86400000 ||
+  if (!evaluatedAt || !Number.isFinite(evaluatedAt.getTime()) || !Number.isFinite(latestEvidenceAt.getTime()) || now.getTime() - evaluatedAt.getTime() > 7 * 86400000 ||
     evaluatedAt > now || evaluatedAt < latestEvidenceAt || !value || typeof value !== "object" || Array.isArray(value)) return null;
   const rows = T3MuscleAssessmentSchema.array().safeParse((value as Record<string, unknown>).assessments);
-  if (!rows.success || !rows.data.length) return null;
-  return { evaluatedAt: evaluatedAt.toISOString(), assessments: rows.data.map((row) => ({
+  if (!rows.success || !rows.data.length || new Set(rows.data.map((row) => row.muscleId)).size !== rows.data.length) return null;
+  const stored = value as Record<string, unknown>;
+  return { evaluatedAt: evaluatedAt.toISOString(),
+    globalSummary: typeof stored.globalSummary === "string" ? stored.globalSummary.slice(0, 1200) : null,
+    bodyCompositionContext: typeof stored.bodyCompositionContext === "string" ? stored.bodyCompositionContext.slice(0, 900) : null,
+    reuseScope: "Physiological conclusions only. Current accepted targets and priorities remain authoritative; unapproved T3 options are not instructions. Check new constraints, pain, availability, exercise suitability and completed work locally.",
+    assessments: rows.data.map((row) => ({
     muscleId: row.muscleId, priority: row.priority, status: row.status, confidence: row.confidence,
-    observedUsefulRange: [row.recommendedRangeMinimum, row.recommendedRangeMaximum], rationale: row.rationale.slice(0, 240),
+    observedUsefulRange: [row.recommendedRangeMinimum, row.recommendedRangeMaximum], rationale: row.rationale,
+    evidence: row.evidence, priorityReview: row.priorityReview ?? null,
   })) };
 }

@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 const planItems = [
+  { href: "/plan/design", title: "Design a program with the coach", description: "Discuss goals and build a complete mesocycle from your availability, preferences and training evidence.", icon: ClipboardList, primary: true },
   {
     href: "/plan/week", title: "Plan this week", description: "Set available days and have the coach distribute work across the entire week.", icon: ClipboardList, primary: true,
   },

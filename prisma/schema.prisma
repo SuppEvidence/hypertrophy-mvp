@@ -126,6 +126,7 @@ enum CoachingInterventionStatus {
 }
 
 model Profile {
+  mesocycleDesigns MesocycleDesign[]
   id        String   @id @db.Uuid
   email     String?  @unique
   createdAt DateTime @default(now()) @map("created_at")
@@ -413,6 +414,7 @@ model WeeklyCoachPlan {
 }
 
 model ProgramMesocycle {
+  approvedDesign Json? @map("approved_design")
   id          String       @id @default(uuid()) @db.Uuid
   userId      String       @db.Uuid @map("user_id")
   programId   String       @db.Uuid @map("program_id")
@@ -922,4 +924,26 @@ model AiProgrammingDecision {
   @@index([mesocycleId])
   @@index([targetMuscleId, createdAt])
   @@map("ai_programming_decisions")
+}
+
+model MesocycleDesign {
+ userEdited Boolean @default(false) @map("user_edited")
+ id String @id @default(uuid()) @db.Uuid
+ userId String @db.Uuid @map("user_id")
+ revision Int @default(0)
+ status String @default("DRAFT")
+ brief Json
+ proposal Json?
+ messages Json
+ evidence Json?
+ model String?
+ requestToken String? @map("request_token")
+ requestStartedAt DateTime? @map("request_started_at")
+ approvedProgramId String? @db.Uuid @map("approved_program_id")
+ approvedMesocycleId String? @db.Uuid @map("approved_mesocycle_id")
+ createdAt DateTime @default(now()) @map("created_at")
+ updatedAt DateTime @updatedAt @map("updated_at")
+ user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+ @@index([userId, updatedAt])
+ @@map("mesocycle_designs")
 }

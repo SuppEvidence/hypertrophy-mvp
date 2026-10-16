@@ -1,5 +1,7 @@
 "use server";
 
+import { approvedDesignContext } from "@/lib/mesocycle-design/handoff";
+
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 
 
@@ -324,6 +326,7 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
   const session = await prisma.workoutSession.findFirst({
     where: { id: sessionId, userId, status: "COMPLETED" },
     include: {
+      mesocycle: { select: { approvedDesign: true } },
       exercises: {
         orderBy: { sortOrder: "asc" },
         include: {
@@ -619,6 +622,7 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
   });
 
   return {
+    approvedMesocycleDesign: approvedDesignContext(session.mesocycle?.approvedDesign),
     workout: {
       sessionId: session.id,
       name: session.name,

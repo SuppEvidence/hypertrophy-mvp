@@ -1,4 +1,6 @@
 
+import { approvedDesignContext, designExcludedExerciseIds } from "@/lib/mesocycle-design/handoff";
+
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 import { getPhysiqueEvidence } from "@/lib/server/physique-evidence";
 import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
@@ -141,6 +143,7 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
     prisma.exercise.findMany({
       where: {
         movementGroupId: { in: movementGroups.map((movement) => movement.id) },
+        id: { notIn: designExcludedExerciseIds(prescription.activeMesocycle?.approvedDesign) },
         ...activeExerciseWhere(userId),
       },
       orderBy: [{ isSeed: "desc" }, { name: "asc" }],
@@ -151,7 +154,7 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
         coachingProfiles: { where: { userId }, select: { mechanicsProfile: true, executionSetup: true, preference: true, intensifierPreference: true, allowedIntensifierIds: true, notes: true }, take: 1 },
       },
     }),
-    loadHistory(userId, input.programId, since),
+    loadHistory(userId, null, since),
     prisma.metricLog.findMany({
       where: { userId, isDraft: false, loggedAt: { gte: since, lte: now } },
       orderBy: { loggedAt: "asc" }, take: 120,
@@ -161,12 +164,12 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
       },
     }),
     prisma.workoutSession.findMany({
-      where: { userId, programId: input.programId, status: "COMPLETED", performedAt: { gte: since } },
+      where: { userId, status: "COMPLETED", performedAt: { gte: since, lte: now } },
       orderBy: { performedAt: "desc" }, take: 8,
       select: { performedAt: true, aiAnalysis: true },
     }),
     prisma.coachingIntervention.findMany({
-      where: { userId, programId: input.programId, stage: "T2_PRE_WORKOUT", status: { in: ["ACCEPTED", "DECLINED"] } },
+      where: { userId, stage: "T2_PRE_WORKOUT", status: { in: ["ACCEPTED", "DECLINED"] } },
       orderBy: { createdAt: "desc" }, take: 8,
       select: { createdAt: true, status: true, proposal: true, outcome: true },
     }),
@@ -326,6 +329,7 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
     program: {
       id: context.prescription.program.id,
             phase: context.prescription.program.activePhase,
+      approvedMesocycleDesign: approvedDesignContext(context.prescription.activeMesocycle?.approvedDesign),
       activeMesocycle: context.prescription.activeMesocycle ? {
         id: context.prescription.activeMesocycle.id,
         name: context.prescription.activeMesocycle.name,

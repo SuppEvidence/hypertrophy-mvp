@@ -1,5 +1,7 @@
 "use server";
 
+import { designExcludedExerciseIds } from "@/lib/mesocycle-design/handoff";
+
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 
 
@@ -59,7 +61,7 @@ export async function buildProgramPrescription(
   const approvedExerciseIds = new Set(approvedOccurrence?.occurrence.items.map((item) => item.exerciseId) ?? []);
   const weekStartDate = startOfIsoWeek();
   const weekStart = toDateOnly(weekStartDate);
-  const [program, activeMesocycle, completedSessions, setTypes, movementDefaults] = await Promise.all([
+  const [program, activeMesocycle, completedSessions, setTypes, rawMovementDefaults] = await Promise.all([
     prisma.program.findFirst({
       where: { id: programId, userId, isArchived: false },
       include: {
@@ -134,6 +136,8 @@ export async function buildProgramPrescription(
     }),
   ]);
   if (!program) return null;
+  const excludedExercises = new Set(designExcludedExerciseIds(activeMesocycle?.approvedDesign));
+  const movementDefaults = rawMovementDefaults.filter(e => !excludedExercises.has(e.id));
   const mesocycleVolumeTargets = activeMesocycle
     ? activeMesocycle.musclePriorities.length > 0
       ? activeMesocycle.musclePriorities.map((priority) => ({

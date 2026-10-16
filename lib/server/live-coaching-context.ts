@@ -1,3 +1,4 @@
+import { approvedDesignContext } from "@/lib/mesocycle-design/handoff";
 
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
@@ -61,7 +62,7 @@ export async function buildLiveExerciseCoachingContext(params: {
       session: { userId: params.userId },
     },
     include: {
-      session: { select: { id: true, status: true, performedAt: true } },
+      session: { select: { id: true, status: true, performedAt: true, mesocycle: { select: { approvedDesign: true } } } },
       exercise: {
         include: {
           coachingProfiles: { where: { userId: params.userId }, select: { mechanicsProfile: true, executionSetup: true }, take: 1 },
@@ -208,6 +209,7 @@ export async function buildLiveExerciseCoachingContext(params: {
 
   return {
     eligibility,
+    approvedMesocycleDesign: approvedDesignContext(current.session.mesocycle?.approvedDesign,current.exerciseId),
     workout: {
       sessionId: current.session.id,
       sessionExerciseId: current.id,

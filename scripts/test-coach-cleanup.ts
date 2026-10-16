@@ -12,6 +12,16 @@ assert.equal(freshT3Assessment(assessment, new Date("2026-09-01"), new Date("202
 assert.equal(freshT3Assessment(assessment, new Date("2026-10-01T08:00:00Z"), new Date("2026-10-01T08:30:00Z"), now), null,
   "New workout, metric or analysis evidence makes prior conclusions stale");
 assert.equal(freshT3Assessment({ assessments: [] }, now, now, now), null);
+const supported = { ...assessment, globalSummary: "Established tolerated dose", bodyCompositionContext: "Maintenance phase",
+  assessments: assessment.assessments.map((row) => ({ ...row, rationale: "Complete rationale ".repeat(25), evidence: ["Repeated next-exposure performance remains stable", "No pain"] })) };
+const reused = freshT3Assessment(supported, now, now, now)!;
+assert.equal(reused.globalSummary, supported.globalSummary);
+assert.deepEqual(reused.assessments[0].evidence, supported.assessments[0].evidence);
+assert.equal(reused.assessments[0].rationale, supported.assessments[0].rationale);
+assert.equal(reused.assessments[0].priorityReview, null, "Legacy assessments have no invented priority review");
+assert.equal(freshT3Assessment({ assessments: [assessment.assessments[0], assessment.assessments[0]] }, now, now, now), null);
+assert.equal(freshT3Assessment(assessment, new Date("invalid"), now, now), null);
+assert.equal(freshT3Assessment(assessment, new Date(now.getTime() + 1), now, now), null);
 const analysis = WorkoutAnalysisSchema.parse({ workoutSummary: "Legacy detailed summary ".repeat(30), overallFatigueSignal: "HIGH", confidence: "LOW",
   exerciseAssessments: [{ sessionExerciseId: "e", exerciseName: "Cable lateral raise", overallStimulus: "MODERATE", overallFatigueCost: "HIGH",
     performanceDecay: "HIGHER_THAN_USUAL", confidence: "LOW", notableSignals: ["Repeated pain", "Compromised execution"], rationale: "Older detailed explanation ".repeat(20),

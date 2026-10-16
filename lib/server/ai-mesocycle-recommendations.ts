@@ -1,5 +1,7 @@
 "use server";
 
+import { approvedDesignContext } from "@/lib/mesocycle-design/handoff";
+
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 
 
@@ -51,7 +53,7 @@ async function checkinsForMesocycle(userId: string, row: { programId: string; st
   const endDate = mesocycleEnd(row);
   const [prior, logs] = await Promise.all([
     prisma.programMesocycle.findFirst({
-      where: { userId, programId: row.programId, isArchived: false, startDate: { lt: row.startDate } },
+      where: { userId, isArchived: false, startDate: { lt: row.startDate } },
       orderBy: { startDate: "desc" },
       select: { startDate: true, lengthWeeks: true, actualEndDate: true },
     }),
@@ -437,7 +439,6 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
     prisma.programMesocycle.findMany({
       where: {
         userId,
-        programId: program.id,
         actualEndDate: { not: null },
         startDate: { lt: mesocycle.startDate },
       },
@@ -545,6 +546,7 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
     }
   }
   const context = {
+    approvedMesocycleDesign: approvedDesignContext(mesocycle.approvedDesign),
     physiqueEvidence: await getPhysiqueEvidence(userId),
     policy: TRAINING_PROGRAMMING_POLICY,
     declaredEnergyPhase,

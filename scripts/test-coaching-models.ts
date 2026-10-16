@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { COACHING_WORKLOADS, getCoachingModelConfig } from "../lib/ai/coaching-models";
 
 const expected = {
+  MESOCYCLE_DESIGN: ["gpt-5.6-sol", "high"],
   PHYSIQUE_CHECKIN: ["gpt-5.6-sol", "high"],
   EXERCISE_PROFILE: ["gpt-5.6-terra", "medium"],
   T1: ["gpt-5.6-luna", "low"], T2: ["gpt-5.6-terra", "medium"],
@@ -25,6 +26,7 @@ assert.throws(() => getCoachingModelConfig("T3_VOLUME", { OPENAI_T3_REASONING_EF
 
 // Regression: every model call must actually forward its tier request and budget.
 const files = {
+  MESOCYCLE_DESIGN: "lib/server/mesocycle-design.ts",
   PHYSIQUE_CHECKIN: "lib/server/physique-checkins.ts",
   EXERCISE_PROFILE: "lib/server/exercise-mechanics-coach.ts",
   T1: "lib/server/workout-coach-engine.ts", T2: "lib/server/pre-workout-coach.ts",
@@ -37,10 +39,11 @@ for (const workload of COACHING_WORKLOADS) {
   assert.ok(workload === "WEEKLY_PLAN"
     ? source.includes("getWeeklyPlanningModelConfig(Boolean(carried))")
     : source.includes(`getCoachingModelConfig("${workload}")`));
-  assert.match(source, /responses\.parse\(\{\s*\.\.\.aiConfig\.request,/);
-  assert.ok(source.includes("}, aiConfig.options)"));
+  assert.match(source, /responses\.parse\(\s*\{\s*\.\.\.aiConfig\.request,/);
+  assert.match(source, /},\s*aiConfig\.options,?\s*\)/);
   assert.ok(!source.includes("getOpenAIModel"));
 }
+assert.ok(getCoachingModelConfig("MESOCYCLE_DESIGN", {}).options.timeout + 60_000 <= 300_000);
 assert.ok(getCoachingModelConfig("PHYSIQUE_CHECKIN", {}).options.timeout + 60_000 <= 300_000);
 const duration = (path: string) => Number(readFileSync(path, "utf8").match(/export const maxDuration = (\d+)/)?.[1]) * 1000;
 // Post-workout automation runs workout analysis then T3 volume; meso is manual.
