@@ -1,12 +1,15 @@
 "use server";
 
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+
+
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { requireUserId } from "@/lib/auth/user";
-import { prisma } from "@/lib/db/prisma";
+
 import { ensureProgramTemplates } from "@/lib/server/templates";
 import { getTemplatePrescription } from "@/lib/server/prescriptions";
 import { resolvePreWorkoutCoachProposalForUser } from "@/lib/server/pre-workout-coach";
@@ -62,6 +65,7 @@ async function buildWeightSuggestionsForSession(
   activeSession: Awaited<ReturnType<typeof getSessionForUser>>,
   userId: string,
 ): Promise<Record<string, WeightSuggestion>> {
+  const prisma = getUserExercisePrisma(userId);
   if (!activeSession) return {};
 
   const exerciseIds = Array.from(new Set(activeSession.exercises.map((item) => item.exerciseId)));
@@ -133,6 +137,7 @@ async function buildWeightSuggestionsForSession(
 
 export async function getWorkoutLoggerData(params?: { programId?: string; templateId?: string; sessionId?: string; occurrenceId?: string }) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
 
   const programs = await prisma.program.findMany({
     where: { userId, isArchived: false },
@@ -262,6 +267,7 @@ async function getSuggestedTemplate(
   userId: string,
   templates: Array<{ id: string; name: string; sequenceIndex: number; weekday: number | null }>,
 ) {
+  const prisma = getUserExercisePrisma(userId);
   if (templates.length === 0) return null;
 
   const weeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan);
@@ -292,6 +298,7 @@ async function getSuggestedTemplate(
 }
 
 async function getTemplateWithExercises(templateId: string, userId: string) {
+  const prisma = getUserExercisePrisma(userId);
   return prisma.workoutTemplate.findFirst({
     where: { id: templateId, userId, isArchived: false, program: { userId, isArchived: false } },
     include: {
@@ -310,6 +317,7 @@ async function getTemplateWithExercises(templateId: string, userId: string) {
 }
 
 async function getSessionForUser(sessionId: string, userId: string) {
+  const prisma = getUserExercisePrisma(userId);
   return prisma.workoutSession.findFirst({
     where: { id: sessionId, userId },
     include: {
@@ -338,6 +346,7 @@ async function getSessionForUser(sessionId: string, userId: string) {
 
 export async function getWorkoutHistory(take = 30) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   return prisma.workoutSession.findMany({
     where: { userId },
     orderBy: [{ performedAt: "desc" }, { createdAt: "desc" }],
@@ -366,6 +375,7 @@ export async function getWorkoutHistory(take = 30) {
 
 export async function deleteWorkoutSession(sessionId: string, _formData?: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const session = await prisma.workoutSession.findFirst({ where: { id: sessionId, userId } });
   if (!session) redirect("/log/history");
 
@@ -376,6 +386,7 @@ export async function deleteWorkoutSession(sessionId: string, _formData?: FormDa
 
 export async function startWorkout(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const input = startWorkoutSchema.parse({ programId: formData.get("programId"), templateId: formData.get("templateId"), occurrenceId: formData.get("occurrenceId") || undefined });
   const prescription = await getTemplatePrescription(input.programId, input.templateId, userId, input.occurrenceId);
   const template = prescription?.program.templates.find((item: any) => item.id === input.templateId) ?? null;
@@ -495,6 +506,7 @@ export async function startWorkout(formData: FormData) {
 
 export async function startCoachedWorkout(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const rawProposal = String(formData.get("proposal") ?? "");
   let proposal: unknown;
   try {
@@ -624,6 +636,7 @@ export async function autosaveWorkoutSet(
   payload: { weight?: string; reps?: string; rir?: string; setTypeId?: string; isCompleted?: boolean; repRangeStatus?: string; effortStatus?: string; painFlag?: boolean; painNote?: string },
 ) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const input = workoutSetSchema.safeParse({
     weight: parseNullableNumberInput(payload.weight),
     reps: parseNullableNumberInput(payload.reps),
@@ -662,6 +675,7 @@ export async function autosaveWorkoutSet(
 
 export async function updateWorkoutSet(setId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const existing = await prisma.workoutSet.findFirst({
     where: { id: setId, sessionExercise: { session: { userId, status: editableSessionStatusWhere() } } },
     include: { sessionExercise: { include: { session: true } } },
@@ -701,6 +715,7 @@ export async function updateWorkoutSet(setId: string, formData: FormData) {
 
 export async function addWorkoutSet(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const sessionExerciseId = String(formData.get("sessionExerciseId") ?? "");
   const existing = await prisma.workoutSessionExercise.findFirst({
     where: { id: sessionExerciseId, session: { userId, status: editableSessionStatusWhere() } },
@@ -742,6 +757,7 @@ export async function addWorkoutSet(formData: FormData) {
 
 export async function removeWorkoutSet(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const setId = String(formData.get("setId") ?? "");
   const existing = await prisma.workoutSet.findFirst({
     where: { id: setId, sessionExercise: { session: { userId, status: editableSessionStatusWhere() } } },
@@ -756,6 +772,7 @@ export async function removeWorkoutSet(formData: FormData) {
 
 export async function updateSessionExercise(sessionExerciseId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const existing = await prisma.workoutSessionExercise.findFirst({
     where: { id: sessionExerciseId, session: { userId, status: editableSessionStatusWhere() } },
     include: { session: true, exercise: true, templateExercise: { include: { movementGroup: true, exercise: { include: { movementGroup: true } } } } },
@@ -794,6 +811,7 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
 
 export async function addSessionExercise(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const sessionId = String(formData.get("sessionId") ?? "");
   const exerciseId = String(formData.get("exerciseId") ?? "");
   const session = await prisma.workoutSession.findFirst({
@@ -847,6 +865,7 @@ export async function addSessionExercise(formData: FormData) {
 
 export async function finishWorkout(sessionId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const session = await prisma.workoutSession.findFirst({ where: { id: sessionId, userId, status: "DRAFT" } });
   if (!session) redirect("/log");
   const input = finishWorkoutSchema.parse({ notes: formData.get("notes") ?? "" });

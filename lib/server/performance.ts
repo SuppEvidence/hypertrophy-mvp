@@ -1,5 +1,7 @@
+
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 import { requireUserId } from "@/lib/auth/user";
-import { prisma } from "@/lib/db/prisma";
+
 import { calculateVolumeLoad, estimateE1RM, getBestSet, getTrendStatus } from "@/lib/calculations/performance";
 
 function toNumber(value: unknown): number | null {
@@ -29,6 +31,7 @@ type ExposureSet = {
 
 export async function getExercisePerformanceData(params?: { exerciseId?: string }) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
 
   const loggedExercises = await prisma.exercise.findMany({
     where: {
@@ -212,6 +215,7 @@ export async function getExercisePerformanceData(params?: { exerciseId?: string 
 }
 
 async function buildComparableExerciseContext(userId: string, exerciseId: string, movementGroupId: string) {
+  const prisma = getUserExercisePrisma(userId);
   const items = await prisma.workoutSessionExercise.findMany({
     where: {
       exerciseId: { not: exerciseId },

@@ -1,6 +1,8 @@
+
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
 import type { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db/prisma";
+
 import { evaluateLiveCoachEligibility } from "@/lib/coaching/live-coaching";
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 
@@ -51,6 +53,7 @@ export async function buildLiveExerciseCoachingContext(params: {
   sessionExerciseId: string;
   triggerSetId: string;
 }) {
+  const prisma = getUserExercisePrisma(params.userId);
   const current = await prisma.workoutSessionExercise.findFirst({
     where: {
       id: params.sessionExerciseId,
@@ -82,7 +85,7 @@ export async function buildLiveExerciseCoachingContext(params: {
 
   const primaryMuscleIds = current.exercise.primaryMuscles.map((link) => link.muscleId);
   const secondaryMuscleIds = current.exercise.secondaryMuscles.map((link) => link.muscleId);
-  const allMuscleIds = [...new Set([...primaryMuscleIds, ...secondaryMuscleIds])];
+
   const lookbackStart = new Date(current.session.performedAt);
   lookbackStart.setDate(lookbackStart.getDate() - CROSS_CONTEXT_DAYS);
 
@@ -111,16 +114,7 @@ export async function buildLiveExerciseCoachingContext(params: {
           status: "COMPLETED",
           performedAt: { gte: lookbackStart, lt: current.session.performedAt },
         },
-        OR: [
-          { exerciseId: current.exerciseId },
-          { exercise: { movementGroupId: current.exercise.movementGroupId } },
-          ...(allMuscleIds.length > 0
-            ? [
-                { exercise: { primaryMuscles: { some: { muscleId: { in: allMuscleIds } } } } },
-                { exercise: { secondaryMuscles: { some: { muscleId: { in: allMuscleIds } } } } },
-              ]
-            : []),
-        ],
+
       },
       include: {
         session: { select: { performedAt: true } },

@@ -1,5 +1,8 @@
 "use server";
 
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+
+
 import { mechanicsBasis, summarizeExerciseMechanics, EXERCISE_MECHANICS_POLICY } from "@/lib/coaching/exercise-mechanics";
 
 import { COACH_COMMUNICATION_POLICY, ATHLETE_RESPONSE_COACHING_POLICY } from "@/lib/ai/training-policy";
@@ -20,7 +23,7 @@ import {
   type WorkoutAnalysis,
 } from "@/lib/ai/workout-analysis-schema";
 import { requireUserId } from "@/lib/auth/user";
-import { prisma } from "@/lib/db/prisma";
+
 
 const HISTORY_EXPOSURES = 8;
 const PATTERN_HISTORY_EXPOSURES = 60;
@@ -317,6 +320,7 @@ Core interpretation rules:
 `;
 
 async function buildWorkoutContext(sessionId: string, userId: string) {
+  const prisma = getUserExercisePrisma(userId);
   const session = await prisma.workoutSession.findFirst({
     where: { id: sessionId, userId, status: "COMPLETED" },
     include: {
@@ -692,6 +696,7 @@ export async function analyzeCompletedWorkoutForUser(
   userId: string,
   options?: { force?: boolean },
 ): Promise<WorkoutAnalysis> {
+  const prisma = getUserExercisePrisma(userId);
   const stored = await prisma.workoutSession.findFirst({
     where: { id: sessionId, userId, status: "COMPLETED" },
     select: {

@@ -1,3 +1,5 @@
+
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 import { getPhysiqueEvidence } from "@/lib/server/physique-evidence";
 import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
@@ -30,7 +32,7 @@ import {
 } from "@/lib/coaching/pre-workout-coach-policy";
 import { summarizeExerciseHistory, type ExerciseExposureInput } from "@/lib/calculations/training-analytics";
 import { loadCoachingHistory as loadHistory, summarizeMovementReadiness, coachingExposure as exposure } from "@/lib/server/coaching-evidence";
-import { prisma } from "@/lib/db/prisma";
+
 import type { Prisma } from "@prisma/client";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
 import { getEnergyPhaseContext, getEnergyPhaseTimeline } from "@/lib/server/energy-phases";
@@ -125,6 +127,7 @@ function planItems(prescription: ProgramPrescription) {
 }
 
 async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoachRequestSchema>) {
+  const prisma = getUserExercisePrisma(userId);
   const now = new Date();
   const since = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000);
   const prescription = await buildProgramPrescription(input.programId, userId, { weeklyOccurrenceId: input.occurrenceId });
@@ -527,6 +530,7 @@ function sameRange(aMin: number | null, aMax: number | null, bMin: number | null
 }
 
 export async function generatePreWorkoutCoachPlanForUser(userId: string, rawInput: unknown) {
+  const prisma = getUserExercisePrisma(userId);
   if (process.env.PRE_WORKOUT_COACH_ENABLED === "false") throw new Error("Pre-workout coaching is disabled.");
   const input = PreWorkoutCoachRequestSchema.parse(rawInput);
   const context = await buildContext(userId, input);
@@ -592,6 +596,7 @@ export async function generatePreWorkoutCoachPlanForUser(userId: string, rawInpu
 }
 
 export async function resolvePreWorkoutCoachProposalForUser(userId: string, value: unknown) {
+  const prisma = getUserExercisePrisma(userId);
   const proposal = PreWorkoutCoachProposalSchema.parse(value);
   const intervention = await prisma.coachingIntervention.findFirst({ where: {
     id: proposal.interventionId, userId, programId: proposal.programId, stage: "T2_PRE_WORKOUT", status: "PROPOSED",
@@ -649,6 +654,7 @@ export async function resolvePreWorkoutCoachProposalForUser(userId: string, valu
 }
 
 export async function declinePreWorkoutCoachProposalForUser(userId: string, interventionId: string) {
+  const prisma = getUserExercisePrisma(userId);
   const result = await prisma.coachingIntervention.updateMany({
     where: { id: interventionId, userId, stage: "T2_PRE_WORKOUT", status: "PROPOSED" },
     data: { status: "DECLINED", decidedAt: new Date() },

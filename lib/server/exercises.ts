@@ -1,12 +1,13 @@
 "use server";
 
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+import { readClassification } from "@/lib/coaching/exercise-classification";
 import { mechanicsBasis, readMechanics } from "@/lib/coaching/exercise-mechanics";
 
 import { activeExerciseWhere, exerciseAccessWhere, exerciseArchivedWhere } from "@/lib/server/exercise-catalog-policy";
 
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
@@ -18,13 +19,14 @@ import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 
 export async function getExerciseReferenceData() {
   const userId = await requireUserId();
-  const [muscles, movementGroups, setTypes] = await Promise.all([
+  const [muscles, movementGroups, setTypes, syncRows] = await Promise.all([
     prisma.muscle.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.movementGroup.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.setType.findMany({ where: { isActive: true, OR: [{ userId: null }, { userId }] }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, slug: true, isIntensifier: true } }),
+    prisma.exerciseCoachingProfile.findMany({ where: { userId }, select: { mechanicsRevision: true, classificationSyncedRevision: true, mechanicsProfile: true } }),
   ]);
 
-  return { muscles, movementGroups, setTypes };
+  return { muscles, movementGroups, setTypes, pendingProfileSync: syncRows.filter(p => !!readMechanics(p.mechanicsProfile)?.acceptedAt && p.classificationSyncedRevision !== p.mechanicsRevision).length };
 }
 
 export async function listExercises(searchParams?: {
@@ -66,40 +68,28 @@ export async function listExercises(searchParams?: {
     });
   }
   if (movementGroupId) andFilters.push({ movementGroupId });
-  if (muscleId) {
-    andFilters.push({
-      OR: [
-        { primaryMuscles: { some: { muscleId } } },
-        { secondaryMuscles: { some: { muscleId } } },
-      ],
-    });
-  }
 
-  after(async () => {
-    try {
-      const { assessPendingSecondaryContributions } = await import("@/lib/server/secondary-contribution-assessment");
-      await assessPendingSecondaryContributions(userId);
-    } catch (error) { console.error("Secondary contribution backfill failed", error); }
-  });
 
-  const rows = await prisma.exercise.findMany({
+
+  const rows = await getUserExercisePrisma(userId).exercise.findMany({
     where: { AND: andFilters },
     orderBy: [{ isSeed: "desc" }, { name: "asc" }],
     include: {
-      coachingProfiles: { where: { userId }, select: { isArchived: true, mechanicsProfile: true, mechanicsDraft: true, mechanicsRevision: true, executionSetup: true } },
+      coachingProfiles: { where: { userId }, select: { isArchived: true, mechanicsProfile: true, mechanicsDraft: true, mechanicsRevision: true, executionSetup: true, appliedClassification: true, classificationSyncedRevision: true } },
       _count: { select: { templateExercises: { where: { template: { userId, isArchived: false } } } } },
       movementGroup: true,
       primaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
       secondaryMuscles: { include: { muscle: true }, orderBy: { muscle: { sortOrder: "asc" } } },
     },
   });
-  return rows.map((row) => {
+  return rows.filter(row => !muscleId || [...row.primaryMuscles, ...row.secondaryMuscles].some(m => m.muscleId === muscleId)).map((row) => {
     const profile = row.coachingProfiles[0];
     const accepted = readMechanics(profile?.mechanicsProfile);
     const draft = readMechanics(profile?.mechanicsDraft);
     const basis = mechanicsBasis(row, profile?.executionSetup ?? null);
     const mechanicsStatus = draft ? "PROPOSAL" : accepted?.acceptedAt ? (accepted.basis === basis ? "ACCEPTED" : "STALE") : "MISSING";
-    return { ...row, isArchived: row.isArchived || profile?.isArchived === true, mechanicsStatus, mechanicsRevision: profile?.mechanicsRevision ?? 0 };
+    return { ...row, isArchived: row.isArchived || profile?.isArchived === true, mechanicsStatus, mechanicsRevision: profile?.mechanicsRevision ?? 0, classification: readClassification(profile?.appliedClassification),
+      classificationSyncPending: !!accepted?.acceptedAt && profile?.classificationSyncedRevision !== profile?.mechanicsRevision };
   });
 }
 
@@ -243,23 +233,13 @@ async function replaceMuscleLinks(
   }
 }
 
-function scheduleContributionAssessment(exerciseId: string) {
-  after(async () => {
-    try {
-      const { assessExerciseSecondaryContributions } = await import("@/lib/server/secondary-contribution-assessment");
-      await assessExerciseSecondaryContributions(exerciseId);
-    } catch (error) {
-      console.error("Exercise secondary contribution assessment failed", error);
-    }
-  });
-}
 
 export async function createExercise(formData: FormData) {
   const userId = await requireUserId();
   const { input, tags, primaryMuscleIds, secondaryMuscleIds } = parseExerciseForm(formData);
   const muscles = await resolveChestMuscles(input.movementGroupId, primaryMuscleIds, secondaryMuscleIds);
 
-  const created = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const created = await tx.exercise.create({
       data: {
         userId,
@@ -282,7 +262,6 @@ export async function createExercise(formData: FormData) {
     return created;
   });
 
-  scheduleContributionAssessment(created.id);
   revalidatePath("/exercises");
   redirect("/exercises");
 }
@@ -358,7 +337,6 @@ export async function saveExercise(exerciseId: string, formData: FormData) {
     return updated;
   });
 
-  scheduleContributionAssessment(saved.id);
   revalidatePath("/exercises");
   revalidatePath(`/exercises/${exerciseId}`);
   redirect(`/exercises/${saved.id}`);

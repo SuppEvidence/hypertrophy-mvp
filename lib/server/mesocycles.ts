@@ -1,5 +1,8 @@
 "use server";
 
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+
+
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import { MesocycleRecommendationSchema } from "@/lib/ai/mesocycle-recommendation-schema";
 
@@ -12,7 +15,7 @@ import {
   initialT3Range,
   isT3Priority,
 } from "@/lib/coaching/t3-volume-policy";
-import { prisma } from "@/lib/db/prisma";
+
 import { selectMesocycleCheckins } from "@/lib/coaching/mesocycle-checkins";
 import { estimateE1RM } from "@/lib/calculations/performance";
 import { parseMesocycleStructureOverrides } from "@/lib/planning/mesocycleStructure";
@@ -79,6 +82,7 @@ function round(value: number, decimals = 1) {
 
 export async function createMesocycle(programId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const program = await prisma.program.findFirst({ where: { id: programId, userId, isArchived: false } });
   if (!program) redirect("/programs");
   const input = parseMesocycleForm(formData);
@@ -133,6 +137,7 @@ export async function createMesocycle(programId: string, formData: FormData) {
 
 export async function updateMesocycle(mesocycleId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const mesocycle = await prisma.programMesocycle.findFirst({ where: { id: mesocycleId, userId, isArchived: false } });
   if (!mesocycle) redirect("/programs");
   const input = parseMesocycleForm(formData);
@@ -169,6 +174,7 @@ export async function updateMesocycle(mesocycleId: string, formData: FormData) {
 
 export async function endMesocycle(mesocycleId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const mesocycle = await prisma.programMesocycle.findFirst({
     where: { id: mesocycleId, userId, isArchived: false, actualEndDate: null },
   });
@@ -198,6 +204,7 @@ export async function endMesocycle(mesocycleId: string, formData: FormData) {
 
 export async function archiveMesocycle(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const mesocycleId = String(formData.get("mesocycleId") ?? "");
   const mesocycle = await prisma.programMesocycle.findFirst({ where: { id: mesocycleId, userId, isArchived: false } });
   if (!mesocycle) redirect("/programs");
@@ -214,6 +221,7 @@ export async function updateMesocycleMusclePriorities(
   formData: FormData,
 ) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const mesocycle = await prisma.programMesocycle.findFirst({
     where: { id: mesocycleId, userId, isArchived: false },
     include: {
@@ -357,6 +365,7 @@ export async function updateMesocycleMusclePriorities(
 
 export async function updateMesocycleRepPolicies(mesocycleId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const mesocycle = await prisma.programMesocycle.findFirst({ where: { id: mesocycleId, userId, isArchived: false } });
   if (!mesocycle) redirect("/programs");
   const buckets = ["HEAVY_COMPOUND", "SECONDARY_COMPOUND", "ISOLATION", "LENGTHENED_ISOLATION"];
@@ -385,6 +394,7 @@ export async function updateMesocycleRepPolicies(mesocycleId: string, formData: 
 
 export async function updateMesocycleMovementRepPolicies(mesocycleId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const mesocycle = await prisma.programMesocycle.findFirst({ where: { id: mesocycleId, userId, isArchived: false } });
   if (!mesocycle) redirect("/programs");
 
@@ -412,6 +422,7 @@ export async function updateMesocycleMovementRepPolicies(mesocycleId: string, fo
 
 export async function updateMesocycleMovementVolumeTargets(mesocycleId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const mesocycle = await prisma.programMesocycle.findFirst({ where: { id: mesocycleId, userId, isArchived: false } });
   if (!mesocycle) redirect("/programs");
 
@@ -441,6 +452,7 @@ export async function updateMesocycleMovementVolumeTargets(mesocycleId: string, 
 
 export async function approveMesocycleStructureProposal(mesocycleId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const proposalId = String(formData.get("proposalId") ?? "");
   const mesocycle = await prisma.programMesocycle.findFirst({
     where: { id: mesocycleId, userId, isArchived: false },
@@ -474,6 +486,7 @@ export async function approveMesocycleStructureProposal(mesocycleId: string, for
 
 export async function removeMesocycleStructureOverride(mesocycleId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const actionId = String(formData.get("actionId") ?? "");
   const mesocycle = await prisma.programMesocycle.findFirst({
     where: { id: mesocycleId, userId, isArchived: false },
@@ -496,6 +509,7 @@ export async function removeMesocycleStructureOverride(mesocycleId: string, form
 
 export async function getMesocyclePanelData(programId: string) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const program = await prisma.program.findFirst({
     where: { id: programId, userId, isArchived: false },
     include: {
@@ -699,6 +713,7 @@ async function buildMesocycleReview(
   mesocycle: any,
   prescriptionOverride?: Awaited<ReturnType<typeof buildProgramPrescription>> | null,
 ) {
+  const prisma = getUserExercisePrisma(userId);
   const startDate = mesocycle.startDate;
   const plannedEndDate = plannedMesocycleEndDate(startDate, mesocycle.lengthWeeks);
   const endDate = effectiveMesocycleEndDate(startDate, mesocycle.lengthWeeks, mesocycle.actualEndDate);

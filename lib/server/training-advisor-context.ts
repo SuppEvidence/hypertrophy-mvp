@@ -1,6 +1,8 @@
+
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import { requireUserId } from "@/lib/auth/user";
-import { prisma } from "@/lib/db/prisma";
+
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 import {
   deriveExerciseType,
@@ -28,6 +30,7 @@ function daysAgo(days: number) {
 
 export async function buildTrainingAdvisorContext() {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const program = await prisma.program.findFirst({
     where: { userId, isActive: true, isArchived: false },
     include: {

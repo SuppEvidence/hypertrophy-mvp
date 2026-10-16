@@ -1,5 +1,6 @@
-import { prisma } from "@/lib/db/prisma";
-import { after } from "next/server";
+
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+
 import { ensureProgramTemplates } from "@/lib/server/templates";
 import { phaseLabels, programTypeLabels, volumeWindowLabels } from "@/lib/programs/options";
 import { getNextTemplateFromRotation } from "@/lib/templates/rotationSequence";
@@ -31,6 +32,7 @@ function daysBetween(start: Date, end: Date) {
 }
 
 async function getDashboardMesocycle(programId: string, userId: string) {
+  const prisma = getUserExercisePrisma(userId);
   const now = new Date();
   const mesocycles = await prisma.programMesocycle.findMany({
     where: { programId, userId, isArchived: false },
@@ -144,6 +146,7 @@ async function getSuggestedTemplate(
     weekday: number | null;
   }>,
 ) {
+  const prisma = getUserExercisePrisma(userId);
   if (templates.length === 0) return null;
 
   const orderedTemplates = [...templates].sort(
@@ -333,12 +336,7 @@ function buildCurrentDecisionFlags(args: {
 }
 
 export async function getDashboardData(userId: string) {
-  after(async () => {
-    try {
-      const { assessPendingSecondaryContributions } = await import("@/lib/server/secondary-contribution-assessment");
-      await assessPendingSecondaryContributions(userId);
-    } catch (error) { console.error("Secondary contribution backfill failed", error); }
-  });
+  const prisma = getUserExercisePrisma(userId);
   const activeProgram = await prisma.program.findFirst({
     where: { userId, isActive: true, isArchived: false },
     include: {

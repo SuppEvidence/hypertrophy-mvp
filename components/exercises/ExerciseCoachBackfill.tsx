@@ -22,7 +22,7 @@ export function ExerciseCoachBackfill({ candidates }: { candidates: Array<{ id: 
     finally { setBusy(false); lock.current = false; router.refresh(); }
   }
   if (!batch.length && !messages.length) return null;
-  return <Card><div className="space-y-3"><h2 className="font-semibold text-slate-100">Enrich existing exercises</h2>
+  return <Card><div className="space-y-3"><h2 className="font-semibold text-slate-100">Propose missing exercise assessments</h2>
     <p className="text-sm text-slate-400">Generate description-based coaching proposals for up to three exercises from this filtered list. Each exercise uses one AI analysis. Review and accept each proposal on its exercise page; setup-dependent details can be clarified there. Existing video profiles are updated from their exercise page.</p>
     {batch.length > 0 && <p className="text-xs text-slate-400">Next: {batch.map(x => x.name).join(", ")}</p>}
     <Button type="button" disabled={busy || !batch.length} onClick={enrich}>{busy ? "Generating proposals…" : `Propose profiles for ${batch.length} exercises`}</Button>

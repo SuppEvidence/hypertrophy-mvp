@@ -50,7 +50,7 @@ export function ExerciseCoachingProfileForm({ profile, setTypes, action }: {
         <label className="block space-y-1 text-xs text-slate-400">Coaching notes
           <textarea name="notes" maxLength={800} defaultValue={profile?.notes ?? ""} placeholder="What fits this exercise: target-muscle feel, setup, joint tolerance, and when to avoid it." className={`${inputClass} min-h-20`} />
         </label>
-        <Button>Save coach profile</Button>
+        <Button>Save exercise preferences</Button>
       </form>
     </Card>
   );

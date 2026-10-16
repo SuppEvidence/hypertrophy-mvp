@@ -1,12 +1,15 @@
+
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db/prisma";
+
 
 const DAY_MS = 86_400_000;
 
 // These are observations of what happened after a decision, never a causal estimate
 // of hypertrophy or proof that the intervention was beneficial.
 export async function evaluateCoachingInterventionsAfterWorkout(userId: string, sessionId: string) {
+  const prisma = getUserExercisePrisma(userId);
   const session = await prisma.workoutSession.findFirst({
     where: { id: sessionId, userId, status: "COMPLETED" },
     include: { exercises: { include: { exercise: { select: { primaryMuscles: true, secondaryMuscles: true } },

@@ -1,5 +1,8 @@
 "use server";
 
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+
+
 import { getPhysiqueEvidence } from "@/lib/server/physique-evidence";
 
 
@@ -13,7 +16,6 @@ import { summarizeCoachAnalysis } from "@/lib/coaching/coach-evidence-summary";
 
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 
-import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
@@ -32,7 +34,7 @@ import {
   WorkoutAnalysisSchema,
   type WorkoutAnalysis,
 } from "@/lib/ai/workout-analysis-schema";
-import { prisma } from "@/lib/db/prisma";
+
 import { getStimulusContribution } from "@/lib/workouts/stimulus";
 import { getEnergyPhaseContext, getEnergyPhaseTimeline } from "@/lib/server/energy-phases";
 import { checkinQueryEndExclusive, selectMesocycleCheckins } from "@/lib/coaching/mesocycle-checkins";
@@ -45,6 +47,7 @@ function mesocycleEnd(row: { startDate: Date; lengthWeeks: number; actualEndDate
 }
 
 async function checkinsForMesocycle(userId: string, row: { programId: string; startDate: Date; lengthWeeks: number; actualEndDate: Date | null }, now: Date) {
+  const prisma = getUserExercisePrisma(userId);
   const endDate = mesocycleEnd(row);
   const [prior, logs] = await Promise.all([
     prisma.programMesocycle.findFirst({
@@ -322,6 +325,7 @@ function summarizeSymptoms(
 }
 
 async function buildMesocycleContext(userId: string, requestedMesocycleId?: string) {
+  const prisma = getUserExercisePrisma(userId);
   const program = await prisma.program.findFirst({
     where: { userId, isActive: true, isArchived: false },
     select: {
@@ -728,6 +732,7 @@ Decision rules:
 `;
 
 export async function generateMesocycleRecommendationForUser(userId: string, requestedMesocycleId?: string) {
+  const prisma = getUserExercisePrisma(userId);
   const { context, mesocycleId } = await buildMesocycleContext(userId, requestedMesocycleId);
   const client = getOpenAIClient();
   const aiConfig = getCoachingModelConfig("T3_MESOCYCLE");
@@ -788,14 +793,7 @@ export async function generateMesocycleRecommendationForUser(userId: string, req
   });
   revalidatePath("/ai-analysis/mesocycle");
 
-  after(async () => {
-    try {
-      const { reconsiderSecondaryContributionsAtT3 } = await import("@/lib/server/secondary-contribution-revision");
-      await reconsiderSecondaryContributionsAtT3(userId, mesocycleId);
-    } catch (error) {
-      console.error("T3 secondary contribution reassessment failed", error);
-    }
-  });
+
 
   return parsed;
 }
@@ -812,6 +810,7 @@ export async function getCurrentMesocycleRecommendationForUser(userId: string): 
   completedWorkoutsInBlock: number | null;
   checkinStatus: { startSaved: boolean; endSaved: boolean; comparable: boolean; startSource: "EXPLICIT" | "PRIOR_END" | null } | null;
 } | null> {
+  const prisma = getUserExercisePrisma(userId);
   const program = await prisma.program.findFirst({
     where: { userId, isActive: true, isArchived: false },
     select: { id: true },

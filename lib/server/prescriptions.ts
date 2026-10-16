@@ -1,8 +1,11 @@
 "use server";
 
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+
+
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 
-import { prisma } from "@/lib/db/prisma";
+
 import { volumeWindowDays } from "@/lib/programs/options";
 import { generateMesocyclePrescriptionWithQuickOverrides as generateMesocyclePrescription } from "@/lib/planning/mesocycleQuickOverrides";
 import { applyWeeklyMissedWorkoutPlan, endOfIsoWeek, parseStoredWeeklyPlan, startOfIsoWeek, toDateOnly } from "@/lib/templates/weeklyPlan";
@@ -15,6 +18,7 @@ function addDays(date: Date, days: number) {
   return next;
 }
 async function getActiveMesocycle(programId: string, userId: string, now = new Date()) {
+  const prisma = getUserExercisePrisma(userId);
   const mesocycles = await prisma.programMesocycle.findMany({
     where: { programId, userId, isArchived: false, actualEndDate: null, startDate: { lte: now } },
     orderBy: { startDate: "desc" },
@@ -30,6 +34,7 @@ async function getActiveMesocycle(programId: string, userId: string, now = new D
   return mesocycles.find((mesocycle) => addDays(mesocycle.startDate, mesocycle.lengthWeeks * 7) > now) ?? null;
 }
 async function getMesocycleForPrescription(programId: string, userId: string, mesocycleId?: string | null, asOf?: Date) {
+  const prisma = getUserExercisePrisma(userId);
   if (!mesocycleId) return getActiveMesocycle(programId, userId, asOf);
   return prisma.programMesocycle.findFirst({
     where: { id: mesocycleId, programId, userId, isArchived: false },
@@ -47,6 +52,7 @@ export async function buildProgramPrescription(
   userId: string,
   options?: { mesocycleId?: string | null; includeWeeklyPlan?: boolean; weeklyOccurrenceId?: string | null; asOf?: Date },
 ) {
+  const prisma = getUserExercisePrisma(userId);
   const includeWeeklyPlan = options?.includeWeeklyPlan !== false;
   const approvedOccurrence = options?.weeklyOccurrenceId
     ? await readApprovedOccurrence(userId, programId, options.weeklyOccurrenceId) : null;

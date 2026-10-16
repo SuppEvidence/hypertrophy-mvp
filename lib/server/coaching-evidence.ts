@@ -1,4 +1,6 @@
-import { prisma } from "@/lib/db/prisma";
+
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+
 import { summarizeExerciseHistory, type ExerciseExposureInput } from "@/lib/calculations/training-analytics";
 import { inferLocalReadiness, summarizeGlobalRecovery } from "@/lib/coaching/pre-workout-coach-policy";
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
@@ -14,6 +16,7 @@ function executionCompromised(value: unknown) {
 }
 
 export async function loadCoachingHistory(userId: string, programId: string, since: Date) {
+  const prisma = getUserExercisePrisma(userId);
   return prisma.workoutSessionExercise.findMany({
     where: { session: { userId, programId, status: "COMPLETED", performedAt: { gte: since, lte: new Date() } } },
     orderBy: { session: { performedAt: "desc" } },

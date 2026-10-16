@@ -19,7 +19,7 @@ assert.equal(resolveMuscleReference('inner chest',muscles),null);
 const soleus=muscles.find(m=>m.slug==='soleus')!, calves=muscles.find(m=>m.slug==='calves')!;
 assert.equal(accountingMuscle(soleus,muscles)?.id,calves.id);
 const schema=exerciseMechanicsSchemaForCatalog(muscles.map(m=>m.id));
-const profile={...fixtureProfile,targets:[{...fixtureProfile.targets[0],muscleId:soleus.id,muscleName:soleus.name}]};
+const profile={...fixtureProfile,targets:[{...fixtureProfile.targets[0],muscleId:soleus.id,muscleName:soleus.name,contributionEstimate:null}]};
 assert.ok(schema.safeParse(profile).success);
 assert.ok(!schema.safeParse({...profile,targets:[{...profile.targets[0],muscleId:'99999999-9999-4999-8999-999999999999'}]}).success);
 const unknown=reconcileMechanicsTargets({...profile,targets:[{...profile.targets[0],muscleId:null,muscleName:'Unlisted anatomy'}]},muscles);

@@ -1,12 +1,15 @@
 "use server";
 
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+
+
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/auth/user";
-import { prisma } from "@/lib/db/prisma";
+
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
 import { readApprovedWeek } from "@/lib/server/weekly-coach-read";
 import { defaultTemplateName } from "@/lib/templates/defaults";
@@ -37,6 +40,7 @@ export async function ensureProgramTemplates(
     programType: Parameters<typeof defaultTemplateName>[0];
   },
 ) {
+  const prisma = getUserExercisePrisma(userId);
   const [program, allTemplates] = await Promise.all([
     programSnapshot
       ? Promise.resolve(
@@ -128,6 +132,7 @@ const templateExerciseInclude = {
 
 export async function getTemplateBuilderData(params?: { programId?: string; templateId?: string }) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
 
   const programs = await prisma.program.findMany({
     where: { userId, isArchived: false },
@@ -228,6 +233,7 @@ export async function getTemplateBuilderData(params?: { programId?: string; temp
 }
 
 async function getTemplateOwnedByUser(templateId: string, userId: string) {
+  const prisma = getUserExercisePrisma(userId);
   return prisma.workoutTemplate.findFirst({
     where: { id: templateId, userId, isArchived: false, program: { userId, isArchived: false } },
     include: { program: true },
@@ -265,6 +271,7 @@ async function syncTemplateExerciseSetPlans(
 
 export async function renameTemplate(templateId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const template = await getTemplateOwnedByUser(templateId, userId);
   if (!template) redirect("/templates");
   const input = templateRenameSchema.parse({ name: formData.get("name") });
@@ -288,6 +295,7 @@ function duplicateTemplateName(sourceName: string, existingNames: string[]) {
 
 export async function duplicateTemplate(templateId: string, _formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const source = await prisma.workoutTemplate.findFirst({
     where: { id: templateId, userId, isArchived: false, program: { userId, isArchived: false } },
     include: {
@@ -410,6 +418,7 @@ async function reorderProgramTemplates(params: {
 
 export async function updateTemplateExpectedOccurrences(templateId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const template = await getTemplateOwnedByUser(templateId, userId);
   if (!template) redirect("/templates");
 
@@ -444,6 +453,7 @@ export async function updateTemplateExpectedOccurrences(templateId: string, form
 
 export async function updateProgramWeeklyMissedWorkouts(programId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const program = await prisma.program.findFirst({ where: { id: programId, userId, isArchived: false } });
   if (!program) redirect("/templates");
   const coachedWeek = await prisma.weeklyCoachPlan.findUnique({ where: { programId_weekStart: { programId, weekStart: startOfIsoWeek() } }, select: { status: true } });
@@ -500,6 +510,7 @@ export async function updateProgramWeeklyMissedWorkouts(programId: string, formD
 
 export async function updateProgramRotationSequence(programId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const program = await prisma.program.findFirst({ where: { id: programId, userId, isArchived: false } });
   if (!program) redirect("/templates");
 
@@ -548,6 +559,7 @@ function parseTemplateExerciseForm(formData: FormData) {
 }
 
 async function findFirstExerciseForMovementGroup(movementGroupId: string, userId: string) {
+  const prisma = getUserExercisePrisma(userId);
   return prisma.exercise.findFirst({
     where: {
       movementGroupId,
@@ -559,6 +571,7 @@ async function findFirstExerciseForMovementGroup(movementGroupId: string, userId
 
 export async function addTemplateExercise(templateId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const template = await getTemplateOwnedByUser(templateId, userId);
   if (!template) redirect("/templates");
   const input = parseTemplateExerciseForm(formData);
@@ -606,6 +619,7 @@ export async function addTemplateExercise(templateId: string, formData: FormData
 
 export async function updateTemplateExercise(templateExerciseId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const existing = await prisma.templateExercise.findFirst({
     where: { id: templateExerciseId, template: { userId, isArchived: false, program: { userId, isArchived: false } } },
     include: { template: true },
@@ -645,6 +659,7 @@ export async function updateTemplateExercise(templateExerciseId: string, formDat
 
 export async function updateTemplateExerciseSetPlan(setPlanId: string, formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const existing = await prisma.templateExerciseSetPlan.findFirst({
     where: { id: setPlanId, templateExercise: { template: { userId, isArchived: false, program: { userId, isArchived: false } } } },
     include: { templateExercise: { include: { template: true } } },
@@ -668,6 +683,7 @@ export async function updateTemplateExerciseSetPlan(setPlanId: string, formData:
 
 export async function removeTemplateExercise(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const templateExerciseId = String(formData.get("templateExerciseId") ?? "");
   const existing = await prisma.templateExercise.findFirst({
     where: { id: templateExerciseId, template: { userId, isArchived: false, program: { userId, isArchived: false } } },
@@ -682,6 +698,7 @@ export async function removeTemplateExercise(formData: FormData) {
 
 export async function moveTemplateExercise(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const templateExerciseId = String(formData.get("templateExerciseId") ?? "");
   const direction = String(formData.get("direction") ?? "");
   const existing = await prisma.templateExercise.findFirst({

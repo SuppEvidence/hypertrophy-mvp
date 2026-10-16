@@ -6,6 +6,7 @@ const statement = z.object({ description: z.string().min(1).max(350), confidence
 export const exerciseMechanicsSchema = z.object({
   summary: z.string().min(1).max(600),
   targets: z.array(z.object({ muscleId: z.string().uuid().nullable(), muscleName: z.string().max(100), role: z.enum(["PRIMARY", "SECONDARY"]),
+    contributionEstimate: z.union([z.literal(0), z.literal(0.25), z.literal(0.5), z.literal(0.75), z.literal(1)]).nullable().optional(),
     region: z.string().max(100), rationale: z.string().min(1).max(250), confidence })).max(16),
   movement: statement,
   resistanceProfile: z.object({ peak: z.enum(["LENGTHENED", "MID_RANGE", "SHORTENED", "MIXED", "UNKNOWN"]),
@@ -33,7 +34,8 @@ export type MechanicsEnvelope = z.infer<typeof mechanicsEnvelopeSchema>;
 
 // Stable source snapshot: editing name/setup/classification makes earlier conclusions stale.
 export function mechanicsBasis(exercise: { name: string; setupNotes?: string | null; movementGroupId: string;
-  primaryMuscles: Array<{ muscleId: string }>; secondaryMuscles: Array<{ muscleId: string }> }, executionSetup: string | null) {
+  mechanicsSourceBasis?: string; primaryMuscles: Array<{ muscleId: string }>; secondaryMuscles: Array<{ muscleId: string }> }, executionSetup: string | null) {
+  if (exercise.mechanicsSourceBasis) return exercise.mechanicsSourceBasis;
   return JSON.stringify({ name: exercise.name, setup: exercise.setupNotes ?? null, movement: exercise.movementGroupId,
     primary: exercise.primaryMuscles.map(x => x.muscleId).sort(), secondary: exercise.secondaryMuscles.map(x => x.muscleId).sort(),
     executionSetup: executionSetup ?? null });
@@ -52,7 +54,7 @@ EXERCISE COACHING PROFILES
 - clarifiedFromSavedAnalysis means user answers refined a saved analysis, not a fresh video inspection; videoAssessedAt identifies the original observation date when available.
 - Current profiles describe the current setup. They do not establish that historical logged sets used identical execution; qualify comparability when setup history is missing.
 - Match regional priorities to plausible emphasis, practical execution, individual tolerance, history, equipment and session time. Prefer useful established exercises; explain a new variation as a trial. Never claim videos/photos establish activation, exact joint torque, muscle growth, or injury diagnosis.
-- Stored primary/secondary muscle links remain the authoritative set-accounting mapping. Profile targets/regions are qualitative selection metadata, not extra muscles/sets or multipliers. If the profile and catalog mapping disagree materially, flag classification review instead of silently remapping volume or changing movement groups.
+- Accepted, current profiles provide the effective primary/secondary workload groups through the shared classification resolver. Detailed targets are deduplicated within each group. CATALOG fallback means no usable accepted classification or unresolved/low-confidence targets. Saved workout snapshots preserve the classification and mechanics available when that workout exercise was created. Never apply a newer execution profile retrospectively. Secondary contributionEstimate is a rough accounting fraction, not measured activation/growth. Null means unknown and counts zero; never invent a fraction from a qualitative role. Movement groups remain the explicit library classification; flag disagreements for review.
 - Intentional body English and partials are execution choices to assess in context, not automatic technique errors. Profile suitability does not override pain, stated preferences or deterministic limits. T1 uses this information to contextualize comparable execution and targets; it must not change exercise identity/setup within a logged set sequence.`;
 
 export function summarizeExerciseMechanics(value: unknown, currentBasis: string, muscleNames?: Map<string, string>) {
@@ -90,7 +92,7 @@ export function validateMechanicsTargets(profile: ExerciseMechanics, allowedMusc
 export function exerciseMechanicsSchemaForCatalog(ids: string[]) {
   if (!ids.length) throw new Error("Exercise analysis needs the muscle catalogue installed first.");
   const muscleId = z.enum([...new Set(ids)] as [string, ...string[]]).nullable();
-  return exerciseMechanicsSchema.extend({ targets: z.array(exerciseMechanicsSchema.shape.targets.element.extend({ muscleId })).max(16) });
+  return exerciseMechanicsSchema.extend({ targets: z.array(exerciseMechanicsSchema.shape.targets.element.extend({ muscleId, contributionEstimate: exerciseMechanicsSchema.shape.targets.element.shape.contributionEstimate.unwrap() })).max(16) });
 }
 /** Reference repair is deterministic and never makes an AI request. Keep unresolved labels. */
 export function reconcileMechanicsTargets(profile: ExerciseMechanics, muscles: MuscleReference[]) {

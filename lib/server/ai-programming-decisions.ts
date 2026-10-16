@@ -1,5 +1,8 @@
 "use server";
 
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+
+
 import { getPhysiqueEvidence } from "@/lib/server/physique-evidence";
 
 
@@ -50,7 +53,7 @@ import {
   T3_VOLUME_POLICY_VERSION,
   T3_REVIEW_LEASE_MS,
 } from "@/lib/coaching/t3-volume-policy";
-import { prisma } from "@/lib/db/prisma";
+
 import { checkinQueryEndExclusive, selectMesocycleCheckins } from "@/lib/coaching/mesocycle-checkins";
 import { volumeWindowDays } from "@/lib/programs/options";
 import { getDashboardData } from "@/lib/server/dashboard";
@@ -359,6 +362,7 @@ function summarizeHistoricalMesocycle(args: {
 }
 
 async function buildProgrammingContext(userId: string) {
+  const prisma = getUserExercisePrisma(userId);
   const dashboard = await getDashboardData(userId);
 
   if (!dashboard.activeProgram) {
@@ -881,6 +885,7 @@ PAIN-RELATED OPPORTUNITY
 
 
 export async function generateProgrammingRecommendationsForUser(userId: string) {
+  const prisma = getUserExercisePrisma(userId);
   const { context, validation, mesocycleId, mesocycleName, prescription, mesocycleUpdatedAt } =
     await buildProgrammingContext(userId);
   const recentChanges = await prisma.aiProgrammingDecision.findMany({
@@ -1088,6 +1093,7 @@ export async function runT3VolumeEvaluationForUser(
   userId: string,
   options?: { force?: boolean },
 ) {
+  const prisma = getUserExercisePrisma(userId);
   if (process.env.T3_VOLUME_COACH_ENABLED === "false") {
     return { status: "DISABLED" as const };
   }
@@ -1221,6 +1227,7 @@ export async function generateProgrammingRecommendationsAction() {
 
 export async function selectProgrammingDecisionAction(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const decisionId = String(formData.get("decisionId") ?? "");
   const selectionKey = String(formData.get("selectionKey") ?? "");
   const selectionReason = String(formData.get("selectionReason") ?? "").trim();

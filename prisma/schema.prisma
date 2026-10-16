@@ -285,6 +285,8 @@ model Exercise {
 }
 
 model ExerciseCoachingProfile {
+  classificationSyncedRevision Int @default(-1) @map("classification_synced_revision")
+  appliedClassification Json? @map("applied_classification")
   mechanicsProfile         Json? @map("mechanics_profile")
   mechanicsDraft           Json? @map("mechanics_draft")
   mechanicsRevision        Int @default(0) @map("mechanics_revision")
@@ -712,6 +714,7 @@ model CoachingIntervention {
 }
 
 model WorkoutSessionExercise {
+  muscleSnapshot Json? @map("muscle_snapshot")
   id                        String   @id @default(uuid()) @db.Uuid
   sessionId                 String   @db.Uuid @map("session_id")
   exerciseId                String   @db.Uuid @map("exercise_id")

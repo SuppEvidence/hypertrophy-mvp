@@ -18,7 +18,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       chunks.push(value);
     }
     const result = await runExerciseMechanicsCoach(userId, exerciseId, JSON.parse(Buffer.concat(chunks).toString("utf8")));
-    revalidatePath(`/exercises/${exerciseId}`); revalidatePath("/exercises");
+    for (const path of ["/exercises", `/exercises/${exerciseId}`, "/templates", "/programs", "/plan", "/plan/week", "/log", "/dashboard"]) revalidatePath(path, "layout");
     return NextResponse.json(result);
   } catch (error) {
     // Surface safe validation/conflict messages; never provider payloads or credentials.

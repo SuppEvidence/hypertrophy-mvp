@@ -51,6 +51,8 @@ async function main() {
   await run(userId, exerciseId, { operation: "ACCEPT", revision: 1 });
   assert.equal(calls, 1, "Acceptance never calls AI"); assert.equal(profile?.mechanicsRevision, 2);
   const accepted = profile?.mechanicsProfile; assert.ok(accepted);
+  assert.equal((profile?.appliedClassification as {source:string}).source,"COACH");
+  assert.equal(profile?.classificationSyncedRevision,2);
   await run(userId, exerciseId, { operation: "ANALYZE", revision: 2, setup: "Low pulley" });
   assert.deepEqual(profile?.mechanicsProfile, accepted, "New proposals preserve accepted profile");
   await run(userId, exerciseId, { operation: "DISCARD", revision: 3 }); assert.equal(profile?.mechanicsDraft, null);

@@ -1,5 +1,8 @@
 "use server";
 
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
+
+
 import { activeExerciseWhere } from "@/lib/server/exercise-catalog-policy";
 
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
@@ -9,7 +12,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireUserId } from "@/lib/auth/user";
-import { prisma } from "@/lib/db/prisma";
+
 import { parseMesocycleStructureOverrides } from "@/lib/planning/mesocycleStructure";
 import { buildProgramPrescription } from "@/lib/server/prescriptions";
 
@@ -48,6 +51,7 @@ function revalidateMesocycleAdjustmentViews(programId: string) {
 }
 
 async function getActiveProgramAndMesocycle(userId: string) {
+  const prisma = getUserExercisePrisma(userId);
   const program = await prisma.program.findFirst({
     where: { userId, isActive: true, isArchived: false },
     include: {
@@ -99,6 +103,7 @@ async function getActiveProgramAndMesocycle(userId: string) {
 }
 
 async function movementGroupsForUser(userId: string) {
+  const prisma = getUserExercisePrisma(userId);
   const exercises = await prisma.exercise.findMany({
     where: {
       ...activeExerciseWhere(userId),
@@ -307,6 +312,7 @@ async function preferredExerciseForMovement(
   movementGroupId: string,
   currentExerciseId?: string | null,
 ) {
+  const prisma = getUserExercisePrisma(userId);
   if (currentExerciseId) {
     const current = await prisma.exercise.findFirst({
       where: {
@@ -348,6 +354,7 @@ async function preferredExerciseForMovement(
 
 export async function saveMesocycleSlotAdjustment(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const mesocycleId = String(formData.get("mesocycleId") ?? "");
   const templateExerciseId = String(
     formData.get("templateExerciseId") ?? "",
@@ -487,6 +494,7 @@ export async function saveMesocycleSlotAdjustment(formData: FormData) {
 
 export async function resetMesocycleSlotAdjustment(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const mesocycleId = String(formData.get("mesocycleId") ?? "");
   const templateExerciseId = String(
     formData.get("templateExerciseId") ?? "",
@@ -523,6 +531,7 @@ export async function resetMesocycleSlotAdjustment(formData: FormData) {
 
 export async function resetAllMesocycleSlotAdjustments(formData: FormData) {
   const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
   const mesocycleId = String(formData.get("mesocycleId") ?? "");
 
   const mesocycle = await prisma.programMesocycle.findFirst({

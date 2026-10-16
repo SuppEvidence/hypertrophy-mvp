@@ -1,3 +1,4 @@
+import { SyncSavedProfiles } from "@/components/exercises/SyncSavedProfiles";
 import { readMechanics } from "@/lib/coaching/exercise-mechanics";
 import { ExerciseCoachBackfill } from "@/components/exercises/ExerciseCoachBackfill";
 import Link from "next/link";
@@ -25,7 +26,7 @@ const inputClass =
 
 export default async function ExercisesPage({ searchParams }: PageProps) {
   const params = await searchParams;
-  const [{ muscles, movementGroups }, exercises] = await Promise.all([getExerciseReferenceData(), listExercises(params)]);
+  const [{ muscles, movementGroups, pendingProfileSync }, exercises] = await Promise.all([getExerciseReferenceData(), listExercises(params)]);
 
   const typedMovementGroups: ReferenceMovementGroup[] = movementGroups.map((movement: any) => ({
     id: movement.id,
@@ -127,6 +128,7 @@ export default async function ExercisesPage({ searchParams }: PageProps) {
         <span>Archived exercises stay in workout history</span>
       </div>
 
+      <SyncSavedProfiles pending={pendingProfileSync} />
       <ExerciseCoachBackfill candidates={exercises.filter(exercise => !exercise.isArchived && exercise.isActive && (exercise.mechanicsStatus === "MISSING" || exercise.mechanicsStatus === "STALE") && !exercise.coachingProfiles.some(profile => readMechanics(profile.mechanicsProfile)?.source === "VIDEO_FRAMES" || readMechanics(profile.mechanicsDraft)?.source === "VIDEO_FRAMES")).map(exercise => ({ id: exercise.id, name: exercise.name, revision: exercise.mechanicsRevision }))} />
       <div className="space-y-3">
         {exercises.length === 0 ? (

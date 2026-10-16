@@ -1,5 +1,7 @@
+
+import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+
 import { readApprovedWeek } from "@/lib/server/weekly-coach-read";
 import { coachedWeek } from "@/lib/coaching/weekly-coach-calendar";
 import { completedWeekBaseline } from "@/lib/coaching/weekly-coach-baseline";
@@ -8,6 +10,7 @@ import { weeklyOccurrenceFromSummary } from "@/lib/coaching/weekly-coach-runtime
 
 export async function getApprovedWeekDoseContext(userId: string, programId: string, mesocycleId: string,
   exercises: Parameters<typeof approvedWeekDose>[0]["exercises"], multipliers: Record<string, number>) {
+  const prisma = getUserExercisePrisma(userId);
   const approved = await readApprovedWeek(userId, programId);
   if (!approved || approved.record?.mesocycleId !== mesocycleId) return null;
   const week = coachedWeek();
