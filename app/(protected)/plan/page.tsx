@@ -1,32 +1,25 @@
 import Link from "next/link";
-import {
-  ClipboardList,
-  LayoutTemplate,
-  SlidersHorizontal,
-} from "lucide-react";
+import { ClipboardList, LayoutTemplate } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 const planItems = [
-  { href: "/plan/design", title: "Design a program with the coach", description: "Discuss goals and build a complete mesocycle from your availability, preferences and training evidence.", icon: ClipboardList, primary: true },
   {
-    href: "/plan/week", title: "Plan this week", description: "Set available days and have the coach distribute work across the entire week.", icon: ClipboardList, primary: true,
-  },
-  {
-    href: "/plan/blocks",
-    title: "Mesocycle planning",
-    description: "Review the coach's next-block advice and schedule the next mesocycle and priorities ahead of time.",
+    href: "/plan/week",
+    title: "Plan this week",
+    description:
+      "Set available days and have the coach distribute work across the entire week.",
     icon: ClipboardList,
     primary: true,
   },
   {
-    href: "/plan/mesocycle",
-    title: "Adjust current mesocycle",
+    href: "/plan/blocks",
+    title: "Mesocycle planner",
     description:
-      "Change movement patterns or set counts for future workouts in the current block without touching the base templates.",
-    icon: SlidersHorizontal,
-    primary: false,
+      "Manage your current block, design the next mesocycle with the coach, and review past blocks.",
+    icon: ClipboardList,
+    primary: true,
   },
   {
     href: "/programs",

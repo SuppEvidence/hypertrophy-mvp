@@ -596,7 +596,7 @@ function MesocycleItem({ mesocycle, data }: { mesocycle: Mesocycle; data: Props[
   );
 }
 
-export function MesocyclePanel({ data }: Props) {
+export function MesocyclePanel({ data, view = "all" }: Props & { view?: "all" | "current" | "next" | "history" }) {
   const active = data.mesocycles.filter((mesocycle) => mesocycle.status === "ACTIVE");
   const upcoming = data.mesocycles.filter((mesocycle) => mesocycle.status === "UPCOMING");
   const completed = data.mesocycles.filter((mesocycle) => mesocycle.status === "COMPLETED");
@@ -605,11 +605,11 @@ export function MesocyclePanel({ data }: Props) {
     <Card className="space-y-5 border-orange-500/20">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-300">Mesocycle layer</p>
-        <h2 className="mt-1 text-lg font-semibold text-slate-100">Temporary training block</h2>
-        <p className="mt-1 text-sm text-slate-400">Schedule a future block and its priorities in one step. It becomes active on its start date. T3 learns the useful dose inside the block.</p>
+        <h2 className="mt-1 text-lg font-semibold text-slate-100">{view === "current" ? "Current mesocycle" : view === "next" ? "Scheduled blocks and existing structure" : view === "history" ? "Completed mesocycles" : "Temporary training block"}</h2>
+        <p className="mt-1 text-sm text-slate-400">{view === "current" ? "Manage the current block’s dates, priorities and approved adjustments." : view === "history" ? "Review completed blocks and their logged outcomes." : "Schedule a block using the existing program structure, or manage an upcoming block. Blocks on this program take effect on their start date."}</p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      {view === "all" ? <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-2xl border border-slate-800 bg-slate-950 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Inherited from program</p>
           <p className="mt-2 text-sm text-slate-300">Templates, rotation, exercise pools, contribution rules, and baseline weekly muscle targets.</p>
@@ -618,37 +618,42 @@ export function MesocyclePanel({ data }: Props) {
           <p className="text-xs font-semibold uppercase tracking-wide text-orange-300">Set per mesocycle</p>
           <p className="mt-2 text-sm text-slate-300">Start, planned length, phase, muscle priorities, optional rep-range exceptions, and actual end date.</p>
         </div>
-      </div>
-
-      {active.length > 0 ? (
+      </div> : null}
+      {active.length > 0 && (view === "all" || view === "current") ? (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-300">Active mesocycle</h3>
           {active.map((mesocycle) => <MesocycleItem key={mesocycle.id} mesocycle={mesocycle} data={data} />)}
         </div>
       ) : null}
 
-      <MesocycleForm programId={data.programId} activePhase={data.activePhase} data={data} />
+      {view === "all" ? <MesocycleForm programId={data.programId} activePhase={data.activePhase} data={data} /> : view === "next" ? (
+        <details className="rounded-xl border border-slate-800 p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-200">Keep the existing program and schedule a block manually</summary>
+          <div className="mt-3"><MesocycleForm programId={data.programId} activePhase={data.activePhase} data={data} /></div>
+        </details>
+      ) : null}
+      {view === "current" && !active.length ? <p className="text-sm text-slate-400">No current mesocycle. Open Plan next mesocycle to design or schedule your next block.</p> : null}
 
-      {upcoming.length > 0 ? (
+      {upcoming.length > 0 && (view === "all" || view === "next") ? (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-sky-300">Upcoming</h3>
           {upcoming.map((mesocycle) => <MesocycleItem key={mesocycle.id} mesocycle={mesocycle} data={data} />)}
         </div>
       ) : null}
 
-      {completed.length > 0 ? (
+      {completed.length > 0 && (view === "all" || view === "history") ? (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Completed</h3>
           {completed.map((mesocycle) => <MesocycleItem key={mesocycle.id} mesocycle={mesocycle} data={data} />)}
         </div>
       ) : null}
 
-      <div className="space-y-3 border-t border-slate-800 pt-4">
+      {view === "all" || view === "history" ? <div className="space-y-3 border-t border-slate-800 pt-4">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Mesocycle review</h3>
         {data.reviews.length > 0 ? data.reviews.map((review) => <ReviewCard key={review.id} review={review} />) : (
           <p className="text-sm text-slate-500">Create a mesocycle to unlock actual vs target volume and performance review.</p>
         )}
-      </div>
+      </div> : null}
     </Card>
   );
 }

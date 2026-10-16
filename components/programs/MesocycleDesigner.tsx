@@ -113,7 +113,7 @@ export function MesocycleDesigner({
       if (!saved) {
         saved = await request({ operation: "CREATE", brief });
         setView(saved);
-        window.history.replaceState(null, "", `/plan/design?id=${saved.id}`);
+        window.history.replaceState(null, "", `/plan/blocks?tab=next&id=${saved.id}`);
       }
       if (operation !== "ARCHIVE")
         saved = await request({
@@ -124,7 +124,7 @@ export function MesocycleDesigner({
           proposal: plan,
         });
       setView(saved);
-      window.history.replaceState(null, "", `/plan/design?id=${saved.id}`);
+      window.history.replaceState(null, "", `/plan/blocks?tab=next&id=${saved.id}`);
       if (operation !== "SAVE")
         saved = await request({
           operation,

@@ -43,7 +43,7 @@ export function ApprovedDesignSummary({
         </p>
       </details>
       <p className="mt-3 text-xs text-slate-400">
-        Use the review below to discuss dose, structure or duration. Date
+        Use volume review to discuss dose, or plan the next mesocycle to revisit structure and duration. Date
         changes remain manual; weekly adaptations do not rewrite this baseline.
       </p>
       <Link
@@ -53,7 +53,7 @@ export function ApprovedDesignSummary({
         Review current dose
       </Link>
       <Link
-        href="/plan/design"
+        href="/plan/blocks?tab=next"
         className="mt-3 inline-block text-sm text-orange-300"
       >
         Open saved designs

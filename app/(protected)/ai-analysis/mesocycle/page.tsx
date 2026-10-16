@@ -197,7 +197,7 @@ export default async function MesocycleRecommendationsPage({
               </p>
             ) : null}
           </Card>
-          <Link href="/plan/blocks" className="inline-flex rounded-xl border border-orange-500/30 px-4 py-2.5 text-sm font-semibold text-orange-300">Set up next mesocycle →</Link>
+          <Link href="/plan/blocks?tab=next" className="inline-flex rounded-xl border border-orange-500/30 px-4 py-2.5 text-sm font-semibold text-orange-300">Set up next mesocycle →</Link>
 
           {recommendation.symptomPrecautions.length > 0 ? (
             <Card className="border-amber-400/20 bg-amber-400/[0.04]">
