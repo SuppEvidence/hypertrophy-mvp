@@ -399,8 +399,18 @@ export function WorkoutLogger({ data }: { data: Awaited<ReturnType<typeof getWor
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-400">
             A draft workout is open. Finish it or use a draft link before starting another session.
           </div>
+        ) : data.weeklyWorkoutUnavailable ? (
+          <div role="alert" className="space-y-3 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+            <p className="font-semibold">Weekly workout needs review</p>
+            <p>The saved weekly workout cannot be applied to the current mesocycle, exercise library or set formats, or has already been started or removed. Review the weekly plan, select another available workout, or explicitly use the current program prescription.</p>
+            <div className="flex flex-wrap gap-3 font-semibold">
+              <Link href="/plan/week" className="underline">Review weekly plan</Link>
+              {selectedTemplate ? <Link href={`/log?programId=${selectedProgram.id}&templateId=${selectedTemplate.id}&planSource=program`} className="underline">Use current program instead</Link> : null}
+            </div>
+          </div>
         ) : selectedTemplate ? (
           <div className="space-y-3">
+            {data.useProgramPrescription ? <p className="text-sm text-amber-200">Using the current program prescription by your choice, instead of the saved weekly workout.</p> : null}
             {selectedTemplatePrescription ? <PrescriptionPreview prescription={selectedTemplatePrescription} /> : null}
             <PreWorkoutCoach programId={selectedProgram.id} templateId={selectedTemplate.id} occurrenceId={selectedOccurrence?.id} plannedMinutes={selectedOccurrence?.durationMinutes} />
             <form action={startWorkout}>

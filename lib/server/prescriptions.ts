@@ -1,5 +1,6 @@
 "use server";
 
+import { WeeklyWorkoutUnavailableError } from "@/lib/coaching/weekly-workout-error";
 import { designExcludedExerciseIds } from "@/lib/mesocycle-design/handoff";
 
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
@@ -292,7 +293,7 @@ export async function buildProgramPrescription(
     movementDefaults: generationInput.movementDefaults ?? [],
     setTypes: generationInput.setTypes ?? [],
   }) : null;
-  if (options?.weeklyOccurrenceId && !occurrenceOverlay) throw new Error("This weekly workout is no longer available. Open the weekly plan again.");
+  if (options?.weeklyOccurrenceId && !occurrenceOverlay) throw new WeeklyWorkoutUnavailableError();
   const plannedItems = occurrenceOverlay?.items ?? generated.items;
   const storedWeeklyPlan = parseStoredWeeklyPlan(program.weeklyPlan, weekStart);
   const completedTemplateIds: string[] = Array.from(

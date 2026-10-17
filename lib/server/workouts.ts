@@ -1,5 +1,6 @@
 "use server";
 
+import { WeeklyWorkoutUnavailableError } from "@/lib/coaching/weekly-workout-error";
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 
 
@@ -135,7 +136,7 @@ async function buildWeightSuggestionsForSession(
   return suggestions;
 }
 
-export async function getWorkoutLoggerData(params?: { programId?: string; templateId?: string; sessionId?: string; occurrenceId?: string }) {
+export async function getWorkoutLoggerData(params?: { programId?: string; templateId?: string; sessionId?: string; occurrenceId?: string; planSource?: string }) {
   const userId = await requireUserId();
   const prisma = getUserExercisePrisma(userId);
 
@@ -193,6 +194,7 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
   ]);
 
   const coachedWeek = selectedProgram ? await readApprovedWeek(userId, selectedProgram.id) : null;
+  const useProgramPrescription = params?.planSource === "program";
   const pendingWorkouts = coachedWeek?.distribution.workouts.filter((day) => !coachedWeek.missedIds.includes(day.id) && !coachedWeek.startedIds.includes(day.id)) ?? [];
   const today = helsinkiDate();
   const nextOccurrence = pendingWorkouts.find((day) => day.date <= today) ?? pendingWorkouts[0];
@@ -201,22 +203,31 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
     (selectedProgram ? await getSuggestedTemplate(selectedProgram, userId, templates) : null);
   const selectedTemplate =
     templates.find((template) => template.id === params?.templateId) ?? suggestedTemplate ?? templates[0] ?? null;
-  const selectedOccurrence = selectedTemplate && (requestedOccurrence?.templateId === selectedTemplate.id ? requestedOccurrence :
+  const selectedOccurrence = !useProgramPrescription && selectedTemplate && (requestedOccurrence?.templateId === selectedTemplate.id ? requestedOccurrence :
     pendingWorkouts.find((day) => day.templateId === selectedTemplate.id)) || null;
 
   const activeSession = requestedSession?.status === "DRAFT" || requestedSession?.status === "COMPLETED" ? requestedSession : null;
   const hasUnfinishedSession = draftSessions.length > 0;
-  const [weightSuggestions, selectedTemplatePrescription, previousTemplateChoices] = await Promise.all([
+  const requestedWeeklyWorkoutMissing = !useProgramPrescription && Boolean(params?.occurrenceId) && !requestedOccurrence;
+  const [weightSuggestions, preview, previousTemplateChoices] = await Promise.all([
     buildWeightSuggestionsForSession(activeSession, userId),
-    selectedProgram && selectedTemplate && !activeSession
+    selectedProgram && selectedTemplate && !activeSession && !requestedWeeklyWorkoutMissing
       ? getTemplatePrescription(selectedProgram.id, selectedTemplate.id, userId, selectedOccurrence?.id)
-      : Promise.resolve(null),
+          .then((prescription) => ({ prescription, unavailable: false }))
+          .catch((error: unknown) => {
+            if (!(error instanceof WeeklyWorkoutUnavailableError)) throw error;
+            return { prescription: null, unavailable: true };
+          })
+      : Promise.resolve({ prescription: null, unavailable: requestedWeeklyWorkoutMissing }),
     selectedProgram && selectedTemplate && !activeSession
       ? rememberedTemplateExerciseChoices(userId, selectedProgram.id, selectedTemplate.id)
       : Promise.resolve(new Map<string, RememberedExerciseChoice>()),
   ]);
 
+  const selectedTemplatePrescription = preview.prescription;
   return {
+    weeklyWorkoutUnavailable: !activeSession && preview.unavailable,
+    useProgramPrescription,
     programs,
     selectedProgram,
     templates,
@@ -388,7 +399,12 @@ export async function startWorkout(formData: FormData) {
   const userId = await requireUserId();
   const prisma = getUserExercisePrisma(userId);
   const input = startWorkoutSchema.parse({ programId: formData.get("programId"), templateId: formData.get("templateId"), occurrenceId: formData.get("occurrenceId") || undefined });
-  const prescription = await getTemplatePrescription(input.programId, input.templateId, userId, input.occurrenceId);
+  const prescription = await getTemplatePrescription(input.programId, input.templateId, userId, input.occurrenceId).catch((error: unknown) => {
+    if (!(error instanceof WeeklyWorkoutUnavailableError)) throw error;
+    const query = new URLSearchParams({ programId: input.programId, templateId: input.templateId });
+    if (input.occurrenceId) query.set("occurrenceId", input.occurrenceId);
+    redirect(`/log?${query}`);
+  });
   const template = prescription?.program.templates.find((item: any) => item.id === input.templateId) ?? null;
   if (!prescription || !template || prescription.program.id !== input.programId) redirect("/log");
 

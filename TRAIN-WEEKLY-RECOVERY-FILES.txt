@@ -1,0 +1,8 @@
+TRAIN-WEEKLY-RECOVERY-FILES.txt
+TRAIN-WEEKLY-RECOVERY-README.md
+app/(protected)/log/page.tsx
+components/workouts/WorkoutLogger.tsx
+lib/coaching/weekly-workout-error.ts
+lib/server/prescriptions.ts
+lib/server/workouts.ts
+scripts/test-train-weekly-recovery.mjs

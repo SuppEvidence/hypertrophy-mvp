@@ -10,6 +10,7 @@ type PageProps = {
     templateId?: string;
     sessionId?: string;
     occurrenceId?: string;
+    planSource?: string;
   }>;
 };
 
