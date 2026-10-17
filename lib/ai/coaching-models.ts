@@ -1,11 +1,13 @@
 /** Model routing is independent of the deterministic coaching/approval policy. */
-export type CoachingWorkload = "T1" | "T2" | "WORKOUT_ANALYSIS" | "T3_VOLUME" | "T3_MESOCYCLE" | "WEEKLY_PLAN" | "EXERCISE_PROFILE" | "PHYSIQUE_CHECKIN" | "MESOCYCLE_DESIGN";
+export type CoachingWorkload = "T1" | "T2" | "WORKOUT_ANALYSIS" | "T3_VOLUME" | "T3_MESOCYCLE" | "WEEKLY_PLAN" | "EXERCISE_PROFILE" | "PHYSIQUE_CHECKIN" | "MESOCYCLE_DESIGN" | "NUTRITION_REVIEW" | "NUTRITION_DISCUSSION";
 type Effort = "low" | "medium" | "high" | "xhigh";
 type Environment = Record<string, string | undefined>;
 
 // Volume can follow the 60-second workout analysis in a 300-second request.
 // Leave 30 seconds for context, validation and persistence; manual meso leaves 45.
 const PROFILES = {
+  NUTRITION_REVIEW: { tier: "T3", model: "gpt-5.6-sol", effort: "high", timeout: 210_000, maxOutputTokens: 8192 },
+  NUTRITION_DISCUSSION: { tier: "T2", model: "gpt-5.6-terra", effort: "medium", timeout: 90_000, maxOutputTokens: 4096 },
   MESOCYCLE_DESIGN: { tier: "T3", model: "gpt-5.6-sol", effort: "high", timeout: 240_000, maxOutputTokens: 24576 },
   PHYSIQUE_CHECKIN: { tier: "T3", model: "gpt-5.6-sol", effort: "high", timeout: 210_000, maxOutputTokens: 12288 },
   EXERCISE_PROFILE: { tier: "T2", model: "gpt-5.6-terra", effort: "medium", timeout: 120_000, maxOutputTokens: 8192 },

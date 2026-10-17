@@ -1,5 +1,7 @@
 "use server";
 
+import { getNutritionTrainingContext } from "./nutrition-context";
+
 import { approvedDesignContext, designExcludedExerciseIds } from "@/lib/mesocycle-design/handoff";
 
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
@@ -797,6 +799,7 @@ async function buildProgrammingContext(userId: string) {
       bodyMetrics: dashboard.bodyMetrics,
       intraMesocycleCircumferences,
       bodyComposition,
+      nutritionContext: await getNutritionTrainingContext(userId),
       declaredEnergyPhase,
       energyPhaseTimeline,
       globalRecovery,

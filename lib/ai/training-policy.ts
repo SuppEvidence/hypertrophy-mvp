@@ -1,6 +1,6 @@
 import { PHYSIQUE_COACHING_POLICY } from "@/lib/physique/policy";
 import { EXERCISE_MECHANICS_POLICY } from "@/lib/coaching/exercise-mechanics";
-export const TRAINING_POLICY_VERSION = "1.6";
+export const TRAINING_POLICY_VERSION = "1.7";
 
 /**
  * Stable hypertrophy-programming principles used by all AI recommendation layers.

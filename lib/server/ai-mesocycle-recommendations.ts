@@ -1,5 +1,7 @@
 "use server";
 
+import { getNutritionTrainingContext } from "./nutrition-context";
+
 import { approvedDesignContext } from "@/lib/mesocycle-design/handoff";
 
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
@@ -549,6 +551,7 @@ async function buildMesocycleContext(userId: string, requestedMesocycleId?: stri
     approvedMesocycleDesign: approvedDesignContext(mesocycle.approvedDesign),
     physiqueEvidence: await getPhysiqueEvidence(userId),
     policy: TRAINING_PROGRAMMING_POLICY,
+    nutritionContext: await getNutritionTrainingContext(userId, now),
     declaredEnergyPhase,
     energyPhaseTimeline,
     recoveryObservations: recoveryObservations.map((row) => ({ ...row, loggedAt: row.loggedAt.toISOString(), bodyweight: finiteNumber(row.bodyweight), waist: finiteNumber(row.waist), sleepDuration: finiteNumber(row.sleepDuration) })),

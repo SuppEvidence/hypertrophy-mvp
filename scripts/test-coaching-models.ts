@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { COACHING_WORKLOADS, getCoachingModelConfig } from "../lib/ai/coaching-models";
 
 const expected = {
+  NUTRITION_REVIEW: ["gpt-5.6-sol", "high"],
+  NUTRITION_DISCUSSION: ["gpt-5.6-terra", "medium"],
   MESOCYCLE_DESIGN: ["gpt-5.6-sol", "high"],
   PHYSIQUE_CHECKIN: ["gpt-5.6-sol", "high"],
   EXERCISE_PROFILE: ["gpt-5.6-terra", "medium"],
@@ -26,6 +28,8 @@ assert.throws(() => getCoachingModelConfig("T3_VOLUME", { OPENAI_T3_REASONING_EF
 
 // Regression: every model call must actually forward its tier request and budget.
 const files = {
+  NUTRITION_REVIEW: "lib/server/nutrition-coach.ts",
+  NUTRITION_DISCUSSION: "lib/server/nutrition-coach.ts",
   MESOCYCLE_DESIGN: "lib/server/mesocycle-design.ts",
   PHYSIQUE_CHECKIN: "lib/server/physique-checkins.ts",
   EXERCISE_PROFILE: "lib/server/exercise-mechanics-coach.ts",

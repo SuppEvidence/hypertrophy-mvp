@@ -1,3 +1,4 @@
+import { getNutritionTrainingContext } from "./nutrition-context";
 
 import { approvedDesignContext, designExcludedExerciseIds } from "@/lib/mesocycle-design/handoff";
 
@@ -260,6 +261,7 @@ async function buildContext(userId: string, input: z.infer<typeof PreWorkoutCoac
   return {
     physiqueEvidence: await getPhysiqueEvidence(userId),
     now, input, prescription, templates, requestedTemplate, items, candidates, itemBySlot, candidateBySlot,
+    nutritionContext: await getNutritionTrainingContext(userId, now),
     catalog, exerciseById, history, recentAnalyses, bodyComposition, energyPhase, energyPhaseTimeline, globalRecovery, localizedReadiness, interventions, previousSameTemplate, rememberedChoices, coachedWeek,
   };
 }
@@ -350,6 +352,7 @@ function modelContext(context: Awaited<ReturnType<typeof buildContext>>) {
     physiqueEvidence: context.physiqueEvidence,
     bodyComposition: context.bodyComposition,
     declaredEnergyPhase: context.energyPhase,
+    nutritionContext: context.nutritionContext,
     energyPhaseTimeline: context.energyPhaseTimeline,
     globalRecovery: context.globalRecovery,
     localizedReadiness: context.localizedReadiness,

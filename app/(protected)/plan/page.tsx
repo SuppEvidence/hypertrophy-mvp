@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 const planItems = [
+  { href: "/plan/nutrition", title: "Nutrition & phase", description: "Keep a practical diet baseline, review outcomes and agree on food or phase adjustments.", icon: ClipboardList, primary: true },
   {
     href: "/plan/week",
     title: "Plan this week",

@@ -126,6 +126,8 @@ enum CoachingInterventionStatus {
 }
 
 model Profile {
+  nutritionState NutritionState?
+  nutritionEvents NutritionEvent[]
   mesocycleDesigns MesocycleDesign[]
   id        String   @id @db.Uuid
   email     String?  @unique
@@ -946,4 +948,29 @@ model MesocycleDesign {
  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
  @@index([userId, updatedAt])
  @@map("mesocycle_designs")
+}
+
+
+model NutritionState {
+  userId String @id @db.Uuid @map("user_id")
+  revision Int @default(0)
+  baseline Json
+  draft Json?
+  requestToken String? @map("request_token")
+  requestStartedAt DateTime? @map("request_started_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("nutrition_states")
+}
+
+model NutritionEvent {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid @map("user_id")
+  kind String
+  baseline Json?
+  details Json
+  createdAt DateTime @default(now()) @map("created_at")
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+  @@map("nutrition_events")
 }

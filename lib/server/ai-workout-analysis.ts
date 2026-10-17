@@ -1,5 +1,7 @@
 "use server";
 
+import { getNutritionTrainingContext } from "./nutrition-context";
+
 import { approvedDesignContext } from "@/lib/mesocycle-design/handoff";
 
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
@@ -629,6 +631,7 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
       performedAt: session.performedAt.toISOString(),
       completedAt: session.completedAt?.toISOString() ?? null,
     },
+    nutritionContext: await getNutritionTrainingContext(userId, session.performedAt),
     declaredEnergyPhase: energyPhase,
     energyPhaseTimeline,
     exposureTolerance: summarizeExposureTolerance([...historicalExposures, ...session.exercises.map((row) => ({

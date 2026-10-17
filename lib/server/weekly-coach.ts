@@ -1,5 +1,7 @@
 "use server";
 
+import { getNutritionTrainingContext } from "./nutrition-context";
+
 import { loadCompletedWeekSessions } from "@/lib/server/completed-week-evidence";
 import { approvedDesignContext, designExcludedExerciseIds } from "@/lib/mesocycle-design/handoff";
 
@@ -263,6 +265,7 @@ export async function generateWeeklyCoachAction(formData: FormData) {
     loadCoachingHistory(userId, null, new Date(Date.now() - 90 * 86400000)),
     getEnergyPhaseTimeline(userId),
   ]);
+  const nutritionContext = await getNutritionTrainingContext(userId);
   const latestEvidenceAt = new Date(Math.max(0,
     phase ? new Date(phase.startDate).getTime() : 0,
     ...rawRecent.map((row) => Math.max(row.performedAt.getTime(), row.aiAnalyzedAt?.getTime() ?? 0)),
@@ -296,6 +299,7 @@ ${ATHLETE_RESPONSE_COACHING_POLICY}
 ${RECOVERY_EVIDENCE_POLICY}
 ${PRIORITY_DOSE_POLICY}
 STRUCTURE CONTINUITY
+- When nutritionChangedSinceDoseReview is true, carry the supplied T3 dose reasoning and consider only the new nutrition/recovery context. A diet acceptance alone is not an outcome or grounds to redo dose reasoning or reduce volume. Current symptoms still govern feasibility.
 - An approved priorRationale marked Optional pain-related growth trial is a discretionary allocation, including for a maintenance muscle. Preserve useful accepted opportunity work rather than automatically cutting it because a pain-limited priority muscle is below its former dose. Reassess it for changed recipient tolerance, time, broader recovery or resolution of source pain; its priority and maintenance minimum remain unchanged.
 - Incorporate newly approved T3 structural edits from the current slots into the starting week before making other changes. Do not resurrect a removed slot merely for continuity. Preserve established exercise choices where compatible with that updated framework.
 - Preserve the startingWeek exercise choices, template grouping and useful order within this mesocycle. Adjust sets, set types and distribution before replacing exercises. No weekly novelty, random variation or resetting to template defaults. Availability changes may move established workouts. A pain/tolerance issue, unavailable equipment, explicit user preference, documented stimulus limitation or necessary priority reallocation can justify a change. Include exerciseChanges with exact date, sourceSlotId, from/to exercise IDs, basis and a specific evidence/constraint reason for every replacement. Use an empty array when none are needed. Unexplained replacements will be restored to the established exercise. Existing persistent user choices take precedence over generic alternatives; temporary choices have already been reverted.
@@ -308,7 +312,7 @@ Plan the remaining hypertrophy workouts for this week. Completed sessions are fi
             priority: row.priority, currentWeeklySets: Number(row.coachTargetWeeklySets),
             maintenanceBasis: row.priority === "MAINTAIN" ? (row.coachingStatus === "BASELINE" ? "UNREVIEWED_BASELINE" : maintenanceBases[row.muscleId] ?? "UNREVIEWED_BASELINE") : "NOT_MAINTENANCE",
             priorRationale: row.rationale?.slice(0, 240) ?? null })) } : null,
-        phase, phaseTimeline: priorDoseAssessment ? undefined : phaseTimeline, exposureTolerance: priorDoseAssessment ? undefined : summarizeExposureTolerance(toleranceHistory, phaseTimeline), program: { phase: prescription.program.activePhase,
+        nutritionContext, nutritionChangedSinceDoseReview: Boolean(nutritionContext && prescription.activeMesocycle?.t3LastEvaluatedAt && Date.parse(nutritionContext.updatedAt) > prescription.activeMesocycle.t3LastEvaluatedAt.getTime()), phase, phaseTimeline: priorDoseAssessment ? undefined : phaseTimeline, exposureTolerance: priorDoseAssessment ? undefined : summarizeExposureTolerance(toleranceHistory, phaseTimeline), program: { phase: prescription.program.activePhase,
           templates: prescription.program.templates.map((row) => ({ id: row.id, name: row.name, occurrences: Number(row.expectedOccurrences) })) },
         slots: candidates.map((row) => ({ id: row.id, templateId: row.templateId, movementGroupId: row.movementGroupId,
           exerciseId: row.exerciseId, sets: row.sets, setTypeIds: row.setTypeIds })),

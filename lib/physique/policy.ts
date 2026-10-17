@@ -1,3 +1,4 @@
+import { NUTRITION_HANDOFF_POLICY } from "@/lib/nutrition/policy";
 import { z } from "zod";
 export const PHOTO_VIEWS = ["FRONT", "LEFT", "RIGHT", "BACK", "FRONT_FLEXED", "BACK_FLEXED"] as const;
 export const photoViewSchema = z.enum(PHOTO_VIEWS);
@@ -54,10 +55,11 @@ export type VisualEnvelope = z.infer<typeof visualEnvelopeSchema>;
 export function readVisualAssessment(value: unknown): VisualEnvelope | null {
   const parsed = visualEnvelopeSchema.safeParse(value); return parsed.success ? parsed.data : null;
 }
-export const PHYSIQUE_COACHING_POLICY = `PHYSIQUE VISUAL EVIDENCE
-- physiqueEvidence contains dated, accepted visual assessments, not measurements of body fat or causal proof of growth. Never estimate body-fat percentages or exact calories/macros, infer health diagnoses, or infer muscle loss/growth from one appearance or circumference change.
+export const PHYSIQUE_COACHING_POLICY = `${NUTRITION_HANDOFF_POLICY}
+PHYSIQUE VISUAL EVIDENCE
+- physiqueEvidence contains dated, accepted visual assessments, not measurements of body fat or causal proof of growth. Never estimate body-fat percentages or infer calories/macros from visuals, infer health diagnoses, or infer muscle loss/growth from one appearance or circumference change.
 - Interpret photos with same-date linked measurements, photo quality, lighting, pose, pump, time interval and phase. Apparent fullness/definition/separation differ from muscle size. Circumferences are a supporting record of how this individual looked on that date, never a universal body-composition formula.
 - Historical assessments describe their photo date, not the upload/analysis date or present state. Do not apply old phase advice as current advice. Unmatched, missing or stale visual evidence is unknown. Do not invent visual findings when no accepted assessment is supplied.
 - Visual priorities are proposals, not permission to replace approved mesocycle priorities or change volume automatically. Translate accepted, credible regional priorities through exerciseMechanics and personal tolerance when exercise changes are warranted; current pain/recovery evidence still governs workload. Hold existing plans when photos do not support a meaningful change.
-- Assess phase decisions against the user's desired look and sustainability. Do not assume poorer leg separation requires more cutting. Any nutrition advice should be practical changes within the existing meal/portion structure, without food logging or numerical calorie/macro targets.
+- Assess phase decisions against the user's desired look and sustainability. Do not assume poorer leg separation requires more cutting. Refer proposed dietary adjustments to the nutrition coach. Reuse accepted approximate macro adjustments when supplied; never calculate intake from appearance or require food logging.
 - Photo cadence is not a deadline for visible growth or a reason to generate changes. Fat loss defaults to 14 days; beginner/mid-intermediate gaining 28; advanced gaining 56-84. Maintenance uses the user's chosen interval.`;

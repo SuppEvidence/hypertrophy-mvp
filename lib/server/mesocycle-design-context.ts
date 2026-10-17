@@ -1,3 +1,4 @@
+import { getNutritionTrainingContext } from "./nutrition-context";
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { resolveExerciseRead } from "./effective-exercise-data";
@@ -142,7 +143,7 @@ export async function buildDesignEvidence(userId: string, compact = false) {
     }),
     getPhysiqueEvidence(userId),
     getEnergyPhaseContext(userId),
-    getEnergyPhaseTimeline(userId, since),
+    getEnergyPhaseTimeline(userId),
   ]);
   const ids = [...new Set(history.map((r) => r.exerciseId))];
   const exerciseHistory = ids.map((id) => {
@@ -183,6 +184,7 @@ export async function buildDesignEvidence(userId: string, compact = false) {
         "At most 500 exercise exposures, 30 metrics and six blocks; missing data is unknown. Performance comparisons are exercise-specific, not causal proof. Historical mappings use workout snapshots.",
       settings,
       physique,
+      nutritionContext: await getNutritionTrainingContext(userId),
       energyPhase,
       energyTimeline,
       metrics,

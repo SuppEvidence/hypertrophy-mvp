@@ -1,0 +1,135 @@
+{
+  "base_commit": "08bd3089e380aae6d3e98bac67e2084e5c36853b",
+  "files": [
+    {
+      "path": "app/(protected)/plan/nutrition/page.tsx",
+      "base_sha256": null,
+      "patched_sha256": "daa921f262f93fff79302cbd687d34d1eabd66f57d5edae3dfeefd8ed88c49df"
+    },
+    {
+      "path": "app/(protected)/plan/page.tsx",
+      "base_sha256": "b21e307414701ca90f3e3dd11578d039dc1ee6f255b2f9623dfc7eca7867fdf8",
+      "patched_sha256": "e6570178ed884106b6c2c90c4d056b3ea1be3edd78435b09794f51ff733a733e"
+    },
+    {
+      "path": "app/api/nutrition/route.ts",
+      "base_sha256": null,
+      "patched_sha256": "e8c5d3a833192d56e9b5e3e9801e660ecfa83ab40fea4bbfa9ee0b5447b5bac7"
+    },
+    {
+      "path": "components/nutrition/NutritionCoach.tsx",
+      "base_sha256": null,
+      "patched_sha256": "7c50e0f4fc3049dac0df6db2796a5aa1f6d039c0518e938a09f1fd478e15772f"
+    },
+    {
+      "path": "docs/nutrition-phase-coach.md",
+      "base_sha256": null,
+      "patched_sha256": "096eab7a7dc9a84aaeb3cf0772e757940edee3b2336517ff38578601c709972d"
+    },
+    {
+      "path": "lib/ai/coaching-models.ts",
+      "base_sha256": "5021c720e5810a439c2c872f32c40dcc53a1b9036020bf8d3dc5107632bebba6",
+      "patched_sha256": "4d01f4ce0379d186e4f076d09bb921875e6c10496b7f3fe2a5194d09bf10373c"
+    },
+    {
+      "path": "lib/ai/training-policy.ts",
+      "base_sha256": "622be8304f95eceb64e31dbc4fb3cca40723ddf96fc803c807588a084c04840c",
+      "patched_sha256": "76c1c7d776343acdf84477f275bf63db1fb1abe379e941b2f7221830148a98ef"
+    },
+    {
+      "path": "lib/nutrition/policy.ts",
+      "base_sha256": null,
+      "patched_sha256": "09ae5a04a4a5a9a4d0269cfbd76e7e9b29e4e5221766a4f8418fe7f26135caf4"
+    },
+    {
+      "path": "lib/nutrition/schema.ts",
+      "base_sha256": null,
+      "patched_sha256": "7a484d955c5256e6f9166fed14215402f591cc0d338d5d2d0b3c394ed33661f0"
+    },
+    {
+      "path": "lib/physique/policy.ts",
+      "base_sha256": "8981b3c5fa7760d733917d1ccaba0d321adaf56189e2fc2e75fac0d9db6d088b",
+      "patched_sha256": "271e20f7a50ddc7b9689efd4a1841750cf5b48ee939a6e50bab238c0bc1c66af"
+    },
+    {
+      "path": "lib/server/ai-mesocycle-recommendations.ts",
+      "base_sha256": "6239e5997874879918dcdfeae880d0604fe6f9fba36c82f0c969571921d1ca50",
+      "patched_sha256": "498fccf5d1ffaa7e73c787754d2e459274ad015c9d436b6c92c1ef4b1c46e267"
+    },
+    {
+      "path": "lib/server/ai-programming-decisions.ts",
+      "base_sha256": "29eb580e4c05fdfedf19a6a5d044a8ec3e33389538f35c32da0056162f804a22",
+      "patched_sha256": "69d0f7ab9aa68e035967f2cadf6e8f677a6e382ed36787706b8b813081811d52"
+    },
+    {
+      "path": "lib/server/ai-workout-analysis.ts",
+      "base_sha256": "8842fa538b19a322baa8a3ccfbba6efa6434e65b5864dad4e0531ba1d2ebd66f",
+      "patched_sha256": "35397bcbf005346385e820f90343fff54e1ea09a1760a37523db034c596140c7"
+    },
+    {
+      "path": "lib/server/energy-phases.ts",
+      "base_sha256": "0062903ef971ddb81b7fe873f9031321206cf374bfbc81bf45cb0b26121def75",
+      "patched_sha256": "f8e2707d09acea64ecb921d62ba800bdf30df6aa33306cb6a455ac6955015c95"
+    },
+    {
+      "path": "lib/server/mesocycle-design-context.ts",
+      "base_sha256": "fb1c244b0dc7da2de809a986059ff144841aba83fa42c638e27a3dc54fd3db6a",
+      "patched_sha256": "9e37fc6d3632226f17c46afb2e96099aa61384ee8ad18b8cb0bbcf72ee05ca81"
+    },
+    {
+      "path": "lib/server/nutrition-coach.ts",
+      "base_sha256": null,
+      "patched_sha256": "c026e68f029343f63d3f2df6dc69bfe47f8a25d04859730d2a7e3320e7d208df"
+    },
+    {
+      "path": "lib/server/nutrition-context.ts",
+      "base_sha256": null,
+      "patched_sha256": "3b243a754f57f618cdf63ada5a2373ceac5ad72d19102f4210762fe63e05049a"
+    },
+    {
+      "path": "lib/server/physique-checkins.ts",
+      "base_sha256": "d57baea2658d91953087325151781da8c298d70487a435e46f105567a1f5d6ce",
+      "patched_sha256": "58714e5ae0e8d890763bdb6d7b692f1f68c01c80f4fe5315ec722c563e58f589"
+    },
+    {
+      "path": "lib/server/pre-workout-coach.ts",
+      "base_sha256": "a5de30a7eebc9e8b99e38a4c83ad42f683a831e262ae6a4114cb8276ed11d6a1",
+      "patched_sha256": "374db3c6fc1b5f9b57d9221a1f26496a8259333010c0372b651455de25caf809"
+    },
+    {
+      "path": "lib/server/weekly-coach.ts",
+      "base_sha256": "24c7b0aaba852f4cc84a3103a63b6ff7a36471b10934ca17aca51ab1b495dfee",
+      "patched_sha256": "c2ef2d480bbbd17e8c759016dc08158d7c2c59c1c282eec04ff8578d7a6a54a8"
+    },
+    {
+      "path": "prisma/migrations/20261017120000_nutrition_coach/migration.sql",
+      "base_sha256": null,
+      "patched_sha256": "f7c32e6adc3ee38bba137b5d42f38359bbc1811410fd1e3d611d5db79af5cd38"
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "base_sha256": "4a94642a0592fb876594f391cb38baa9e30a90dc805a525ddfb8cea5823a568e",
+      "patched_sha256": "347240382e5974fce93470d60bf161feddbe2ad68f809377c0088e5d29f7b981"
+    },
+    {
+      "path": "scripts/test-coaching-models.ts",
+      "base_sha256": "a8b7dbc5c4b87509ccbc9cfc0ad4a9361756f6bc88d98f159ee1f78bfaabf48d",
+      "patched_sha256": "594fe5c1920869bdc1e33b537b8c1ef3d355d391495427364c527d073a07eba3"
+    },
+    {
+      "path": "scripts/test-nutrition-service.mjs",
+      "base_sha256": null,
+      "patched_sha256": "a4d5bee3667001b1189c7987f505294fc9b26a926e66450e7211b51df36f087e"
+    },
+    {
+      "path": "scripts/test-nutrition-service.ts",
+      "base_sha256": null,
+      "patched_sha256": "b22ee389543ecbf78935d31a30d1282c707e1dc076e31267480b2642656ac91e"
+    },
+    {
+      "path": "scripts/test-nutrition.ts",
+      "base_sha256": null,
+      "patched_sha256": "d78ddabaa9d33ae8214ff5021fc1e2bfa32b7faf4ea6d5f191a7330afacc30ad"
+    }
+  ]
+}

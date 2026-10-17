@@ -22,6 +22,7 @@ export async function saveEnergyPhase(formData: FormData) {
     create: { userId, phase: input.phase, startDate: date },
     update: { phase: input.phase },
   });
+  revalidatePath("/plan", "layout");
   revalidatePath("/metrics");
   revalidatePath("/dashboard");
   revalidatePath("/ai-analysis");
@@ -32,6 +33,7 @@ export async function deleteEnergyPhase(formData: FormData) {
   const userId = await requireUserId();
   const id = z.string().uuid().parse(formData.get("id"));
   await prisma.energyPhase.deleteMany({ where: { id, userId } });
+  revalidatePath("/plan", "layout");
   revalidatePath("/metrics");
   revalidatePath("/dashboard");
   revalidatePath("/ai-analysis");
