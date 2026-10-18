@@ -17,7 +17,7 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
   return <div className="space-y-5">
     <Link href="/plan" className="text-sm font-semibold text-orange-300">← Plan</Link>
     <PageHeader title="Weekly coach" description="Plan the selected week around its completed work. Next week opens once all this week’s planned workouts are completed, or Sunday at 12:00 Helsinki time; the coach runs only when requested." />
-    {query.error ? <Card className="border-rose-500/30 text-sm text-rose-200">{query.error}<p className="mt-2 text-xs">The review did not replace your saved plan. Retry using the availability and constraints below.</p></Card> : null}
+    {query.error ? <Card className="border-rose-500/30 text-sm text-rose-200"><p role="alert" className="whitespace-pre-line">{query.error}</p><p className="mt-2 text-xs">Your saved plan remains in place. Check the specific date or exercise described above before retrying.</p></Card> : null}
     {query.reviewed ? <Card className="border-sky-500/30 text-sm text-sky-200"><p role="status">Review complete. Inspect the proposal and weekly dose before approving.</p></Card> : null}
     {query.approved ? <Card className="border-emerald-500/30 text-sm text-emerald-200">{view?.isUpcoming ? "Upcoming week approved. Its workouts become available in the logger on Monday." : "Weekly plan approved. Start its scheduled workouts from the logger."}</Card> : null}
     {query.redistributed ? <Card className="border-sky-500/30 text-sm text-sky-200">Missed work has been redistributed into compatible upcoming sessions where capacity allows.</Card> : null}

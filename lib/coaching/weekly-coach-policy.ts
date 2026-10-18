@@ -136,8 +136,10 @@ export function validateWeeklyCoachPlan(plan: WeeklyCoachPlan, input: {
       const source = slots.get(item.sourceSlotId);
       const virtual = item.sourceSlotId === `exercise:${item.exerciseId}`;
       const exercise = exercises.get(item.exerciseId);
-      if (!source && !virtual) errors.push("Unknown workout slot.");
-      if (seenSlots.has(item.sourceSlotId)) errors.push("Duplicate workout slot.");
+      if (!source && !virtual) errors.push(exercise
+        ? `${workout.date}: ${exercise.name ?? "The selected exercise"} could not be linked to a current workout position. Refresh the planner and review again.`
+        : `${workout.date}: an exercise is no longer available in your library and its workout position cannot be restored. Restore or replace that exercise before approval.`);
+      if (seenSlots.has(item.sourceSlotId)) errors.push(`${workout.date}: ${exercise?.name ?? "An exercise"} repeats a workout position. Use one position per exercise.`);
       seenSlots.add(item.sourceSlotId);
       if (seenExercises.has(item.exerciseId)) errors.push(`${workout.date}: ${exercise?.name ?? item.exerciseId} appears in more than one slot. Use one exercise slot per workout.`);
       seenExercises.add(item.exerciseId);
