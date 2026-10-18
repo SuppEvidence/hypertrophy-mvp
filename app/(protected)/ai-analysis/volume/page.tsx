@@ -9,7 +9,9 @@ import { prisma } from "@/lib/db/prisma";
 import { getDashboardData } from "@/lib/server/dashboard";
 import { t3PriorityLabel } from "@/lib/coaching/t3-volume-policy";
 import { T3_REVIEW_LEASE_MS } from "@/lib/coaching/t3-volume-policy";
-import { T3PlanPreviewSchema } from "@/lib/coaching/t3-prescription-preview";
+import { readAppliedOption } from "@/lib/coaching/t3-decision-refresh";
+import { getCurrentProgrammingDecisionPreviews } from "@/lib/server/ai-programming-decisions";
+import { T3PlanPreviewSchema, t3PreviewEffectsSignature } from "@/lib/coaching/t3-prescription-preview";
 import {
   generateAdvisorVolumeRecommendationsAction,
   selectAdvisorProgrammingDecisionAction,
@@ -33,7 +35,8 @@ function globalSummary(value: unknown) {
 }
 
 function signedSets(value: number) {
-  return value > 0 ? `+${value}` : String(value);
+  const rounded = Math.round(value * 100) / 100;
+  return rounded > 0 ? `+${rounded}` : String(rounded);
 }
 
 function confidenceClass(value: string) {
@@ -93,6 +96,7 @@ export default async function VolumeRecommendationsPage({
       confidence: true,
       evidence: true,
       options: true,
+      outcome: true,
       recommendedOptionKey: true,
       keepAsIsRationale: true,
       selectedOptionKey: true,
@@ -114,6 +118,8 @@ export default async function VolumeRecommendationsPage({
         .filter((decision) => decision.generationId === latestGenerationId)
         .sort((a, b) => a.targetMuscleName.localeCompare(b.targetMuscleName))
     : [];
+  const currentPreviews = mesocycle && latestGenerationId && decisions.some(row => row.status === "SELECTED" && row.selectedOptionKey !== "KEEP_AS_IS")
+    ? await getCurrentProgrammingDecisionPreviews(mesocycle.id, latestGenerationId) : {};
   const summary = typeof storedAssessment?.globalSummary === "string"
     ? storedAssessment.globalSummary : decisions[0] ? globalSummary(decisions[0].context) : null;
   const bodyContext = typeof storedAssessment?.bodyCompositionContext === "string"
@@ -204,7 +210,7 @@ export default async function VolumeRecommendationsPage({
             ))}
           </div>
 
-          {decisions.length > 0 ? <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Approval-needed changes</h3> : null}
+          {decisions.length > 0 ? <div><h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Approval-needed changes</h3><p className="mt-2 text-xs leading-5 text-slate-500">You can work through these cards without rerunning the review. After each approval, remaining previews account for accepted changes and shared-muscle effects. Each change still needs your approval.</p></div> : null}
 
           <div className="space-y-3">
             {decisions.map((decision) => {
@@ -254,14 +260,20 @@ export default async function VolumeRecommendationsPage({
                   </details>
 
                   <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                    {options.map((option) => {
+                    {options.map((storedOption) => {
+                      const refreshed = currentPreviews[decision.id]?.[storedOption.optionKey];
+                      const recordedOption = readAppliedOption(decision.outcome);
+                      const appliedOption = recordedOption?.optionKey === storedOption.optionKey ? recordedOption : null;
+                      const option = appliedOption ?? refreshed?.option ?? storedOption;
                       const context = decision.context && typeof decision.context === "object" && !Array.isArray(decision.context) ? decision.context : {};
                       const previews = context.optionPreviews && typeof context.optionPreviews === "object" && !Array.isArray(context.optionPreviews) ? context.optionPreviews : {};
-                      const preview = T3PlanPreviewSchema.safeParse(previews[option.optionKey]);
+                      const actualOutcome = decision.outcome && typeof decision.outcome === "object" && !Array.isArray(decision.outcome) ? decision.outcome : {};
+                      const covered = actualOutcome.coveredOptionKey === option.optionKey;
+                      const preview = T3PlanPreviewSchema.safeParse(appliedOption ? actualOutcome.appliedPreview : refreshed ? refreshed.preview : previews[option.optionKey]);
                       const preferred =
                         decision.recommendedOptionKey === option.optionKey;
                       const isSelected =
-                        decision.selectedOptionKey === option.optionKey;
+                        decision.selectedOptionKey === option.optionKey || covered;
                       return (
                         <div
                           key={option.optionKey}
@@ -290,9 +302,9 @@ export default async function VolumeRecommendationsPage({
                           </div>
 
                           <p className="mt-2 text-xs font-medium text-slate-300">
-                            {label(option.action)} · {signedSets(option.deltaWeeklySets)} sets/wk
+                            {covered ? `Current dose accepted · ${String(actualOutcome.coveredDose)} effective sets/wk` : refreshed?.status === "SATISFIED" ? "No additional change needed" : <>{label(option.action)} · {signedSets(option.deltaWeeklySets)} sets/wk</>}
                           </p>
-                          {option.movementChanges.length > 0 ? (
+                          {option.movementChanges.length > 0 && refreshed?.status !== "SATISFIED" ? (
                             <div className="mt-2 space-y-1 text-xs text-slate-400">
                               {option.movementChanges.map((movement) => (
                                 <p key={movement.movementPatternId}>
@@ -309,19 +321,22 @@ export default async function VolumeRecommendationsPage({
                             {decision.status === "PENDING" ? " Approve sufficient supporting reductions first; previously accepted reductions can count while still in place." : " Supporting reductions and available capacity were checked at approval."}
                             {" This trial does not change the recipient's priority or establish a new maintenance requirement."}
                           </p> : null}
+                          {refreshed?.note ? <p role="status" className={`mt-3 rounded-lg border p-2 text-xs leading-5 ${refreshed.status === "SATISFIED" ? "border-emerald-400/20 text-emerald-200" : "border-sky-400/20 text-sky-200"}`}>{refreshed.note}</p> : null}
                           {preview.success ? <div className="mt-3 space-y-1 text-xs text-slate-300">
-                            <p className="font-semibold">Changes if approved{preview.data.implementationKind === "MESOCYCLE_STRUCTURE" ? " · this mesocycle" : ""}</p>
+                            <p className="font-semibold">{isSelected ? "Applied changes" : "Changes if approved"}{preview.data.implementationKind === "MESOCYCLE_STRUCTURE" ? " · this mesocycle" : ""}</p>
                             {preview.data.slots.map((slot) => <p key={slot.id}>{slot.template} · {slot.exercise}: {slot.before} → {slot.after} sets{slot.before === 0 ? " · add slot" : slot.after === 0 ? " · remove slot" : ""}</p>)}
                             {preview.data.muscles.map((muscle) => <p key={muscle.muscleId}>{muscle.name}: {muscle.before} → {muscle.after} effective sets/week</p>)}
                             <p className="text-slate-500">Later reviews assess this change using your logged response across comparable exposures.</p>
                             <p className="text-slate-500">Physical changes follow workout repeat frequency and may differ from the requested effective-set increment. Secondary effects are included above. These edits apply to this mesocycle; base templates and already approved weekly workouts are not overwritten.</p>
-                          </div> : <p className="mt-2 text-xs text-amber-200">Run a new volume review to preview this older option.</p>}
+                          </div> : !refreshed && !covered ? <p className="mt-2 text-xs text-amber-200">Run a new volume review to preview this older option.</p> : null}
 
                           {!selected ? (
                             <form
                               action={selectAdvisorProgrammingDecisionAction}
                               className="mt-3"
                             >
+                              {refreshed?.status === "SATISFIED" ? <><input type="hidden" name="coveredOptionKey" value={option.optionKey} /><input type="hidden" name="coveredDose" value={refreshed.coveredDose} /></> : null}
+                              {preview.success ? <input type="hidden" name="previewSignature" value={t3PreviewEffectsSignature(preview.data)} /> : null}
                               <input
                                 type="hidden"
                                 name="decisionId"
@@ -330,16 +345,16 @@ export default async function VolumeRecommendationsPage({
                               <input
                                 type="hidden"
                                 name="selectionKey"
-                                value={option.optionKey}
+                                value={refreshed?.status === "SATISFIED" ? "KEEP_AS_IS" : option.optionKey}
                               />
                               <Button
                                 type="submit"
                                 variant="secondary"
                                 pendingText="Applying…"
-                                disabled={!preview.success}
+                                disabled={!preview.success && refreshed?.status !== "SATISFIED"}
                                 className="min-h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs font-semibold text-slate-200 transition hover:border-orange-400/40 hover:text-orange-200"
                               >
-                                Approve this change
+                                {refreshed?.status === "SATISFIED" ? "Accept current dose" : refreshed?.status === "BLOCKED" ? "Currently unavailable" : "Approve this change"}
                               </Button>
                             </form>
                           ) : null}
@@ -404,7 +419,7 @@ export default async function VolumeRecommendationsPage({
 
                   {selected ? (
                     <p className="mt-3 text-xs leading-5 text-emerald-300">
-                      Selection recorded. A chosen dose change updates this mesocycle’s coach target; structural slot changes remain approval-gated.
+                      Selection recorded. Accepted dose and slot changes apply to this mesocycle. Remaining cards use the updated prescription.
                     </p>
                   ) : null}
                 </Card>

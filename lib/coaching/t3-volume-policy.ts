@@ -66,6 +66,8 @@ export function shouldRunT3Evaluation(args: {
 export function nextT3CoachTarget(args: {
   current: number;
   delta: number;
+  // Application-only remaining dose after an accepted overlapping change.
+  allowFractionalDelta?: boolean;
   minimum: number;
   maximum: number;
   priority: T3MusclePriority;
@@ -73,7 +75,7 @@ export function nextT3CoachTarget(args: {
   status?: string;
 }) {
   const limits = t3StepLimits(args.current, args.confidence, args.status);
-  if (!Number.isFinite(args.current) || args.current < 0 || !Number.isInteger(args.delta) || args.delta > limits.increase || -args.delta > limits.decrease) {
+  if (!Number.isFinite(args.current) || args.current < 0 || (!Number.isInteger(args.delta) && !args.allowFractionalDelta) || !Number.isFinite(args.delta) || args.delta > limits.increase || -args.delta > limits.decrease) {
     throw new Error("This dose change exceeds the staged adjustment allowed by its evidence and current dose.");
   }
   if (args.priority === "INDIRECT_ONLY" && args.delta > 0) {

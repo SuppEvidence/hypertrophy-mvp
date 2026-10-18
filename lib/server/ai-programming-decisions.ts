@@ -1,5 +1,7 @@
 "use server";
 
+import { refreshT3Option, readAppliedOption, type RefreshedT3Option } from "@/lib/coaching/t3-decision-refresh";
+
 import { getNutritionTrainingContext } from "./nutrition-context";
 
 import { approvedDesignContext, designExcludedExerciseIds } from "@/lib/mesocycle-design/handoff";
@@ -77,7 +79,7 @@ function painApprovalsFromRows(rows: Array<{ targetMuscleId: string | null; sele
     const evidence = PainOpportunityEvidenceSchema.safeParse(snapshot.painOpportunityEvidence);
     const assessment = T3MuscleAssessmentSchema.safeParse(snapshot.assessment);
     return [{ muscleId: row.targetMuscleId, selectedAt: row.selectedAt,
-      option: options.success ? options.data.find((o) => o.optionKey === row.selectedOptionKey) ?? null : null,
+      option: readAppliedOption(row.outcome) ?? (options.success ? options.data.find((o) => o.optionKey === row.selectedOptionKey) ?? null : null),
       preview: readAppliedPreview(row.outcome)[0] ?? null,
       sourceEvidence: evidence.success && assessment.success && assessment.data.status === "RECOVERABILITY_CONCERN" ? evidence.data : null }];
   });
@@ -720,6 +722,7 @@ async function buildProgrammingContext(userId: string) {
     aiPreferred: decision.recommendedOptionKey,
     userSelected: decision.selectedOptionKey,
     optionalUserReason: decision.selectionReason,
+    appliedSelection: readAppliedOption(decision.outcome),
     implementationRecord: decision.outcome,
   }));
   const followUps = await prisma.coachingIntervention.findMany({
@@ -1230,6 +1233,63 @@ export async function generateProgrammingRecommendationsAction() {
   revalidatePath("/ai-analysis");
 }
 
+/** Refresh application previews from saved coaching intent; never runs a model. */
+export async function getCurrentProgrammingDecisionPreviews(mesocycleId: string, generationId: string) {
+  const userId = await requireUserId();
+  const prisma = getUserExercisePrisma(userId);
+  const result: Record<string, Record<string, RefreshedT3Option>> = {};
+  const records = await prisma.aiProgrammingDecision.findMany({ where: { userId, mesocycleId, generationId,
+    decisionType: "T3_MUSCLE_VOLUME", status: { in: ["PENDING", "SELECTED"] } },
+    select: { id: true, status: true, selectedOptionKey: true, options: true, targetMuscleId: true, context: true } });
+  if (!records.some(row => row.status === "PENDING") || !records.some(row => row.status === "SELECTED" && row.selectedOptionKey !== "KEEP_AS_IS")) return result;
+  const block = await prisma.programMesocycle.findFirst({ where: { id: mesocycleId, userId, isArchived: false, actualEndDate: null },
+    select: { programId: true, t3Assessment: true, musclePriorities: { select: { muscleId: true, priority: true, coachTargetWeeklySets: true, rangeMinimumSets: true, rangeMaximumSets: true } } } });
+  if (!block) return result;
+  const prescription = await buildProgramPrescription(block.programId, userId, { mesocycleId, includeWeeklyPlan: false });
+  if (!prescription) return result;
+  const previous = await prisma.aiProgrammingDecision.findMany({ where: { userId, mesocycleId, status: "SELECTED",
+    selectedAt: { gte: new Date(Date.now() - 7 * DAY_MS) } },
+    select: { outcome: true, context: true, options: true, selectedOptionKey: true, selectedAt: true, targetMuscleId: true } });
+  const review = ProgrammingRecommendationsSchema.pick({ assessments: true }).safeParse(block.t3Assessment);
+  const targets = new Map(block.musclePriorities.map(row => [row.muscleId, { priority: row.priority,
+    target: Number(row.coachTargetWeeklySets), minimum: Number(row.rangeMinimumSets), maximum: Number(row.rangeMaximumSets) }]));
+  for (const decision of records.filter(row => row.status === "PENDING")) {
+    const snapshot = decision.context && typeof decision.context === "object" && !Array.isArray(decision.context) ? decision.context : {};
+    const assessment = T3MuscleAssessmentSchema.safeParse(snapshot.assessment);
+    const options = StoredProgrammingOptionsSchema.safeParse(decision.options);
+    const previews = snapshot.optionPreviews && typeof snapshot.optionPreviews === "object" && !Array.isArray(snapshot.optionPreviews) ? snapshot.optionPreviews : {};
+    result[decision.id] = {};
+    if (!options.success) continue;
+    for (const option of options.data) {
+      const reviewed = T3PlanPreviewSchema.safeParse(previews[option.optionKey]);
+      let current: RefreshedT3Option = { status: "BLOCKED", option, preview: null, note: "This older option needs a new volume review." };
+      if (assessment.success && reviewed.success && reviewed.data.implementationKind === "MESOCYCLE_STRUCTURE") {
+        current = refreshT3Option(prescription.generationInput, decision.targetMuscleId!, option, reviewed.data, assessment.data.confidence, assessment.data.status,
+          assessment.data.status === "RECOVERABILITY_CONCERN" && PainOpportunityEvidenceSchema.safeParse(snapshot.painOpportunityEvidence).success &&
+          (PainOpportunityEvidenceSchema.parse(snapshot.painOpportunityEvidence).sourceMuscleIds.includes(decision.targetMuscleId!)));
+        try {
+          if (targets.get(decision.targetMuscleId!)?.priority !== assessment.data.priority) throw new Error("This muscle’s priority changed. Request a new review.");
+          if (current.status === "READY" && current.preview) {
+            assertT3WeeklyBudget(current.preview, previous.flatMap(row => readAppliedPreview(row.outcome)));
+            if (review.success) assertT3PriorityEffects(current.preview.muscles, decision.targetMuscleId!, review.data, { targetByMuscle: targets });
+            const target = targets.get(decision.targetMuscleId!);
+            if (target) nextT3CoachTarget({ current: (prescription.generated.volumeRows.find(row => row.muscleId === decision.targetMuscleId)?.planned ?? 0) * 7 / prescription.generationInput.program.volumeWindowDays, delta: current.option.deltaWeeklySets, minimum: target.minimum,
+              maximum: target.maximum, allowFractionalDelta: true, priority: target.priority, confidence: assessment.data.confidence, status: assessment.data.status });
+            if (option.painOpportunity) {
+              const doses = new Map(prescription.generated.volumeRows.map(row => [row.muscleId, row.planned * 7 / prescription.generationInput.program.volumeWindowDays]));
+              assertPainOpportunityApprovedCapacity(current.option, current.preview, painApprovalsFromRows(previous), doses, painOpportunitySlotCounts(prescription.generated.items));
+            }
+          }
+        } catch (error) {
+          current = { status: "BLOCKED", option: current.option, preview: null, note: error instanceof Error ? error.message : "The remaining change is currently unavailable." };
+        }
+      }
+      result[decision.id][option.optionKey] = current;
+    }
+  }
+  return result;
+}
+
 export async function selectProgrammingDecisionAction(formData: FormData) {
   const userId = await requireUserId();
   const prisma = getUserExercisePrisma(userId);
@@ -1244,6 +1304,7 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
     where: { id: decisionId, userId },
     select: {
       id: true,
+      generationId: true,
       options: true,
       status: true,
       mesocycleId: true,
@@ -1281,11 +1342,15 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
   }
 
   if (!decision.mesocycleId) throw new Error("T3 decision has no mesocycle.");
-  const selectedOption = parsedOptions.data.find(
+  let selectedOption = parsedOptions.data.find(
     (option) => option.optionKey === selectionKey,
   );
+  const reviewState = activeBlock.t3Assessment && typeof activeBlock.t3Assessment === "object" && !Array.isArray(activeBlock.t3Assessment) ? activeBlock.t3Assessment : {};
+  if (reviewState.generationId !== decision.generationId) throw new Error("A newer volume review is available. Refresh this page.");
+  const coveredOptionKey = String(formData.get("coveredOptionKey") ?? "");
+  if (coveredOptionKey && selectionKey !== "KEEP_AS_IS") throw new Error("Invalid covered-dose selection.");
   const selectedAt = new Date();
-  const prescription = selectedOption?.movementChanges.length
+  const prescription = selectedOption?.movementChanges.length || coveredOptionKey
     ? await buildProgramPrescription(activeBlock.programId, userId, {
         mesocycleId: decision.mesocycleId,
         includeWeeklyPlan: false,
@@ -1297,9 +1362,41 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
   const previews = snapshot.optionPreviews && typeof snapshot.optionPreviews === "object" && !Array.isArray(snapshot.optionPreviews) ? snapshot.optionPreviews : {};
   const approvedPreview = T3PlanPreviewSchema.safeParse(previews[selectionKey]);
   let appliedPreview: T3PlanPreview | null = null;
+  let rebasedOption = false;
   let currentPainEvidence: ReturnType<typeof buildPainOpportunityEvidence> | null = null;
+  let coveredOption: typeof selectedOption = undefined;
+  let coveredDose: number | null = null;
+  if (coveredOptionKey) {
+    const original = parsedOptions.data.find(option => option.optionKey === coveredOptionKey);
+    const originalPreview = T3PlanPreviewSchema.safeParse(previews[coveredOptionKey]);
+    const priority = activeBlock.musclePriorities.find(row => row.muscleId === decision.targetMuscleId);
+    const sibling = await prisma.aiProgrammingDecision.findFirst({ where: { userId, mesocycleId: decision.mesocycleId,
+      generationId: decision.generationId, status: "SELECTED", selectedOptionKey: { not: "KEEP_AS_IS" } }, select: { id: true } });
+    if (!sibling || !original || !originalPreview.success || !prescription || !assessment.success || priority?.priority !== assessment.data.priority) throw new Error("Refresh the remaining decisions before accepting the current dose.");
+    const pain = PainOpportunityEvidenceSchema.safeParse(snapshot.painOpportunityEvidence);
+    const current = refreshT3Option(prescription.generationInput, decision.targetMuscleId!, original, originalPreview.data,
+      assessment.data.confidence, assessment.data.status, assessment.data.status === "RECOVERABILITY_CONCERN" && pain.success && pain.data.sourceMuscleIds.includes(decision.targetMuscleId!));
+    if (current.status !== "SATISFIED" || current.coveredDose === undefined || Number(formData.get("coveredDose")) !== current.coveredDose) throw new Error("The current dose changed. Refresh the volume page before accepting it.");
+    coveredDose = current.coveredDose;
+    coveredOption = { ...original, title: "Accept current dose", deltaWeeklySets: 0, movementChanges: [] };
+  }
   if (selectedOption) {
     if (!prescription || !assessment.success || !approvedPreview.success || approvedPreview.data.implementationKind !== "MESOCYCLE_STRUCTURE") throw new Error("This older recommendation needs a new T3 review before it can be applied.");
+    const displayedSignature = String(formData.get("previewSignature") ?? "");
+    if (displayedSignature) {
+      const sibling = await prisma.aiProgrammingDecision.findFirst({ where: { userId, mesocycleId: decision.mesocycleId,
+        generationId: decision.generationId, status: "SELECTED", selectedOptionKey: { not: "KEEP_AS_IS" } }, select: { id: true } });
+      if (sibling) {
+        const refreshed = refreshT3Option(prescription.generationInput, decision.targetMuscleId!, selectedOption,
+          approvedPreview.data, assessment.data.confidence, assessment.data.status,
+          assessment.data.status === "RECOVERABILITY_CONCERN" && PainOpportunityEvidenceSchema.safeParse(snapshot.painOpportunityEvidence).success &&
+          (PainOpportunityEvidenceSchema.parse(snapshot.painOpportunityEvidence).sourceMuscleIds.includes(decision.targetMuscleId!)));
+        if (refreshed.status !== "READY" || !refreshed.preview) throw new Error(refreshed.note ?? "Refresh the remaining options.");
+        selectedOption = refreshed.option;
+        rebasedOption = true;
+        appliedPreview = refreshed.preview;
+      }
+    }
     const currentPriority = activeBlock.musclePriorities.find((row) => row.muscleId === decision.targetMuscleId);
     if (!currentPriority || currentPriority.priority !== assessment.data.priority) throw new Error("This muscle's priority changed. Run a new T3 review before applying the old option.");
     if (currentPriority.priority === "MAINTAIN" && selectedOption.action === "INCREASE_VOLUME" && !selectedOption.painOpportunity &&
@@ -1307,7 +1404,7 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
          assessment.data.status !== "BELOW_EXPECTED_RESPONSE" || assessment.data.confidence === "LOW" || !assessment.data.evidence.some((row) => row.trim()))) {
       throw new Error("This maintenance increase needs a new review establishing a preservation concern.");
     }
-    appliedPreview = previewT3Prescription(prescription.generationInput, decision.targetMuscleId, selectedOption, assessment.data.confidence, assessment.data.status, approvedPreview.data.slots);
+    appliedPreview ??= previewT3Prescription(prescription.generationInput, decision.targetMuscleId, selectedOption, assessment.data.confidence, assessment.data.status, approvedPreview.data.slots);
     if (selectedOption.painOpportunity) {
       const [history, metrics] = await Promise.all([
         loadCoachingHistory(userId, null, new Date(Date.now() - 21 * DAY_MS)),
@@ -1328,7 +1425,7 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
       targetByMuscle: new Map(activeBlock.musclePriorities.map((row) => [row.muscleId, { priority: row.priority,
         target: Number(row.coachTargetWeeklySets), minimum: Number(row.rangeMinimumSets), maximum: Number(row.rangeMaximumSets) }])),
     });
-    if (t3PreviewEffectsSignature(appliedPreview) !== t3PreviewEffectsSignature(approvedPreview.data)) throw new Error("The prescription has changed since this option was reviewed. Run a new review to see its current effect before approving it.");
+    if (t3PreviewEffectsSignature(appliedPreview) !== (displayedSignature || t3PreviewEffectsSignature(approvedPreview.data))) throw new Error("The prescription changed after this page was loaded. Refresh the volume page to see the remaining changes before approving.");
   }
 
   await prisma.$transaction(async (tx) => {
@@ -1359,7 +1456,7 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
         selectionReason: selectionReason || null,
         selectedAt,
         status: "SELECTED",
-        ...(appliedPreview ? { outcome: { appliedPreview } as unknown as Prisma.InputJsonValue } : {}),
+        ...(appliedPreview ? { outcome: { appliedPreview, appliedOption: selectedOption } as unknown as Prisma.InputJsonValue } : coveredOption ? { outcome: { appliedOption: coveredOption, coveredDose, coveredOptionKey } as unknown as Prisma.InputJsonValue } : {}),
       },
     });
     if (claimed.count !== 1) throw new Error("This T3 decision was already handled.");
@@ -1367,8 +1464,8 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
     await tx.coachingIntervention.create({ data: {
       userId, programId: activeBlock.programId, mesocycleId: decision.mesocycleId,
       sourceDecisionId: decision.id, stage: "T3_VOLUME",
-      status: selectedOption ? "ACCEPTED" : "DECLINED", decidedAt: selectedAt,
-      proposal: { selectedOptionKey: selectionKey, selectedOption: selectedOption ?? null,
+      status: selectedOption || coveredOption ? "ACCEPTED" : "DECLINED", decidedAt: selectedAt,
+      proposal: { selectedOptionKey: selectionKey, selectedOption: selectedOption ?? coveredOption ?? null, coveredDose,
         appliedPreview: appliedPreview ?? null } as unknown as Prisma.InputJsonValue,
       baseline: { muscle: snapshot.muscle ?? null, assessment: assessment.success ? assessment.data : null,
         bodyCompositionContext: snapshot.bodyCompositionContext ?? null } as unknown as Prisma.InputJsonValue,
@@ -1385,8 +1482,9 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
       });
       if (!priority) throw new Error("T3 muscle priority is no longer available.");
       const nextTarget = nextT3CoachTarget({
-        current: Number(priority.coachTargetWeeklySets),
+        current: rebasedOption && prescription ? (prescription.generated.volumeRows.find(row => row.muscleId === decision.targetMuscleId)?.planned ?? 0) * 7 / prescription.generationInput.program.volumeWindowDays : Number(priority.coachTargetWeeklySets),
         delta: selectedOption.deltaWeeklySets,
+        allowFractionalDelta: rebasedOption,
         minimum: Number(priority.rangeMinimumSets),
         maximum: Number(priority.rangeMaximumSets),
         priority: priority.priority,
@@ -1419,6 +1517,11 @@ export async function selectProgrammingDecisionAction(formData: FormData) {
           update: { targetSets: movement.targetSets },
         });
       }
+    }
+
+    if (coveredDose !== null) {
+      await tx.mesocycleMusclePriority.update({ where: { mesocycleId_muscleId: { mesocycleId: decision.mesocycleId!, muscleId: decision.targetMuscleId } },
+        data: { coachTargetWeeklySets: Number(coveredDose.toFixed(1)), lastAdjustedAt: selectedAt, coachingStatus: "USER_APPROVED_CHANGE" } });
     }
 
   }, { timeout: 15_000 });

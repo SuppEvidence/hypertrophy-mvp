@@ -1,26 +1,20 @@
-Weekly planner early unlock — 18 October 2026
+Volume coach remaining-decision refresh patch
 
-Base: 6aa59db (Dashboard update).
+Base: 76b3056 (deployed weekly planner availability update).
 
-Apply:
-Copy the included app, lib and scripts folders into the project root, merging folders and replacing matching files. Then run:
+Merge the included app, lib, scripts and docs folders into your project root, replacing matching files.
 
+Run:
   npm run typecheck
-  node scripts/test-weekly-planner-access.mjs
-  node --import tsx scripts/test-weekly-planner-window.ts
+  node scripts/test-t3-decision-refresh-actions.mjs
   npm run build
 
-Commit/push as usual. No dependency install, Prisma migration, Supabase SQL or environment changes are needed.
+Then commit and push as usual.
 
-Behavior:
-The upcoming Monday-to-Sunday week becomes available as soon as every workout occurrence in the current week's approved allocation has a completed logged session. The planner then defaults to the upcoming week; the current week stays selectable. Generation, approval and editing all use the same server-side availability rule.
+No database migration, Supabase SQL, dependency installation or environment changes.
 
-Started/draft workouts, missed workouts, duplicate completions of a single occurrence and unrelated workouts do not count as completing the full plan. If no approved week exists, or some planned workouts remain incomplete, the existing Sunday 12:00 Helsinki opening still applies.
+Accepting one volume change now updates the remaining cards from the saved assessment and current accepted prescription, without another AI review. Partial overlap counts toward the existing goal. Already covered suggestions offer Accept current dose, aligning the approved target without editing more sets. Every change still requires approval.
 
-Upcoming workouts become active in Train on Monday. Early planning does not advance the logger's calendar week. Completion is checked again after coach generation before saving, so a changed completion state cannot silently bypass the gate. A stale open page may need refreshing after the final workout is completed.
+Refresh a volume page left open during deployment. Current pending suggestions can be used without generating a new review just to initialize this patch.
 
-AI and data:
-The unlock uses small, user/program/week-scoped reads of saved plan and completion metadata. It does not generate a plan or call AI automatically. Existing manual coaching triggers and approval remain in effect. No schema or permissions changes.
-
-Validation:
-Typecheck, production build, completion-access regressions, Helsinki calendar/DST/week-boundary tests and existing Train weekly recovery tests passed. Tests used mocks; no live database or Vercel deployment was changed.
+Full behavior, edge cases and verification: docs/volume-decision-refresh.md.
