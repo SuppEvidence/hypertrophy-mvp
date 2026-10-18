@@ -16,7 +16,7 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
   const monday = view ? new Date(`${view.weekStart}T00:00:00Z`) : new Date();
   return <div className="space-y-5">
     <Link href="/plan" className="text-sm font-semibold text-orange-300">← Plan</Link>
-    <PageHeader title="Weekly coach" description="Plan the selected week around its completed work. Next week opens Sundays at 12:00 Helsinki time; the coach runs only when requested." />
+    <PageHeader title="Weekly coach" description="Plan the selected week around its completed work. Next week opens once all this week’s planned workouts are completed, or Sunday at 12:00 Helsinki time; the coach runs only when requested." />
     {query.error ? <Card className="border-rose-500/30 text-sm text-rose-200">{query.error}<p className="mt-2 text-xs">The review did not replace your saved plan. Retry using the availability and constraints below.</p></Card> : null}
     {query.reviewed ? <Card className="border-sky-500/30 text-sm text-sky-200"><p role="status">Review complete. Inspect the proposal and weekly dose before approving.</p></Card> : null}
     {query.approved ? <Card className="border-emerald-500/30 text-sm text-emerald-200">{view?.isUpcoming ? "Upcoming week approved. Its workouts become available in the logger on Monday." : "Weekly plan approved. Start its scheduled workouts from the logger."}</Card> : null}
@@ -26,11 +26,11 @@ export default async function WeeklyCoachPage({ searchParams }: { searchParams: 
     {!view ? <Card>Activate a program to plan a week. <Link href="/programs" className="text-orange-300">Open programs</Link></Card> : <>
       <nav aria-label="Planning week" className="flex flex-wrap gap-2">
         <Link href={`/plan/week?week=${view.weekOptions.current}`} className={`rounded-xl border px-3 py-2 text-sm ${!view.isUpcoming ? "border-orange-500 text-orange-200" : "border-slate-700 text-slate-400"}`}>Current week · {view.weekOptions.current}</Link>
-        {view.weekOptions.nextAvailable ? <Link href={`/plan/week?week=${view.weekOptions.next}`} className={`rounded-xl border px-3 py-2 text-sm ${view.isUpcoming ? "border-orange-500 text-orange-200" : "border-slate-700 text-slate-400"}`}>Upcoming week · {view.weekOptions.next}</Link> : <span className="self-center text-xs text-slate-500">Upcoming week opens Sunday at 12:00 Helsinki time.</span>}
+        {view.weekOptions.nextAvailable ? <Link href={`/plan/week?week=${view.weekOptions.next}`} className={`rounded-xl border px-3 py-2 text-sm ${view.isUpcoming ? "border-orange-500 text-orange-200" : "border-slate-700 text-slate-400"}`}>Upcoming week · {view.weekOptions.next}</Link> : <span className="self-center text-xs text-slate-500">Upcoming week opens after all this week’s planned workouts are completed, or Sunday at 12:00 Helsinki time.</span>}
       </nav>
       <Card className="space-y-3">
         <h2 className="font-semibold text-slate-100">Week of {view.weekStart} · {view.program.name}</h2>
-        {view.isUpcoming ? <p className="text-sm text-sky-200">Planning ahead. This week&apos;s remaining workouts stay in the logger until Monday. Only work completed within the selected week counts toward its dose.</p> : null}
+        {view.isUpcoming ? <p className="text-sm text-sky-200">{view.weekOptions.currentWeekCompleted ? "All this week’s planned workouts are completed, so next week is available early. " : "Planning ahead. "}The upcoming plan becomes active in Train on Monday. Only work completed within the selected week counts toward its dose.</p> : null}
         <p className="text-sm text-slate-400">The coach preserves the established workout structure within this mesocycle, adjusting dose before changing exercises. Templates provide the starting framework when no approved week is available. Set your actual training availability and time limits. Exercise preferences, mesocycle priorities, recent workouts and metrics are read from the app.</p>
         {view.completedSessions.length ? <div className="text-sm text-slate-300"><p className="font-semibold text-slate-200">Already completed in this selected week</p>
           {view.completedSessions.map((session) => <p key={session.id}>{session.date} · {view.templates.find((row) => row.id === session.templateId)?.name ?? "Workout"} · {session.physicalSets} physical / {session.effectiveSets.toFixed(1)} effective sets</p>)}

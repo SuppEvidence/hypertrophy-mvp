@@ -1,5 +1,7 @@
 "use server";
 
+import { getWeeklyPlannerAccess } from "./weekly-planner-access";
+
 import { getNutritionTrainingContext } from "./nutrition-context";
 
 import { loadCompletedWeekSessions } from "@/lib/server/completed-week-evidence";
@@ -48,12 +50,24 @@ import { summarizeWeeklySetTypeEvidence } from "@/lib/coaching/weekly-set-type-e
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 
 
-function actionPlannerWeek(formData: FormData) {
+async function actionPlannerWeek(formData: FormData, userId: string, programId?: string) {
+  const now = new Date();
+  const requested = String(formData.get("weekStart") || coachedWeek(now).weekStart);
+  const calendar = plannerWeekOptions(now);
+  let completed = false;
+  if (requested === calendar.next && !calendar.nextAvailable) {
+    const prisma = getUserExercisePrisma(userId);
+    // Editing/approval must use the plan's own program, not a newly activated one.
+    const planId = String(formData.get("planId") || "");
+    const target = programId ? { programId } : planId
+      ? await prisma.weeklyCoachPlan.findFirst({ where: { id: planId, userId }, select: { programId: true } })
+      : null;
+    if (target) completed = (await getWeeklyPlannerAccess(userId, target.programId, now)).currentWeekCompleted;
+  }
   try {
-    // Older already-rendered forms without a week stay on the actual current week.
-    return resolvePlannerWeek(String(formData.get("weekStart") || coachedWeek().weekStart));
+    return resolvePlannerWeek(requested, now, completed);
   } catch {
-    redirect("/plan/week?error=Upcoming-week%20planning%20opens%20Sunday%20at%2012%3A00%20Helsinki%20time.");
+    redirect("/plan/week?error=" + encodeURIComponent("Upcoming-week planning opens when all current-week planned workouts are completed, or Sunday at 12:00 Helsinki time."));
   }
 }
 
@@ -126,9 +140,10 @@ export async function getWeeklyCoachView(requestedWeek?: string) {
   const prisma = getUserExercisePrisma(userId);
   const program = await prisma.program.findFirst({ where: { userId, isActive: true, isArchived: false }, select: { id: true, name: true } });
   if (!program) return null;
-  const options = plannerWeekOptions();
+  const now = new Date();
+  const options = await getWeeklyPlannerAccess(userId, program.id, now);
   const allowed = requestedWeek === options.current || (options.nextAvailable && requestedWeek === options.next);
-  const week = resolvePlannerWeek(allowed ? requestedWeek : undefined);
+  const week = resolvePlannerWeek(allowed ? requestedWeek : undefined, now, options.currentWeekCompleted);
   const weekStart = week.dbWeekStart;
   const [record, prescription, sessions, actualBaseline] = await Promise.all([
     prisma.weeklyCoachPlan.findUnique({ where: { programId_weekStart: { programId: program.id, weekStart } } }),
@@ -210,7 +225,7 @@ export async function generateWeeklyCoachAction(formData: FormData) {
   const prisma = getUserExercisePrisma(userId);
   const program = await prisma.program.findFirst({ where: { userId, isActive: true, isArchived: false }, select: { id: true } });
   if (!program) redirect("/programs");
-  const week = actionPlannerWeek(formData);
+  const week = await actionPlannerWeek(formData, userId, program.id);
   const weekStart = week.dbWeekStart;
   const weekStartText = week.weekStart;
   const constraints = String(formData.get("constraints") ?? "").trim().slice(0, 1000);
@@ -385,8 +400,11 @@ Plan the remaining hypertrophy workouts for this week. Completed sessions are fi
       day.items.some((item) => item.exerciseId === change.toExerciseId)));
     if (gaps.length) plan.summary = `${plan.summary} Dose reconciliation: ${gaps.join(" ")}`.slice(0, 1800);
     if (!validation.ok) throw new Error(`The proposed week did not pass validation: ${validation.errors[0]}`);
-    // Recheck the pinned week if the request crosses midnight or the Sunday gate.
-    resolvePlannerWeek(week.weekStart);
+    // Recheck completion as well as the calendar after the AI request.
+    const accessNow = new Date();
+    const access = week.weekStart === plannerWeekOptions(accessNow).next
+      ? await getWeeklyPlannerAccess(userId, program.id, accessNow) : null;
+    resolvePlannerWeek(week.weekStart, accessNow, access?.currentWeekCompleted ?? false);
     if (!canReviewWithSessions(await currentWeekSessions(userId, program.id, week)) ||
       (await currentCompletedBaseline(userId, week)).signature !== baseline.signature) {
       throw new Error("The completed workouts or planning week changed during review. Run the weekly review again.");
@@ -433,7 +451,7 @@ export async function approveWeeklyCoachAction(formData: FormData) {
   const userId = await requireUserId();
   const prisma = getUserExercisePrisma(userId);
   const id = String(formData.get("planId") ?? "");
-  const week = actionPlannerWeek(formData);
+  const week = await actionPlannerWeek(formData, userId);
   const record = await prisma.weeklyCoachPlan.findFirst({ where: { id, userId, weekStart: week.dbWeekStart, status: "PROPOSED" } });
   if (!record || !parseWeeklyCoachPlan(record.proposal)) redirect(plannerUrl(week.weekStart, "error=Review%20the%20week%20again."));
   const savedBaseline = parseCompletedBaseline(record.completedBaseline);
@@ -472,7 +490,7 @@ export async function approveWeeklyCoachAction(formData: FormData) {
 export async function replaceWeeklyPlanExerciseAction(formData: FormData) {
   const userId = await requireUserId();
   const prisma = getUserExercisePrisma(userId);
-  const week = actionPlannerWeek(formData);
+  const week = await actionPlannerWeek(formData, userId);
   const record = await prisma.weeklyCoachPlan.findFirst({ where: { id: String(formData.get("planId") ?? ""), userId,
     status: "PROPOSED", weekStart: week.dbWeekStart } });
   const plan = record && parseWeeklyCoachPlan(record.proposal);
@@ -529,7 +547,7 @@ export async function replaceWeeklyPlanExerciseAction(formData: FormData) {
 export async function editWeeklyPlanSetsAction(formData: FormData) {
   const userId = await requireUserId();
   const prisma = getUserExercisePrisma(userId);
-  const week = actionPlannerWeek(formData);
+  const week = await actionPlannerWeek(formData, userId);
   const record = await prisma.weeklyCoachPlan.findFirst({ where: { id: String(formData.get("planId") ?? ""), userId,
     status: "PROPOSED", weekStart: week.dbWeekStart } });
   const plan = record && parseWeeklyCoachPlan(record.proposal);
@@ -582,7 +600,7 @@ export async function editWeeklyPlanSetsAction(formData: FormData) {
 export async function markWeeklyOccurrenceMissedAction(formData: FormData) {
   const userId = await requireUserId();
   const prisma = getUserExercisePrisma(userId);
-  const week = actionPlannerWeek(formData);
+  const week = await actionPlannerWeek(formData, userId);
   const record = await prisma.weeklyCoachPlan.findFirst({ where: { id: String(formData.get("planId") ?? ""), userId, status: "APPROVED", weekStart: week.dbWeekStart } });
   const plan = record && parseWeeklyCoachPlan(record.proposal);
   const occurrenceId = String(formData.get("occurrenceId") ?? "");

@@ -38,3 +38,14 @@ assert.equal(plannerWeekOptions(new Date("2027-01-03T10:00:00Z")).defaultWeek, "
 assert.equal(plannerWeekOptions(new Date("2027-03-28T08:59:59Z")).nextAvailable, false);
 assert.equal(plannerWeekOptions(new Date("2027-03-28T09:00:00Z")).defaultWeek, "2027-03-29");
 console.log("Planner Sunday-noon gate, pinned week, Helsinki DST and logger isolation passed.");
+
+// Finishing all approved occurrences opens the following week before Sunday.
+const friday = new Date("2026-10-16T15:00:00Z");
+assert.equal(plannerWeekOptions(friday).nextAvailable, false);
+assert.equal(plannerWeekOptions(friday, true).defaultWeek, "2026-10-19");
+assert.equal(resolvePlannerWeek(undefined, friday, true).weekStart, "2026-10-19");
+assert.equal(resolvePlannerWeek("2026-10-12", friday, true).isUpcoming, false);
+assert.equal(resolvePlannerWeek("2026-10-19", friday, true).today, "2026-10-16");
+assert.throws(() => resolvePlannerWeek("2026-10-26", friday, true), "Completion opens only the immediately following week");
+assert.equal(coachedWeek(friday).weekStart, "2026-10-12", "Early planning never advances the logger");
+console.log("Early completion unlock and current-week logger isolation passed.");
