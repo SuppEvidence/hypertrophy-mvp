@@ -1,20 +1,21 @@
-Weekly planner workout-position fix
+Workout logger focus patch
 
-Base: c3961b8 (Volume coach card update).
+Base: 968c991 (Weekly slot reference fix).
 
-Merge the included app, lib, scripts and docs folders into the project root, replacing matching files.
+Merge the included app, components, lib, scripts and docs folders into the project root, replacing matching files.
 
 Run:
   npm run typecheck
-  node --import tsx scripts/test-weekly-slot-references.ts
+  node scripts/test-workout-exercise-guidance.mjs
+  node scripts/test-train-weekly-recovery.mjs
   npm run build
 
-Commit and push as usual. No dependency installation, database migration, Supabase SQL or environment changes.
+Then commit and push as usual. Refresh an open Train page after deployment.
 
-After deployment, refresh the planner and run the failed review once again. That failed proposal was not saved. The repair itself makes no additional AI call.
+No dependency installation, database migration, Supabase SQL, profile reanalysis or environment changes.
 
-The patch reconnects stale/malformed workout-position references to the selected active exercise without changing the exercise, sets, set types or schedule. Existing drafts are repaired during normal approval as well. Unsupported/unavailable exercises and other invalid work still fail validation.
+Active sessions now focus on exercise names and logging. Saved setup/execution guidance is expandable per exercise. Planning selectors stay before session start; exercise changes, notes and totals are folded. Existing logging variables, timing, pain, filmed/execution tracking and live coaching remain available.
 
-Remaining validation errors identify the date and exercise where available. The error panel displays up to three distinct problems on separate lines, with a longer readable message.
+Opening guidance makes no AI call. It uses saved accepted profile information and suppresses stale/unaccepted execution advice.
 
-Full details and verification: docs/weekly-slot-reference-fix.md.
+Full details and verification: docs/workout-logger-focus.md.

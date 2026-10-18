@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import Module from 'node:module';
+import path from 'node:path';
+import {build} from 'esbuild';
+let rows=[],calls=[];
+globalThis.__guidanceDB={exercise:{findMany:async args=>{calls.push(args);return rows;}}};
+const result=await build({stdin:{contents:`export * from './lib/workouts/exercise-guidance'; export * from './lib/server/workout-exercise-guidance'; export { mechanicsBasis } from './lib/coaching/exercise-mechanics';`,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',metafile:true,plugins:[{name:'boundaries',setup(b){
+ b.onResolve({filter:/^(server-only|\.\/effective-exercise-data)$/},({path})=>({path,namespace:'mock'}));
+ b.onLoad({filter:/.*/,namespace:'mock'},({path})=>({contents:path==='server-only'?'':'export const getUserExercisePrisma = () => globalThis.__guidanceDB;',loader:'js'}));
+}}]});
+assert(!Object.keys(result.metafile.inputs).some(p=>/lib\/ai\/openai|execution-analysis|exercise-analysis/.test(p)),'Reading guidance must not import analysis orchestration');
+const filename=path.resolve('scripts/workout-guidance-test.cjs');const mod=new Module(filename);mod.filename=filename;mod.paths=Module._nodeModulePaths(path.dirname(filename));mod._compile(result.outputFiles[0].text,filename);
+const {exerciseGuidance,getWorkoutExerciseGuidance,mechanicsBasis}=mod.exports;
+const statement={description:'Saved assessment',confidence:'HIGH'};
+const profile={summary:'Supported upper-chest press.',targets:[],movement:statement,resistanceProfile:{...statement,peak:'MID_RANGE'},muscleLengthExposure:statement,stabilityAndFatigue:statement,setTypeSuitability:statement,observedExecution:['Stable torso'],techniqueAdvice:['Keep the setup consistent.'],questions:[],limitations:['Video cannot measure muscle activation.']};
+const exercise={id:'exercise',name:'Incline press',setupNotes:'Seat setting 3',movementGroupId:'press',primaryMuscles:[],secondaryMuscles:[],coachingProfiles:[]};
+const envelope={version:1,source:'VIDEO_FRAMES',model:'saved-model',assessedAt:'2026-10-01T09:00:00Z',acceptedAt:'2026-10-01T09:05:00Z',basis:mechanicsBasis(exercise,'Neutral grip'),profile};
+const accepted={...exercise,coachingProfiles:[{executionSetup:'Neutral grip',mechanicsProfile:envelope}]};
+assert.equal(exerciseGuidance(accepted).status,'ACCEPTED');assert.deepEqual(exerciseGuidance(accepted).cues,['Keep the setup consistent.']);assert(exerciseGuidance(accepted).setup.includes('Seat setting 3'));
+assert.equal(exerciseGuidance({...accepted,name:'Changed exercise setup'}).status,'STALE');assert.deepEqual(exerciseGuidance({...accepted,name:'Changed exercise setup'}).cues,[],'Do not serve stale execution advice as current');
+assert.equal(exerciseGuidance({...accepted,coachingProfiles:[{...accepted.coachingProfiles[0],mechanicsProfile:{...envelope,acceptedAt:null}}]}).status,'MISSING','An unaccepted analysis must not become workout guidance');
+assert.equal(exerciseGuidance({...exercise,coachingProfiles:[]}).setup[0],'Seat setting 3');
+assert.deepEqual(await getWorkoutExerciseGuidance('user',[]),{});assert.equal(calls.length,0,'No session exercises means no extra reads');
+rows=[accepted];const loaded=await getWorkoutExerciseGuidance('user',['exercise','exercise']);
+assert.equal(loaded.exercise.status,'ACCEPTED');assert.deepEqual(calls[0].where.id.in,['exercise']);assert.deepEqual(calls[0].where.OR,[{userId:null},{userId:'user'}]);assert.equal(calls[0].select.coachingProfiles.where.userId,'user');assert.equal(calls[0].select.coachingProfiles.select.mechanicsProfile,true);assert(!calls[0].select.coachingProfiles.select.mechanicsDraft);
+assert(!JSON.stringify(loaded).includes('saved-model'),'Send useful guidance only, not full stored analyses/video evidence');
+assert.equal(calls[0].where.isArchived,undefined,'Authorized exercises already in a session retain guidance after archiving');
+console.log('Workout guidance: scoped batch reads, accepted setup/cues, stale/unaccepted suppression, empty-session reads and minimal output passed.');

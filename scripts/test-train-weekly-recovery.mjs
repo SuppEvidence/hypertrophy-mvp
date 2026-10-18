@@ -3,6 +3,7 @@ import { build } from 'esbuild';
 import Module from 'node:module';
 import path from 'node:path';
 const modules = {
+  '@/lib/server/workout-exercise-guidance': ['getWorkoutExerciseGuidance'],
   '@/lib/server/effective-exercise-data': ['getUserExercisePrisma'],
   '@/lib/server/exercise-catalog-policy': ['activeExerciseWhere'],
   'next/cache': ['revalidatePath'], 'next/navigation': ['redirect'], 'next/server': ['after'],
@@ -36,7 +37,7 @@ const template={id:'template',name:'Upper',sequenceIndex:0,weekday:5};
 const occurrence={id:'weekly',date:'2026-10-16',templateId:template.id,durationMinutes:60};
 let failure='';let previewCalls=0;let writes=0;const seen=[];
 const db={program:{findMany:async()=>[program]},exercise:{findMany:async()=>[]},setType:{findMany:async()=>[]},workoutSession:{findMany:async()=>[]},$transaction:async()=>{writes++;throw new Error('Unexpected write')}};
-globalThis.__trainMocks={getUserExercisePrisma:()=>db,requireUserId:async()=>program.userId,
+globalThis.__trainMocks={getWorkoutExerciseGuidance:async()=>({}),getUserExercisePrisma:()=>db,requireUserId:async()=>program.userId,
  activeExerciseWhere:()=>({}),ensureProgramTemplates:async()=>[template],
  readApprovedWeek:async()=>({distribution:{workouts:[occurrence]},missedIds:[],startedIds:[]}),
  helsinkiDate:()=>occurrence.date,rememberedTemplateExerciseChoices:async()=>new Map(),

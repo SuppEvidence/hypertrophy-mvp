@@ -1,5 +1,7 @@
 "use server";
 
+import { getWorkoutExerciseGuidance } from "@/lib/server/workout-exercise-guidance";
+
 import { WeeklyWorkoutUnavailableError } from "@/lib/coaching/weekly-workout-error";
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 
@@ -209,7 +211,7 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
   const activeSession = requestedSession?.status === "DRAFT" || requestedSession?.status === "COMPLETED" ? requestedSession : null;
   const hasUnfinishedSession = draftSessions.length > 0;
   const requestedWeeklyWorkoutMissing = !useProgramPrescription && Boolean(params?.occurrenceId) && !requestedOccurrence;
-  const [weightSuggestions, preview, previousTemplateChoices] = await Promise.all([
+  const [weightSuggestions, preview, previousTemplateChoices, exerciseGuidance] = await Promise.all([
     buildWeightSuggestionsForSession(activeSession, userId),
     selectedProgram && selectedTemplate && !activeSession && !requestedWeeklyWorkoutMissing
       ? getTemplatePrescription(selectedProgram.id, selectedTemplate.id, userId, selectedOccurrence?.id)
@@ -222,6 +224,7 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
     selectedProgram && selectedTemplate && !activeSession
       ? rememberedTemplateExerciseChoices(userId, selectedProgram.id, selectedTemplate.id)
       : Promise.resolve(new Map<string, RememberedExerciseChoice>()),
+    getWorkoutExerciseGuidance(userId, activeSession?.exercises.map(item => item.exerciseId) ?? []),
   ]);
 
   const selectedTemplatePrescription = preview.prescription;
@@ -242,6 +245,7 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
     activeSession,
     hasUnfinishedSession,
     weightSuggestions,
+    exerciseGuidance,
     selectedTemplatePrescription: selectedTemplatePrescription
       ? {
           mesocycleName: selectedTemplatePrescription.activeMesocycle?.name ?? null,

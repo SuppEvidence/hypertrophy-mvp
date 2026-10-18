@@ -4,8 +4,6 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronDown } from "lucide-react";
 
-import { ExercisePainLogger } from "@/components/workouts/ExercisePainLogger";
-
 export const WORKOUT_SET_COMPLETION_EVENT = "rfd-workout-set-completion";
 
 type CompletionDetail = {
@@ -35,7 +33,9 @@ export function ExerciseCollapseCard({
     [initialSets],
   );
   const completionState = useRef(initialState);
-  const initialCompletedCount = Array.from(initialState.values()).filter(Boolean).length;
+  const initialCompletedCount = Array.from(initialState.values()).filter(
+    Boolean,
+  ).length;
   const [completedCount, setCompletedCount] = useState(initialCompletedCount);
   const [isOpen, setIsOpen] = useState(
     !(initialSets.length > 0 && initialCompletedCount === initialSets.length),
@@ -45,9 +45,13 @@ export function ExerciseCollapseCard({
     completionState.current = new Map(
       initialSets.map((set) => [set.id, set.isCompleted]),
     );
-    const nextCompletedCount = initialSets.filter((set) => set.isCompleted).length;
+    const nextCompletedCount = initialSets.filter(
+      (set) => set.isCompleted,
+    ).length;
     setCompletedCount(nextCompletedCount);
-    setIsOpen(!(initialSets.length > 0 && nextCompletedCount === initialSets.length));
+    setIsOpen(
+      !(initialSets.length > 0 && nextCompletedCount === initialSets.length),
+    );
   }, [exerciseId, initialSets]);
 
   useEffect(() => {
@@ -66,7 +70,10 @@ export function ExerciseCollapseCard({
 
     window.addEventListener(WORKOUT_SET_COMPLETION_EVENT, handleCompletion);
     return () =>
-      window.removeEventListener(WORKOUT_SET_COMPLETION_EVENT, handleCompletion);
+      window.removeEventListener(
+        WORKOUT_SET_COMPLETION_EVENT,
+        handleCompletion,
+      );
   }, []);
 
   const allComplete =
@@ -90,7 +97,7 @@ export function ExerciseCollapseCard({
             {allComplete ? (
               <CheckCircle2 size={17} className="shrink-0 text-emerald-300" />
             ) : null}
-            <p className="truncate text-sm font-semibold text-slate-100">
+            <p className="break-words text-sm font-semibold text-slate-100">
               {title}
             </p>
           </div>
@@ -119,7 +126,6 @@ export function ExerciseCollapseCard({
         id={`exercise-panel-${exerciseId}`}
         className={isOpen ? "mt-3 block" : "hidden"}
       >
-        <ExercisePainLogger sessionExerciseId={exerciseId} />
         {children}
       </div>
     </section>
