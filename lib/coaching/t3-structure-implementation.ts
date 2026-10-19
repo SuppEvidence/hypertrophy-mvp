@@ -1,3 +1,4 @@
+import { resolveExerciseRepTargets } from "./exercise-rep-targets";
 import type { ProgrammingOption } from "../ai/programming-decision-schema";
 import type { GeneratedPrescriptionItem, GeneratorMovementExerciseDefault } from "../planning/mesocycleGenerator";
 import { parseMesocycleStructureOverrides, type MesocycleStructureAction } from "../planning/mesocycleStructure";
@@ -64,6 +65,10 @@ export function planT3Structure(input: T3PrescriptionInput, before: { items: Gen
             adjustmentReason: null, mesocycleAddedSetPlans: [], isMesocycleVirtualSlot: true, isMesocycleSuppressed: false,
             mesocycleStructureActionId: null,
           };
+          const targets = resolveExerciseRepTargets({ exerciseId: choice.exercise.exerciseId,
+            source: { exerciseId: source.exerciseId, minReps: source.prescribedMinReps,
+              maxReps: source.prescribedMaxReps, rirTarget: source.rirTarget },
+            defaultMinReps: choice.exercise.defaultMinReps, defaultMaxReps: choice.exercise.defaultMaxReps });
           const compound = t3ExerciseType(choice.exercise.movementGroupName) === "COMPOUND";
           const first = working.filter((row) => row.item.templateId === choice.template.id).map((row) => row.item.sortOrder);
           const item: GeneratedPrescriptionItem = { ...source, ...choice.exercise,
@@ -72,6 +77,8 @@ export function planT3Structure(input: T3PrescriptionInput, before: { items: Gen
             expectedOccurrences: choice.template.expectedOccurrences, adjustedPlannedSets: 0, plannedSets: 0,
             sortOrder: option.placementPreference === "EARLIER_IF_LOGICAL" ? Math.min(0, ...first) - 1 : Math.max(0, ...first) + 1,
             defaultSetTypeId: regular, defaultSetTypeMultiplier: multipliers.get(regular)!,
+            minReps: targets.minReps, maxReps: targets.maxReps,
+            prescribedMinReps: targets.minReps, prescribedMaxReps: targets.maxReps, rirTarget: targets.targetRir,
             slotRole: compound ? "SECONDARY" : "ISOLATION", repBucket: compound ? "SECONDARY_COMPOUND" : "ISOLATION" };
           working.push({ item, sourceId: null, types: [] });
           continue;

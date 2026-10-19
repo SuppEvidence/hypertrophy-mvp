@@ -79,8 +79,7 @@ export function canIntroduceSetType(exercise: CoachExercise, type: CoachSetType)
   if (exercise.preference === "AVOID" || exercise.intensifierPreference === "NONE") return false;
   if (exercise.intensifierPreference === "ONLY_SELECTED" && !exercise.allowedIntensifierIds?.includes(type.id)) return false;
   if (isEdtSetType(type) && (exercise.intensifierPreference !== "ONLY_SELECTED" || !exercise.allowedIntensifierIds?.includes(type.id))) return false;
-  return exercise.primaryMuscleIds.length === 1 && exercise.secondaryMuscleIds.length === 0 &&
-    Boolean(INTRODUCIBLE_INTENSIFIERS[exercise.movementGroupName.toLowerCase()]?.includes(isEdtSetType(type) ? "myo-reps" : type.slug));
+  return Boolean(INTRODUCIBLE_INTENSIFIERS[exercise.movementGroupName.toLowerCase()]?.includes(isEdtSetType(type) ? "myo-reps" : type.slug));
 }
 
 export function preWorkoutVolume(plan: Pick<PreWorkoutCoachModelPlan, "baseTemplateId" | "items">, slots: PreWorkoutSlotCandidate[], setTypes: CoachSetType[]) {
@@ -363,10 +362,20 @@ export function validatePreWorkoutPlan(plan: PreWorkoutCoachModelPlan, config: {
     if ((item.minReps === null) !== (item.maxReps === null) || (item.minReps !== null && item.maxReps !== null && item.minReps > item.maxReps)) {
       errors.push(`Invalid rep range for slot ${item.sourceSlotId}.`);
     }
-    if (slot.minReps === null || slot.maxReps === null) {
-      if (item.minReps !== null || item.maxReps !== null) errors.push(`A missing rep target cannot be invented for slot ${item.sourceSlotId}.`);
-    } else if (item.minReps === null || item.maxReps === null || Math.abs(item.minReps - slot.minReps) > 2 || Math.abs(item.maxReps - slot.maxReps) > 2) {
-      errors.push(`Rep adjustment is too large for slot ${item.sourceSlotId}.`);
+    const correction = item.repRangeCorrection;
+    const validCorrection = Boolean(correction && plan.decision === "ADJUST" && plan.confidence !== "LOW" &&
+      ["MECHANICS_OR_SETUP", "TOLERANCE", "USER_REQUEST"].includes(correction.basis) &&
+      correction.rationale.trim().length >= 12 && item.reason.trim().length >= 12 &&
+      (correction.basis !== "USER_REQUEST" || config.athleteConstraints?.trim()) &&
+      Number.isInteger(item.minReps) && Number.isInteger(item.maxReps) &&
+      item.minReps! >= 3 && item.maxReps! <= 30 && item.minReps! <= item.maxReps!);
+    if (correction && !validCorrection) errors.push(`Rep-range correction needs an explained ADJUST proposal with a valid range for slot ${item.sourceSlotId}.`);
+    if (!validCorrection) {
+      if (slot.minReps === null || slot.maxReps === null) {
+        if (item.minReps !== null || item.maxReps !== null) errors.push(`A missing rep target needs an explained correction for slot ${item.sourceSlotId}.`);
+      } else if (item.minReps === null || item.maxReps === null || Math.abs(item.minReps - slot.minReps) > 2 || Math.abs(item.maxReps - slot.maxReps) > 2) {
+        errors.push(`Rep adjustment is too large without an explained correction for slot ${item.sourceSlotId}.`);
+      }
     }
     if (slot.targetRir === null) {
       if (item.targetRir !== null) errors.push(`A missing RIR target cannot be invented for slot ${item.sourceSlotId}.`);

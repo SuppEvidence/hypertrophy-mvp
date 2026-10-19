@@ -370,10 +370,6 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
               sessionExerciseId: candidate.id,
               exerciseId: candidate.exerciseId,
               exerciseName: candidate.exercise.name,
-              derivedExerciseType:
-                candidate.exercise.secondaryMuscles.length > 0
-                  ? "COMPOUND"
-                  : "ISOLATION",
             })),
         },
       ]),
@@ -504,10 +500,6 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
       loggingMode: isOneOffAlternative(sessionExercise.exerciseChoiceIntent) ? "ONE_OFF_VOLUME_AND_RIR" : "STANDARD",
       exerciseMechanics: summarizeExerciseMechanics(sessionExercise.exercise.coachingProfiles[0]?.mechanicsProfile, mechanicsBasis(sessionExercise.exercise, sessionExercise.exercise.coachingProfiles[0]?.executionSetup ?? null)),
       movementPattern: sessionExercise.exercise.movementGroup.name,
-      derivedExerciseType:
-        sessionExercise.exercise.secondaryMuscles.length > 0
-          ? "COMPOUND"
-          : "ISOLATION",
       primaryMuscles: sessionExercise.exercise.primaryMuscles.map(
         (link) => link.muscle.name,
       ),
@@ -543,7 +535,6 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
       {
         exerciseId: string;
         exerciseName: string;
-        derivedExerciseType: "COMPOUND" | "ISOLATION";
         exposures: Array<{
           performedAt: string;
           sets: CompletedSet[];
@@ -555,10 +546,6 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
       const existing = byExercise.get(exposure.exerciseId) ?? {
         exerciseId: exposure.exerciseId,
         exerciseName: exposure.exercise.name,
-        derivedExerciseType:
-          exposure.exercise.secondaryMuscles.length > 0
-            ? ("COMPOUND" as const)
-            : ("ISOLATION" as const),
         exposures: [],
       };
 
@@ -595,7 +582,6 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
       return {
         exerciseId: exercise.exerciseId,
         exerciseName: exercise.exerciseName,
-        derivedExerciseType: exercise.derivedExerciseType,
         performanceExposureCount: exercise.exposures.length,
         decayComparableExposureCount: decayComparable.length,
         rirSupportedExposureCount,

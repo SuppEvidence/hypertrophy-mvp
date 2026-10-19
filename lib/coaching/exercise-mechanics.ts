@@ -1,3 +1,4 @@
+import { EXERCISE_PROGRAMMING_POLICY } from "@/lib/coaching/exercise-programming-policy";
 import { ONE_OFF_COACH_POLICY } from "@/lib/workouts/one-off-alternative";
 import { SHARED_MUSCLE_POLICY, resolveMuscleReference, muscleDefinition, type MuscleReference } from "@/lib/muscles/catalog";
 import { z } from "zod";
@@ -48,6 +49,7 @@ export function readMechanics(value: unknown): MechanicsEnvelope | null {
 
 export const EXERCISE_MECHANICS_POLICY = `
 ${ONE_OFF_COACH_POLICY}
+${EXERCISE_PROGRAMMING_POLICY}
 When approvedMesocycleDesign is supplied, preserve its goals, restrictions and progression intent. Current accepted priorities/prescriptions override baseline dose. T1 regulates the current exercise, T2 the session, volume coaching dose and weekly planning the week. Temporary adaptations never rewrite the baseline; propose material structure or duration changes for user review. Use success criteria and the review checkpoint to assess whether the block should continue, shorten or extend; never change dates automatically. Earlier-program exposures can inform tolerance and performance when comparable; never count them as work in a different mesocycle. Weekly completed-work budgets intentionally include all work actually done that week.${SHARED_MUSCLE_POLICY}
 
 EXERCISE COACHING PROFILES

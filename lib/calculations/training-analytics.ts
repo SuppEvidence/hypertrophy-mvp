@@ -1,4 +1,3 @@
-export type DerivedExerciseType = "COMPOUND" | "ISOLATION";
 export type EvidenceConfidence = "INSUFFICIENT" | "LOW" | "MODERATE" | "HIGH";
 export type Direction = "UP" | "STABLE" | "DOWN" | "UNKNOWN";
 
@@ -63,9 +62,6 @@ function mean(values: number[]): number | null {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-export function deriveExerciseType(secondaryMuscleCount: number): DerivedExerciseType {
-  return secondaryMuscleCount > 0 ? "COMPOUND" : "ISOLATION";
-}
 
 /**
  * RIR-adjusted E1RM is an analytical comparison signal, not a literal strength max.

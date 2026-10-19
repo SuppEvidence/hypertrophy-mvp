@@ -21,6 +21,10 @@ export const PreWorkoutPlanItemSchema = z.object({
   maxReps: z.number().int().min(3).max(30).nullable(),
   targetRir: z.number().min(0).max(4).nullable(),
   reason: z.string().max(500),
+  repRangeCorrection: z.object({
+    basis: z.enum(["MECHANICS_OR_SETUP", "TOLERANCE", "USER_REQUEST"]),
+    rationale: z.string().min(12).max(300),
+  }).nullable().optional(),
 });
 
 export const PreWorkoutCoachModelPlanSchema = z.object({

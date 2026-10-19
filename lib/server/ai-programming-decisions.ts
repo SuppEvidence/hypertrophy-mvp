@@ -776,7 +776,8 @@ async function buildProgrammingContext(userId: string) {
         setsPerOccurrence: row.adjustedPlannedSets, occurrencesPerWindow: Number(row.expectedOccurrences),
         primaryMuscleIds: row.primaryMuscles.map((link) => link.muscleId),
         minimumSets: row.minSets, maximumSets: row.maxSets, autoAdjustable: row.autoAdjustable,
-        exerciseType: t3ExerciseType(row.movementGroupName, row.slotRole) ?? "UNKNOWN",
+        movementTypeHint: t3ExerciseType(row.movementGroupName, row.slotRole) ?? "UNKNOWN",
+        movementTypeHintSource: "MOVEMENT_NAME_OR_SLOT_ROLE_NOT_MECHANICS",
         secondaryMuscleEstimates: row.secondaryMuscles.map((link) => ({ muscleId: link.muscleId, estimatedFraction: link.contributionEstimate == null ? null : Number(link.contributionEstimate) })),
       })),
       movementPatternPrimaryMuscleCoverage: [...candidatePatternsByMuscle.entries()].map(([muscleId, patterns]) => ({

@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import Module from 'node:module';
+import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import { build } from 'esbuild';
+let approved;
+globalThis.__repTargets = { readApprovedOccurrence: async (userId,programId,occurrenceId) => {
+  assert.equal(userId,'user'); assert.equal(programId,'program'); assert.equal(occurrenceId,'occurrence'); return approved;
+}};
+const built = await build({stdin:{contents:`export * from './lib/coaching/exercise-rep-targets'; export * from './lib/server/weekly-coach-prescription'; export * from './lib/ai/pre-workout-coach-schema'; export * from './lib/coaching/exercise-mechanics';`,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',metafile:true,plugins:[{name:'scoped-read',setup(b){
+  b.onResolve({filter:/^(server-only|@\/lib\/server\/weekly-coach-read)$/},({path})=>({path,namespace:'mock'}));
+  b.onLoad({filter:/.*/,namespace:'mock'},({path})=>({contents:path==='server-only'?'':'export const readApprovedOccurrence=(...args)=>globalThis.__repTargets.readApprovedOccurrence(...args);',loader:'js'}));
+}}]});
+assert(!Object.keys(built.metafile.inputs).some(p=>/lib\/ai\/openai/.test(p)),'Resolving rep fallbacks must not import model access');
+const filename=path.resolve('scripts/exercise-rep-test.cjs');const mod=new Module(filename);mod.filename=filename;mod.paths=Module._nodeModulePaths(path.dirname(filename));mod._compile(built.outputFiles[0].text,filename);
+const { resolveExerciseRepTargets:resolve, applyWeeklyCoachOccurrence, PreWorkoutPlanItemSchema, readMechanics, mechanicsBasis, summarizeExerciseMechanics }=mod.exports;
+const heavy={exerciseId:'press',minReps:4,maxReps:6,rirTarget:1};
+assert.deepEqual(resolve({exerciseId:'press',source:heavy,defaultMinReps:10,defaultMaxReps:20}),{minReps:4,maxReps:6,targetRir:1,origin:'SAME_EXERCISE'},'Do not silently overwrite accepted same-exercise choices');
+assert.deepEqual(resolve({exerciseId:'fly',source:heavy,defaultMinReps:10,defaultMaxReps:20}),{minReps:10,maxReps:20,targetRir:2,origin:'EXERCISE_DEFAULT'});
+assert.deepEqual(resolve({exerciseId:'fly',source:heavy}),{minReps:8,maxReps:15,targetRir:2,origin:'PROVISIONAL'});
+assert.equal(resolve({exerciseId:'press',source:{...heavy,rirTarget:null}}).targetRir,null,'An explicit unknown RIR is not a silent 2-RIR prescription');
+assert.equal(resolve({exerciseId:'press',source:{...heavy,maxReps:null},defaultMinReps:10,defaultMaxReps:20}).minReps,10,'Do not assemble a range from different sources');
+assert.equal(resolve({exerciseId:'fly',defaultMinReps:20,defaultMaxReps:10}).origin,'PROVISIONAL');
+const source={id:'heavy-slot',exerciseId:'press',templateId:'template',movementGroupId:'pressing',plannedSets:3,basePlannedSets:3,adjustedPlannedSets:3,prescribedMinReps:4,prescribedMaxReps:6,rirTarget:1,slotRole:'PRIMARY_COMPOUND',repBucket:'HEAVY_COMPOUND',setPlans:[],mesocycleAddedSetPlans:[],defaultSetTypeId:'normal'};
+const exercise={exerciseId:'fly',exerciseName:'Clavicular Pec Machine Fly',movementGroupId:'fly',movementGroupName:'Fly',movementGroupSortOrder:2,primaryMuscles:[],secondaryMuscles:[{muscleId:'supporting'}],defaultMinReps:10,defaultMaxReps:20};
+const entry={sourceSlotId:'exercise:fly',exerciseId:'fly',sets:2,setTypeIds:['normal','normal'],reason:'Upper chest work'};
+const occurrence={id:'occurrence',templateId:'template',items:[entry]};approved={mesocycleId:'meso',occurrence,plan:{workouts:[occurrence]}};
+const args={userId:'user',programId:'program',occurrenceId:'occurrence',mesocycleId:'meso',items:[source],movementDefaults:[exercise],setTypes:[{id:'normal',name:'Normal',slug:'normal',multiplier:1,isIntensifier:false}]};
+let result=await applyWeeklyCoachOccurrence(args);assert.equal(result.items[0].prescribedMinReps,10);assert.equal(result.items[0].prescribedMaxReps,20);assert.equal(result.items[0].repBucket,null);assert.equal(result.items[0].slotRole,null);
+result=await applyWeeklyCoachOccurrence({...args,movementDefaults:[{...exercise,defaultMinReps:null,defaultMaxReps:null}]});assert.equal(result.items[0].prescribedMinReps,8);assert.match(result.items[0].adjustmentReason,/Provisional rep target/);
+// A swap through a real source slot is still a different exercise, even with matching movement group.
+entry.sourceSlotId='heavy-slot';result=await applyWeeklyCoachOccurrence({...args,movementDefaults:[{...exercise,movementGroupId:'pressing'}]});assert.equal(result.items[0].prescribedMinReps,10);
+const id='11111111-1111-4111-8111-111111111111';
+const legacy={sourceSlotId:'slot',exerciseId:id,sets:1,setTypeIds:[id],minReps:4,maxReps:6,targetRir:2,reason:'Previously approved'};
+assert(PreWorkoutPlanItemSchema.safeParse(legacy).success,'Existing saved T2 proposals remain readable');
+assert(PreWorkoutPlanItemSchema.safeParse({...legacy,minReps:10,maxReps:20,repRangeCorrection:{basis:'MECHANICS_OR_SETUP',rationale:'Single-joint fly with better repeatability at moderate loads.'}}).success);
+const statement={description:'Single-joint shoulder adduction; elbow position remains stable. Supporting muscles stabilize the arm.',confidence:'HIGH'};
+const e={name:'Clavicular fly',setupNotes:null,movementGroupId:'fly',primaryMuscles:[{muscleId:id}],secondaryMuscles:[{muscleId:'supporting'}]};
+const envelope={version:1,source:'DESCRIPTION',model:'saved',assessedAt:'2026-10-01T00:00:00Z',acceptedAt:'2026-10-01T01:00:00Z',basis:mechanicsBasis(e,null),profile:{summary:'Supported fly',targets:[],movement:statement,resistanceProfile:{...statement,peak:'MID_RANGE'},muscleLengthExposure:statement,stabilityAndFatigue:statement,setTypeSuitability:statement,observedExecution:[],techniqueAdvice:[],questions:[],limitations:['Description only.']}};
+assert(readMechanics(envelope));assert.equal(summarizeExerciseMechanics(envelope,envelope.basis).movement.description,statement.description,'Existing movement descriptions remain usable without reanalysis');
+for(const f of ['lib/server/ai-workout-analysis.ts','lib/server/live-coaching-context.ts','lib/server/training-advisor-context.ts']) assert(!/secondaryMuscles\.length|deriveExerciseType/.test(readFileSync(f,'utf8')),`${f}: do not inject the retired count-based classification`);
+console.log('Rep targets: identity-aware fallbacks, no mixed ranges, explicit unknown RIR, weekly swap handling, old proposal/profile compatibility and classifier removal passed.');

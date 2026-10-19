@@ -1,6 +1,6 @@
 import { PHYSIQUE_COACHING_POLICY } from "@/lib/physique/policy";
 import { EXERCISE_MECHANICS_POLICY } from "@/lib/coaching/exercise-mechanics";
-export const TRAINING_POLICY_VERSION = "1.7";
+export const TRAINING_POLICY_VERSION = "1.8";
 
 /**
  * Stable hypertrophy-programming principles used by all AI recommendation layers.
@@ -110,7 +110,7 @@ ALLOCATION OF ADDED / REMOVED VOLUME
 - For otherwise similar stimulus, prefer the implementation with lower fatigue, lower pain, and better historical repeatability.
 
 COMPOUND VS ISOLATION
-- Exercise type is derived by the app: primary muscle(s) only = isolation; any secondary muscle = compound.
+- Determine exercise type from purposeful loaded joint actions and accepted exercise mechanics. Primary/secondary muscle links are volume-accounting roles, never a compound/isolation classifier.
 - Treat compound/isolation as context, not as a universal fatigue ranking.
 - Prefer isolation when additional target-muscle stimulus is needed but compound overlap/systemic fatigue is already high.
 - Prefer compound work when it has a clearly superior historical stimulus/progression profile and recovery is compatible.

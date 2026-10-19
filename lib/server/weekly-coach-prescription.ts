@@ -1,4 +1,5 @@
 import "server-only";
+import { resolveExerciseRepTargets } from "@/lib/coaching/exercise-rep-targets";
 import type { GeneratedPrescriptionItem } from "@/lib/planning/mesocycleGenerator";
 import { readApprovedOccurrence } from "@/lib/server/weekly-coach-read";
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
@@ -41,6 +42,12 @@ export async function applyWeeklyCoachOccurrence(args: {
     const virtual = !source || source.templateId !== occurrence.templateId;
     const fallback = source ?? args.items.find((row) => row.movementGroupId === exercise.movementGroupId) ?? args.items[0];
     if (!fallback) return null;
+    const sameExerciseSource = source?.exerciseId === entry.exerciseId ? source :
+      args.items.find(row => row.exerciseId === entry.exerciseId && row.templateId === occurrence.templateId);
+    const targets = resolveExerciseRepTargets({ exerciseId: entry.exerciseId,
+      source: sameExerciseSource ? { exerciseId: sameExerciseSource.exerciseId, minReps: sameExerciseSource.prescribedMinReps,
+        maxReps: sameExerciseSource.prescribedMaxReps, rirTarget: sameExerciseSource.rirTarget } : null,
+      defaultMinReps: exercise.defaultMinReps, defaultMaxReps: exercise.defaultMaxReps });
     const chosen: GeneratedPrescriptionItem = {
       ...fallback,
       id: virtual ? `weekly-coach:${occurrence.id}:${index}` : fallback.id,
@@ -59,11 +66,12 @@ export async function applyWeeklyCoachOccurrence(args: {
       defaultSetTypeId: firstType.id, defaultSetTypeMultiplier: firstType.multiplier, defaultSetTypeIsIntensifier: firstType.isIntensifier,
       setPlans: chosenTypes.map((type, n) => ({ setNumber: n + 1, setTypeId: type!.id, multiplier: type!.multiplier, isIntensifier: type!.isIntensifier })),
       mesocycleAddedSetPlans: [],
-      prescribedMinReps: source?.prescribedMinReps ?? exercise.defaultMinReps ?? fallback.prescribedMinReps,
-      prescribedMaxReps: source?.prescribedMaxReps ?? exercise.defaultMaxReps ?? fallback.prescribedMaxReps,
-      rirTarget: source?.rirTarget ?? 2,
+      minReps: targets.minReps, maxReps: targets.maxReps,
+      prescribedMinReps: targets.minReps, prescribedMaxReps: targets.maxReps,
+      rirTarget: targets.targetRir,
+      slotRole: sameExerciseSource?.slotRole ?? null, repBucket: sameExerciseSource?.repBucket ?? null,
       adjustmentDelta: entry.sets - (source?.adjustedPlannedSets ?? 0),
-      adjustmentReason: `Approved weekly plan: ${entry.reason}`,
+      adjustmentReason: `Approved weekly plan: ${entry.reason}${targets.origin === "PROVISIONAL" ? " Provisional rep target: 8–15; no exercise-specific range was available. Review with the pre-workout coach." : ""}`,
       isMesocycleVirtualSlot: virtual,
       isMesocycleSuppressed: false,
       mesocycleStructureActionId: null,

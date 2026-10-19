@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import type { PreWorkoutCoachModelPlan } from "../lib/ai/pre-workout-coach-schema";
 import { isEdtSetType } from "../lib/coaching/set-type-classification";
 import {
   inferBodyCompositionTrend,
+  canIntroduceSetType,
   inferLocalReadiness,
   summarizeGlobalRecovery,
   validatePreWorkoutPlan,
@@ -378,6 +380,29 @@ check("a priority exercise can move earlier but cannot be moved behind lower-pri
     ],
   };
   assert.equal(validatePreWorkoutPlan(reversed, lowerFirst).ok, true);
+});
+
+check("explained mechanics correction can replace a heavy isolation range", () => {
+  const plan: PreWorkoutCoachModelPlan = { ...structuredClone(keep), decision: "ADJUST", confidence: "HIGH" };
+  plan.items[0] = { ...plan.items[0], minReps: 10, maxReps: 20,
+    reason: "Use moderate loads for repeatable fly execution.",
+    repRangeCorrection: { basis: "MECHANICS_OR_SETUP", rationale: "Supported single-joint fly; the inherited 4–6 range was a poor default." } };
+  const correctedConfig = { ...config, slots: config.slots.map((slot, i) => i ? slot : { ...slot, minReps: 4, maxReps: 6 }) };
+  assert.equal(validatePreWorkoutPlan(plan, correctedConfig).ok, true);
+  assert.equal(validatePreWorkoutPlan({ ...plan, confidence: "LOW" }, correctedConfig).ok, false);
+  assert.equal(validatePreWorkoutPlan({ ...plan, decision: "KEEP" }, correctedConfig).ok, false);
+  const noReason = structuredClone(plan); noReason.items[0].reason = "";
+  assert.equal(validatePreWorkoutPlan(noReason, correctedConfig).ok, false);
+  const invalid = structuredClone(plan); invalid.items[0].minReps = 2;
+  assert.equal(validatePreWorkoutPlan(invalid, correctedConfig).ok, false);
+  const alteredRir = structuredClone(plan); alteredRir.items[0].targetRir = 4;
+  assert.equal(validatePreWorkoutPlan(alteredRir, correctedConfig).ok, false, "Broader rep correction does not loosen the RIR limit");
+});
+
+check("supporting muscle links do not turn eligible isolation work into compound work", () => {
+  const isolation = { id: "fly", movementGroupName: "lateral raise", primaryMuscleIds: ["delts", "other-primary"], secondaryMuscleIds: ["traps"] };
+  assert.equal(canIntroduceSetType(isolation, {id:"drop",name:"Drop",slug:"drop-set",multiplier:1.25,isIntensifier:true}), true);
+  assert.equal(canIntroduceSetType({...isolation,intensifierPreference:"NONE"}, {id:"drop",name:"Drop",slug:"drop-set",multiplier:1.25,isIntensifier:true}), false);
 });
 
 console.log(`${checks} pre-workout coaching policy checks passed.`);

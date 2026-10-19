@@ -297,6 +297,7 @@ function runtimeSchema(context: Awaited<ReturnType<typeof buildContext>>) {
   return PreWorkoutCoachModelPlanSchema.extend({
     baseTemplateId: z.enum(templateIds),
     items: z.array(PreWorkoutPlanItemSchema.extend({
+      repRangeCorrection: PreWorkoutPlanItemSchema.shape.repRangeCorrection.unwrap(),
       sourceSlotId: z.enum(slotIds),
       exerciseId: z.enum(exerciseIds),
       setTypeIds: z.array(z.enum(setTypeIds)).min(1).max(8),
@@ -437,7 +438,7 @@ T2 PRE-SESSION COACHING RULES
 - You may omit or reorder slots, import at most two compatible slots from other templates, substitute only an allowed exercise within the same movement pattern, reduce/redistribute sets, or shift rep/RIR targets within the supplied limits.
 - Never increase the base template's total physical sets. Good recovery alone never justifies more work.
 - Each item must list one setTypeId per set. Preserve existing set types unless a specific local reason justifies a change. Consider physical sets, effective sets (the sum of multipliers), and intensifier count together. Do not increase total effective sets above the base workout.
-- New intensifiers are only allowed on single-muscle isolation movements in the app's approved compatibility list. Do not propose lengthened partials for squats, presses, rows, hinges, leg curls, or any exercise without a known suitable long-length range. At most one newly added intensifier per session; do not use one to conceal a set-count reduction. Retaining an existing template intensifier is allowed. Multipliers estimate volume, not exact stimulus or fatigue.
+- New intensifiers must use the supplied eligibleNewIntensifierSetTypeIds for the exercise and be supported by its mechanics/tolerance. Supporting-muscle links do not disqualify a predominantly single-joint movement. Do not propose lengthened partials for squats, presses, rows, hinges, leg curls, or any exercise without a known suitable long-length range. At most one newly added intensifier per session; do not use one to conceal a set-count reduction. Retaining an existing template intensifier is allowed. Multipliers estimate volume, not exact stimulus or fatigue.
 - Structural changes are proposals and require user approval. Do not claim they have already been applied.
 - Treat localized readiness as a cautious inference from performance, recency, symptoms and execution—not a measurement of muscle recovery or a diagnosis.
 - A credible fat-loss trend changes expectations: maintaining performance and training quality may be successful. It does not automatically require a lighter workout.
@@ -453,6 +454,7 @@ T2 PRE-SESSION COACHING RULES
 - Compare the last completed workout of this exact template with the CURRENT prescription, including already approved mesocycle changes and remembered exercise choices. Do not propose a change solely to repeat a previous temporary coach edit; require a fresh local reason. If it is already in the current prescription, describe it as already in place, not a new adjustment. A one-session swap is not a lasting preference unless the athlete explicitly saves it.
 - When an approved weekly session is supplied, its sets and exercises are today's baseline. Consider remaining sessions in the week before proposing a local change. Do not assume this session must contain an entire muscle's weekly dose. Do not reallocate a missed workout here: the weekly ledger already handles missed work without another AI call.
 - Every item must use an exact sourceSlotId and exerciseId supplied in context. Return the final ordered workout, not a list of abstract suggestions.
+- Ordinary rep adjustments stay within ±2 per endpoint. If an inherited range is inappropriate for this exercise/setup, a tolerance issue or explicit user request, ADJUST may propose a complete 3–30 rep range with repRangeCorrection specifying basis and a concrete rationale; otherwise set repRangeCorrection=null. Do not repeat a questionable heavy isolation range merely because it is inherited. Explain the corrected range in item.reason, which the athlete sees before approval. Respect explicit athlete constraints and consider the changed session duration. Keep RIR within ±1 of the existing target (missing remains unknown); do not compensate for more reps by silently pushing closer to failure. Never claim a source-machine load remains appropriate after a range/setup change. T1 does not receive this broader permission.
 - KEEP must reproduce the requested template exactly. ADJUST must make a material change. Keep explanations concise and evidence-linked.`;
 
 function displayFor(context: Awaited<ReturnType<typeof buildContext>>, plan: PreWorkoutCoachModelPlan): PreWorkoutCoachDisplay {
@@ -502,7 +504,7 @@ function displayFor(context: Awaited<ReturnType<typeof buildContext>>, plan: Pre
     if (basePosition >= 0 && position < basePosition) labels.push(`Move ${source.movementGroupName} earlier`);
     if (item.sets !== slot.prescribedSets) labels.push(`${source.movementGroupName}: ${slot.prescribedSets} → ${item.sets} sets`);
     if (item.setTypeIds.some((id, index) => id !== slot.prescribedSetTypeIds[index])) labels.push(`${source.movementGroupName}: adjust set type`);
-    if (!sameRange(item.minReps, item.maxReps, slot.minReps, slot.maxReps)) labels.push(`${source.movementGroupName}: adjust rep target`);
+    if (!sameRange(item.minReps, item.maxReps, slot.minReps, slot.maxReps)) labels.push(`${source.movementGroupName}: ${slot.minReps ?? "?"}–${slot.maxReps ?? "?"} → ${item.minReps ?? "?"}–${item.maxReps ?? "?"} reps`);
     if ((item.targetRir ?? null) !== (slot.targetRir ?? null)) labels.push(`${source.movementGroupName}: adjust RIR target`);
   }
   return {
@@ -526,7 +528,8 @@ function displayFor(context: Awaited<ReturnType<typeof buildContext>>, plan: Pre
         setTypes: item.setTypeIds.map((id) => names.get(id) ?? "Unknown"),
         repRange: item.minReps !== null && item.maxReps !== null ? `${item.minReps}–${item.maxReps}` : "No target",
         targetRir: item.targetRir,
-        reason: item.reason,
+        reason: item.repRangeCorrection && !item.reason.includes(item.repRangeCorrection.rationale)
+          ? `${item.reason} ${item.repRangeCorrection.rationale}` : item.reason,
       };
     }),
   };

@@ -1,3 +1,4 @@
+import { resolveExerciseRepTargets } from "@/lib/coaching/exercise-rep-targets";
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
 import {
   parseMesocycleStructureOverrides,
@@ -542,7 +543,9 @@ function appliedAddItem(args: {
   const movementGroupId = args.action.movementGroupId;
   const movementGroupName = source?.movementGroupName ?? fallback?.movementGroupName ?? "Movement slot";
   const movementGroupSortOrder = source?.movementGroupSortOrder ?? fallback?.movementGroupSortOrder ?? 0;
-  const repBucket = args.action.repBucket ?? source?.repBucket ?? "ISOLATION";
+  const selectedExerciseId = actionExercise?.exerciseId ?? source?.exerciseId ?? fallback?.exerciseId ?? args.action.exerciseId;
+  const sameExerciseSource = source?.exerciseId === selectedExerciseId ? source : null;
+  const repBucket = args.action.repBucket ?? sameExerciseSource?.repBucket ?? null;
   const movementPolicy = movementRepPolicyFor(movementGroupId, args.movementRepPolicies);
   const bucketPolicy = repPolicyFor(repBucket, args.repPolicies);
   const setPlans = args.action.setPlans
@@ -558,6 +561,12 @@ function appliedAddItem(args: {
     })
     .filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
 
+  const selectedDefaults = actionExercise ?? (fallback?.exerciseId === selectedExerciseId ? fallback : null);
+  const targets = resolveExerciseRepTargets({ exerciseId: selectedExerciseId,
+    source: sameExerciseSource ? { exerciseId: sameExerciseSource.exerciseId,
+      minReps: sameExerciseSource.minReps, maxReps: sameExerciseSource.maxReps, rirTarget: sameExerciseSource.rirTarget } : null,
+    defaultMinReps: selectedDefaults?.defaultMinReps ?? sameExerciseSource?.defaultMinReps,
+    defaultMaxReps: selectedDefaults?.defaultMaxReps ?? sameExerciseSource?.defaultMaxReps });
   const item: GeneratedPrescriptionItem = {
     id: `mesocycle-virtual:${args.mesocycleId}:${args.action.id}`,
     templateId: template.id,
@@ -569,21 +578,21 @@ function appliedAddItem(args: {
     movementGroupId,
     movementGroupName,
     movementGroupSortOrder,
-    defaultMinReps: actionExercise?.defaultMinReps ?? source?.defaultMinReps ?? fallback?.defaultMinReps ?? null,
-    defaultMaxReps: actionExercise?.defaultMaxReps ?? source?.defaultMaxReps ?? fallback?.defaultMaxReps ?? null,
+    defaultMinReps: selectedDefaults?.defaultMinReps ?? sameExerciseSource?.defaultMinReps ?? null,
+    defaultMaxReps: selectedDefaults?.defaultMaxReps ?? sameExerciseSource?.defaultMaxReps ?? null,
     sortOrder: args.action.sortOrder ?? 1000 + template.sequenceIndex * 100 + args.baseItems.filter((row) => row.templateId === template.id).length,
     plannedSets: args.action.plannedSets,
     minSets: args.action.fixedSets ? args.action.plannedSets : 0,
     maxSets: args.action.maxSets,
-    minReps: source?.minReps ?? null,
-    maxReps: source?.maxReps ?? null,
-    rirTarget: source?.rirTarget ?? null,
+    minReps: targets.minReps,
+    maxReps: targets.maxReps,
+    rirTarget: targets.targetRir,
     defaultSetTypeId: defaultSetType.id,
     defaultSetTypeMultiplier: defaultSetType.multiplier,
     defaultSetTypeIsIntensifier: defaultSetType.isIntensifier,
     setPlans,
     slotPriority: source?.slotPriority ?? "STANDARD",
-    slotRole: args.action.slotRole ?? source?.slotRole ?? "ISOLATION",
+    slotRole: args.action.slotRole ?? sameExerciseSource?.slotRole ?? null,
     repBucket,
     autoAdjustable: !args.action.fixedSets,
     primaryMuscles: actionExercise?.primaryMuscles ?? source?.primaryMuscles ?? fallback?.primaryMuscles ?? [],
@@ -591,8 +600,8 @@ function appliedAddItem(args: {
     basePlannedSets: 0,
     adjustedPlannedSets: args.action.plannedSets,
     adjustmentDelta: args.action.plannedSets,
-    prescribedMinReps: movementPolicy?.minReps ?? bucketPolicy?.minReps ?? source?.minReps ?? fallback?.defaultMinReps ?? null,
-    prescribedMaxReps: movementPolicy?.maxReps ?? bucketPolicy?.maxReps ?? source?.maxReps ?? fallback?.defaultMaxReps ?? null,
+    prescribedMinReps: movementPolicy?.minReps ?? bucketPolicy?.minReps ?? targets.minReps,
+    prescribedMaxReps: movementPolicy?.maxReps ?? bucketPolicy?.maxReps ?? targets.maxReps,
     adjustmentReason: "Approved mesocycle-only movement slot",
     mesocycleAddedSetPlans: [],
     isMesocycleVirtualSlot: true,

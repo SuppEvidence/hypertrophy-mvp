@@ -1,0 +1,1 @@
+Copy lib/, scripts/ and docs/ into your project root, replacing matching files. Based on main 7086761. No migration or dependency install required. See docs/exercise-aware-rep-policy.md for behaviour, validation and existing-plan notes.

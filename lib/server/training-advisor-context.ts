@@ -1,3 +1,4 @@
+import { mechanicsBasis, summarizeExerciseMechanics } from "@/lib/coaching/exercise-mechanics";
 import { isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
 
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
@@ -6,7 +7,6 @@ import { requireUserId } from "@/lib/auth/user";
 
 import { isEdtSetType } from "@/lib/coaching/set-type-classification";
 import {
-  deriveExerciseType,
   summarizeExerciseExposure,
   summarizeExerciseHistory,
   type ExerciseExposureInput,
@@ -74,7 +74,8 @@ export async function buildTrainingAdvisorContext() {
             exerciseChoiceIntent: true,
             exercise: {
               select: {
-                name: true,
+                name: true, setupNotes: true, movementGroupId: true,
+                coachingProfiles: { where: { userId }, select: { mechanicsProfile: true, executionSetup: true }, take: 1 },
                 movementGroup: { select: { id: true, name: true } },
                 primaryMuscles: { include: { muscle: true } },
                 secondaryMuscles: { include: { muscle: true } },
@@ -117,6 +118,7 @@ export async function buildTrainingAdvisorContext() {
   const exerciseMap = new Map<string, {
     exerciseId: string;
     exerciseName: string;
+    exerciseMechanics: ReturnType<typeof summarizeExerciseMechanics>;
     movementGroup: { id: string; name: string };
     primaryMuscles: Array<{ id: string; name: string }>;
     secondaryMuscles: Array<{ id: string; name: string }>;
@@ -145,13 +147,18 @@ export async function buildTrainingAdvisorContext() {
         })),
       };
 
+      const exerciseMechanics = summarizeExerciseMechanics(item.exercise.coachingProfiles[0]?.mechanicsProfile,
+        mechanicsBasis(item.exercise, item.exercise.coachingProfiles[0]?.executionSetup ?? null));
       const existing = exerciseMap.get(item.exerciseId);
       if (existing) {
         existing.exposures.push(exposure);
+        // Ascending sessions: keep the latest actual setup, never upgrade old evidence retrospectively.
+        existing.exerciseMechanics = exerciseMechanics;
       } else {
         exerciseMap.set(item.exerciseId, {
           exerciseId: item.exerciseId,
           exerciseName: item.exercise.name,
+          exerciseMechanics,
           movementGroup: item.exercise.movementGroup,
           primaryMuscles: item.exercise.primaryMuscles.map((link) => ({ id: link.muscle.id, name: link.muscle.name })),
           secondaryMuscles: item.exercise.secondaryMuscles.map((link) => ({ id: link.muscle.id, name: link.muscle.name })),
@@ -198,7 +205,14 @@ export async function buildTrainingAdvisorContext() {
   const exercises = Array.from(exerciseMap.values()).map((exercise) => ({
     exerciseId: exercise.exerciseId,
     exerciseName: exercise.exerciseName,
-    exerciseType: deriveExerciseType(exercise.secondaryMuscles.length),
+    latestExposureMechanics: exercise.exerciseMechanics?.status === "ACCEPTED" ? {
+      status: exercise.exerciseMechanics.status,
+      movement: exercise.exerciseMechanics.movement,
+      resistanceProfile: exercise.exerciseMechanics.resistanceProfile,
+      muscleLengthExposure: exercise.exerciseMechanics.muscleLengthExposure,
+      stabilityAndFatigue: exercise.exerciseMechanics.stabilityAndFatigue,
+      setTypeSuitability: exercise.exerciseMechanics.setTypeSuitability,
+    } : exercise.exerciseMechanics,
     movementGroup: exercise.movementGroup,
     primaryMuscles: exercise.primaryMuscles,
     secondaryMuscles: exercise.secondaryMuscles,
