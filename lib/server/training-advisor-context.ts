@@ -1,3 +1,4 @@
+import { isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
 
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 import { secondaryContributionFor } from "@/lib/coaching/secondary-contribution";
@@ -70,6 +71,7 @@ export async function buildTrainingAdvisorContext() {
           select: {
             id: true,
             exerciseId: true,
+            exerciseChoiceIntent: true,
             exercise: {
               select: {
                 name: true,
@@ -129,11 +131,12 @@ export async function buildTrainingAdvisorContext() {
     for (const item of session.exercises) {
       const exposure: ExerciseExposureInput = {
         performedAt: session.performedAt,
+        loggingMode: isOneOffAlternative(item.exerciseChoiceIntent) ? "ONE_OFF_VOLUME_AND_RIR" : "STANDARD",
         sets: item.sets.map((set) => ({
           setNumber: set.setNumber,
           weight: isEdtSetType(set.setType) ? null : set.weight,
           reps: isEdtSetType(set.setType) ? null : set.reps,
-          rir: isEdtSetType(set.setType) ? null : set.rir,
+          rir: isEdtSetType(set.setType) && !isOneOffAlternative(item.exerciseChoiceIntent) ? null : set.rir,
           isCompleted: set.isCompleted,
           painFlag: set.painFlag,
           setTypeMultiplier: set.setType.multiplier,
@@ -200,8 +203,10 @@ export async function buildTrainingAdvisorContext() {
     primaryMuscles: exercise.primaryMuscles,
     secondaryMuscles: exercise.secondaryMuscles,
     history: summarizeExerciseHistory(exercise.exposures),
+    oneOffExposureCount: exercise.exposures.filter(row => row.loggingMode === "ONE_OFF_VOLUME_AND_RIR").length,
     recentExposures: exercise.exposures.slice(-8).map((exposure) => ({
       performedAt: new Date(exposure.performedAt).toISOString(),
+      loggingMode: exposure.loggingMode ?? "STANDARD",
       summary: summarizeExerciseExposure(exposure),
       sets: exposure.sets.map((set) => ({
         setNumber: set.setNumber ?? null,

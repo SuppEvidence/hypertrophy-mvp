@@ -3,6 +3,7 @@ import { build } from 'esbuild';
 import Module from 'node:module';
 import path from 'node:path';
 const modules = {
+  "@/lib/server/workout-set-autosave": ["autosaveWorkoutSetCore"],
   '@/lib/server/workout-exercise-guidance': ['getWorkoutExerciseGuidance'],
   '@/lib/server/effective-exercise-data': ['getUserExercisePrisma'],
   '@/lib/server/exercise-catalog-policy': ['activeExerciseWhere'],

@@ -1,3 +1,4 @@
+import { isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
 
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 
@@ -23,6 +24,7 @@ export async function loadCoachingHistory(userId: string, programId: string | nu
     take: 500,
     select: {
       exerciseId: true,
+      exerciseChoiceIntent: true,
       templateExerciseId: true,
       painFlag: true,
       painImpact: true,
@@ -44,13 +46,14 @@ export async function loadCoachingHistory(userId: string, programId: string | nu
 export function coachingExposure(row: HistoryRow): ExerciseExposureInput {
   return {
     performedAt: row.session.performedAt,
+    loggingMode: isOneOffAlternative(row.exerciseChoiceIntent) ? "ONE_OFF_VOLUME_AND_RIR" : "STANDARD",
     sets: row.sets.map((set) => {
-      const comparable = !set.setType.isIntensifier && !isEdtSetType(set.setType) && !executionCompromised(set.intensifierDetails);
+      const comparable = !isOneOffAlternative(row.exerciseChoiceIntent) && !set.setType.isIntensifier && !isEdtSetType(set.setType) && !executionCompromised(set.intensifierDetails);
       return {
         setNumber: set.setNumber,
         weight: comparable ? set.weight : null,
         reps: comparable ? set.reps : null,
-        rir: comparable ? set.rir : null,
+        rir: comparable || isOneOffAlternative(row.exerciseChoiceIntent) ? set.rir : null,
         isCompleted: true,
         painFlag: set.painFlag || row.painFlag,
         setTypeMultiplier: set.setType.multiplier,

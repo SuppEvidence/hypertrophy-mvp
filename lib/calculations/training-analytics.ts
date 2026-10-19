@@ -15,6 +15,7 @@ export type HistoricalSetInput = {
 };
 
 export type ExerciseExposureInput = {
+  loggingMode?: "STANDARD" | "ONE_OFF_VOLUME_AND_RIR";
   performedAt: Date | string;
   sets: HistoricalSetInput[];
 };

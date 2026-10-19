@@ -1,4 +1,5 @@
 import "server-only";
+import { isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma as raw } from "@/lib/db/prisma";
 import { mechanicsBasis, readMechanics } from "@/lib/coaching/exercise-mechanics";
@@ -27,7 +28,7 @@ export function prepareExerciseRead(model: string, original: Row): Row {
       }
     }
   }
-  if (model === "WorkoutSessionExercise" && args.select) fields.muscleSnapshot = true;
+  if (model === "WorkoutSessionExercise" && args.select) { fields.muscleSnapshot = true; fields.exerciseChoiceIntent = true; }
   if (Object.keys(fields).length) args[key] = fields;
   return args;
 }
@@ -65,6 +66,12 @@ export function resolveExerciseRead(model: string, value: any, profiles: Map<str
       row[name] = resolveExerciseRead(target,row[name],profiles,muscles,
         model === "WorkoutSessionExercise" && name === "exercise" ? row.muscleSnapshot ?? null : undefined);
     }
+  }
+  if (model === "WorkoutSessionExercise" && isOneOffAlternative(row.exerciseChoiceIntent) && row.exercise) {
+    row.exercise = { ...row.exercise,
+      name: `One-off equivalent of ${row.exercise.name}`,
+      setupNotes: null, minimumWeightIncrement: null, coachingProfiles: [],
+    };
   }
   return row;
 }

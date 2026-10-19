@@ -163,3 +163,10 @@ assert.equal(carried.unallocatedSets, 0);
 assert.equal(carried.workouts[1].items[1].sets, 3);
 assert.equal(carried.workouts[1].items[1].sourceSlotId, `exercise:${exercise}`);
 console.log("Weekly occurrence validation and missed-workout redistribution passed.");
+
+const afterTravel = carryForwardWeek({ previous: plan, weekStart: "2026-10-05",
+  availability: [{ id: a, date: "2026-10-05", minutes: 60 }], templates: [template],
+  candidates: evidence.candidates, exercises: evidence.exercises, regularSetTypeIds: [type],
+  actual: [{ occurrenceId: a, items: [{ exerciseId: exercise, sourceSlotId: "slot-1", setTypeIds: [drop, drop, drop], exerciseChoiceIntent: "ONE_OFF_EQUIVALENT" }] }], missedIds: [],
+});
+assert.deepEqual(afterTravel?.workouts[0].items[0].setTypeIds, [type, type, type], "One-off formats must not become the recurring prescription");

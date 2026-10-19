@@ -1,3 +1,4 @@
+import { isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
 import { EXERCISE_MECHANICS_POLICY } from "@/lib/coaching/exercise-mechanics";
 import "server-only";
 
@@ -88,7 +89,7 @@ export async function applyCoachActionForUser(userId: string, actionId: string, 
         where: { id: actionId, userId, status: "PROPOSED", session: { status: "DRAFT" } },
         include: { triggerSet: true, sessionExercise: { include: { sets: { orderBy: { setNumber: "asc" } } } } },
       });
-      if (!action) return { ok: false as const, error: "Recommendation is no longer available." };
+      if (!action || isOneOffAlternative(action.sessionExercise.exerciseChoiceIntent)) return { ok: false as const, error: "Recommendation is no longer available." };
       const removal = action.actionType === "REMOVE_SET" || action.actionType === "STOP_EXERCISE";
       if (removal !== approval || action.actionType === "KEEP") return { ok: false as const, error: "Unsupported action." };
       const before = object(action.beforeState);
@@ -156,7 +157,7 @@ export async function runLiveWorkoutCoach(userId: string, input: { sessionId: st
       sets: { orderBy: { setNumber: "asc" }, include: { setType: true } },
     },
   });
-  if (!exercise || exercise.sets.length <= 1) return { action: null, coachStatus: "NOT_TRIGGERED" as const };
+  if (!exercise || isOneOffAlternative(exercise.exerciseChoiceIntent) || exercise.sets.length <= 1) return { action: null, coachStatus: "NOT_TRIGGERED" as const };
   const trigger = exercise.sets.find(s => s.id === input.triggerSetId);
   if (!trigger?.isCompleted || (trigger.startedAt && !trigger.endedAt)) return { action: null, coachStatus: "NOT_TRIGGERED" as const };
   const remaining = exercise.sets.filter(s => s.setNumber > trigger.setNumber);

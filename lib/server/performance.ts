@@ -1,3 +1,4 @@
+import { ONE_OFF_EQUIVALENT } from "@/lib/workouts/one-off-alternative";
 
 import { getUserExercisePrisma } from "@/lib/server/effective-exercise-data";
 import { requireUserId } from "@/lib/auth/user";
@@ -37,6 +38,7 @@ export async function getExercisePerformanceData(params?: { exerciseId?: string 
     where: {
       sessionExercises: {
         some: {
+          OR: [{ exerciseChoiceIntent: null }, { exerciseChoiceIntent: { not: ONE_OFF_EQUIVALENT } }],
           session: { userId, status: "COMPLETED" },
           sets: { some: { isCompleted: true } },
         },
@@ -71,7 +73,7 @@ export async function getExercisePerformanceData(params?: { exerciseId?: string 
       : Promise.resolve(null),
     selectedExerciseId
       ? prisma.workoutSessionExercise.findMany({
-          where: { exerciseId: selectedExerciseId, session: { userId, status: "COMPLETED" } },
+          where: { exerciseId: selectedExerciseId, OR: [{ exerciseChoiceIntent: null }, { exerciseChoiceIntent: { not: ONE_OFF_EQUIVALENT } }], session: { userId, status: "COMPLETED" } },
           orderBy: { session: { performedAt: "desc" } },
           take: 20,
           select: {

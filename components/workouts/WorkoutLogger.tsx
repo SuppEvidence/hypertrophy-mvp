@@ -1,3 +1,6 @@
+import { OneOffAlternative } from "@/components/workouts/OneOffAlternative";
+import { OneOffSetRow } from "@/components/workouts/OneOffSetRow";
+import { isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
 import { ExerciseGuidance } from "@/components/workouts/ExerciseGuidance";
 import { ExercisePainLogger } from "@/components/workouts/ExercisePainLogger";
 import type { WorkoutExerciseGuidance } from "@/lib/workouts/exercise-guidance";
@@ -828,6 +831,7 @@ function EditableSessionBody({
           </p>
         ) : null}
         {activeSession.exercises.map((item, index) => {
+          const oneOff = isOneOffAlternative(item.exerciseChoiceIntent);
           const movementGroup = slotMovementGroup(item);
           const compatible = exercises.filter(
             (exercise) => exercise.movementGroupId === movementGroup.id,
@@ -854,7 +858,7 @@ function EditableSessionBody({
                   <span className="rounded-full border border-slate-700 px-2.5 py-1 text-slate-200">
                     {formatRepRange(item)}
                   </span>
-                  {weightSuggestions[item.id]?.suggestedWeight != null ? (
+                  {!oneOff && weightSuggestions[item.id]?.suggestedWeight != null ? (
                     <span>
                       Suggested load{" "}
                       <strong className="font-medium text-slate-200">
@@ -869,14 +873,21 @@ function EditableSessionBody({
                     </span>
                   ) : null}
                 </div>
-                <ExerciseGuidance
+                {(activeSession.status === "DRAFT" || oneOff) ? <OneOffAlternative
+                  sessionExerciseId={item.id} enabled={oneOff}
+                  editable={activeSession.status === "DRAFT" && !item.sets.some(set => set.isCompleted)}
+                  muscles={item.exercise.primaryMuscles.map(link => link.muscle.name)}
+                  secondaryMuscles={item.exercise.secondaryMuscles.map(link => link.muscle.name)}
+                  movement={movementGroup.name}
+                /> : null}
+                {!oneOff ? <ExerciseGuidance
                   guidance={exerciseGuidance?.[item.exerciseId]}
                   setupNotes={item.exercise.setupNotes}
                   primaryMuscles={item.exercise.primaryMuscles.map(
                     (link: MuscleNameLink) => link.muscle.name,
                   )}
-                />
-                {activeSession.status === "DRAFT" ? (
+                /> : null}
+                {activeSession.status === "DRAFT" && !oneOff ? (
                   <LiveWorkoutCoach
                     sessionId={activeSession.id}
                     sessionExerciseId={item.id}
@@ -895,7 +906,7 @@ function EditableSessionBody({
                         key={set.id}
                         className="grid gap-1 lg:grid-cols-[minmax(0,1fr)_auto]"
                       >
-                        <AutosaveSetRow
+                        {oneOff ? <OneOffSetRow set={toAutosaveSet(set)} setTypes={autosaveSetTypes} /> : <AutosaveSetRow
                           set={toAutosaveSet(set)}
                           setTypes={autosaveSetTypes}
                           repRangeStatusOptions={repRangeStatusOptions}
@@ -907,7 +918,7 @@ function EditableSessionBody({
                             weightSuggestions[item.id]?.targetReps ?? null
                           }
                           prefillRir={decimalToNumber(item.sets[0]?.rir)}
-                        />
+                        />}
                         <form
                           action={removeWorkoutSet}
                           className="flex justify-end lg:items-start"
@@ -944,13 +955,13 @@ function EditableSessionBody({
                 <ExercisePainLogger sessionExerciseId={item.id} />
                 <details className="rounded-xl border border-slate-800 p-3">
                   <summary className="cursor-pointer text-xs font-medium text-slate-400">
-                    Change exercise or add a note
+                    {oneOff ? "Add an equipment or execution note" : "Change exercise or add a note"}
                   </summary>
                   <form
                     action={updateSessionExercise.bind(null, item.id)}
                     className="mt-3 space-y-3"
                   >
-                    <label className="block space-y-2">
+                    {!oneOff ? <label className="block space-y-2">
                       <span className="text-xs text-slate-400">Exercise</span>
                       <select
                         name="exerciseId"
@@ -971,10 +982,10 @@ function EditableSessionBody({
                           </option>
                         ))}
                       </select>
-                    </label>
-                    <ExerciseChoiceScope
+                    </label> : <input type="hidden" name="exerciseId" value={item.exerciseId} />}
+                    {!oneOff ? <ExerciseChoiceScope
                       temporary={item.exerciseChoiceIntent === "TEMPORARY"}
-                    />
+                    /> : null}
                     <Field
                       label="Exercise note"
                       name="notes"
@@ -982,7 +993,7 @@ function EditableSessionBody({
                       placeholder="Setup change, execution or anything relevant today"
                     />
                     <Button variant="secondary" className="w-full">
-                      Save exercise / note
+                      {oneOff ? "Save note" : "Save exercise / note"}
                     </Button>
                   </form>
                 </details>
@@ -998,11 +1009,11 @@ function EditableSessionBody({
                     {item.prescriptionNote ? (
                       <p className="text-amber-200">{item.prescriptionNote}</p>
                     ) : null}
-                    <p>
+                    {!oneOff ? <p>
                       Load reference:{" "}
                       {formatSuggestedWeight(weightSuggestions[item.id])}
-                    </p>
-                    {item.exercise.minimumWeightIncrement != null ? (
+                    </p> : null}
+                    {!oneOff && item.exercise.minimumWeightIncrement != null ? (
                       <p>
                         Minimum load increment:{" "}
                         {decimalToNumber(item.exercise.minimumWeightIncrement)}{" "}

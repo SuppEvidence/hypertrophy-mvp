@@ -1,10 +1,12 @@
 "use server";
 
+import { isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
 import { evaluatePendingWorkoutCoachActionsForSet } from "@/lib/server/workout-coach-outcomes";
 
 type AutosavePayload = {
+  oneOffAlternative?: boolean;
   weight?: string;
   reps?: string;
   rir?: string;
@@ -65,38 +67,101 @@ export async function autosaveWorkoutSetCore(
         }
       : {};
 
-  const previous = await prisma.workoutSet.findFirst({
-    where: {
-      id: setId,
-      sessionExercise: { session: { userId, status: editableSessionStatusWhere() } },
-    },
-    select: { isCompleted: true },
-  });
-  if (!previous) return { ok: false as const, error: "Set not found or session is not editable." };
-
-  const result = await prisma.workoutSet.updateMany({
-    where: {
-      id: setId,
-      sessionExercise: {
-        session: { userId, status: editableSessionStatusWhere() },
+  const saved = await prisma.$transaction(async (tx) => {
+    const identity = await tx.workoutSet.findFirst({
+      where: {
+        id: setId,
+        sessionExercise: {
+          session: { userId, status: editableSessionStatusWhere() },
+        },
       },
-    },
-    data: {
-      weight,
-      reps,
-      rir,
-      setTypeId,
-      isCompleted: Boolean(payload.isCompleted),
-      ...legacyPainUpdate,
-    },
+      select: { sessionExerciseId: true },
+    });
+    if (!identity)
+      return {
+        ok: false as const,
+        error: "Set not found or session is not editable.",
+      };
+    await tx.$queryRaw`SELECT id FROM workout_session_exercises WHERE id = ${identity.sessionExerciseId}::uuid FOR UPDATE`;
+    const previous = await tx.workoutSet.findFirst({
+      where: {
+        id: setId,
+        sessionExercise: {
+          session: { userId, status: editableSessionStatusWhere() },
+        },
+      },
+      select: {
+        isCompleted: true,
+        sessionExercise: { select: { exerciseChoiceIntent: true } },
+      },
+    });
+    if (!previous)
+      return {
+        ok: false as const,
+        error: "Set not found or session is not editable.",
+      };
+    const oneOff = isOneOffAlternative(
+      previous.sessionExercise.exerciseChoiceIntent,
+    );
+    if (oneOff !== Boolean(payload.oneOffAlternative))
+      return {
+        ok: false as const,
+        error: "Logging mode changed. Reload the workout before saving.",
+      };
+    if (oneOff && payload.isCompleted && rir === null)
+      return {
+        ok: false as const,
+        error: "Enter observed RIR before completing this set.",
+      };
+    if (oneOff) {
+      const type = await tx.setType.findFirst({
+        where: {
+          id: setTypeId,
+          isActive: true,
+          OR: [{ userId }, { userId: null }],
+        },
+        select: { id: true },
+      });
+      if (!type)
+        return { ok: false as const, error: "Set format is unavailable." };
+    }
+    const result = await tx.workoutSet.updateMany({
+      where: {
+        id: setId,
+        sessionExercise: {
+          session: { userId, status: editableSessionStatusWhere() },
+        },
+      },
+      data: {
+        weight: oneOff ? null : weight,
+        reps: oneOff ? null : reps,
+        rir,
+        setTypeId,
+        isCompleted: Boolean(payload.isCompleted),
+        ...legacyPainUpdate,
+        ...(oneOff
+          ? {
+              repRangeStatus: "NOT_LOGGED" as const,
+              effortStatus: "NOT_SURE" as const,
+            }
+          : {}),
+      },
+    });
+    return {
+      ok: result.count === 1,
+      evaluate:
+        !oneOff && (previous.isCompleted || Boolean(payload.isCompleted)),
+    };
   });
-
-  if (result.count === 1 && (previous.isCompleted || Boolean(payload.isCompleted))) {
-    // Evaluation must never make a successfully saved set appear to have failed.
-    await evaluatePendingWorkoutCoachActionsForSet({ userId, setId }).catch(() => undefined);
+  if (!saved.ok)
+    return {
+      ok: false as const,
+      error: "error" in saved ? saved.error : "Set could not be saved.",
+    };
+  if ("evaluate" in saved && saved.evaluate) {
+    await evaluatePendingWorkoutCoachActionsForSet({ userId, setId }).catch(
+      () => undefined,
+    );
   }
-
-  return result.count === 1
-    ? { ok: true as const }
-    : { ok: false as const, error: "Set not found or session is not editable." };
+  return { ok: true as const };
 }

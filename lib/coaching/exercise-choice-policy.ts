@@ -1,3 +1,4 @@
+import { isTemporaryExerciseChoice } from "@/lib/workouts/one-off-alternative";
 export type ChoiceSession = {
   coached: boolean;
   exercises: Array<{
@@ -19,7 +20,7 @@ export function selectRememberedExerciseChoices(sessions: ChoiceSession[]) {
   for (const session of sessions) {
     for (const row of session.exercises) {
       if (!row.templateExerciseId || !row.active || choices.has(row.templateExerciseId)) continue;
-      if (row.intent === "TEMPORARY" || (!row.intent && session.coached && row.isSubstitution)) continue;
+      if (isTemporaryExerciseChoice(row.intent) || (!row.intent && session.coached && row.isSubstitution)) continue;
       choices.set(row.templateExerciseId, {
         exerciseId: row.exerciseId, exerciseName: row.exerciseName, movementGroupId: row.movementGroupId,
         source: session.coached && row.isSubstitution ? "COACH" : row.isSubstitution ? "USER" : "TEMPLATE",

@@ -1,5 +1,6 @@
 "use server";
 
+import { isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
 import { Prisma } from "@prisma/client";
 import { requireUserId } from "@/lib/auth/user";
 import { prisma } from "@/lib/db/prisma";
@@ -286,14 +287,18 @@ export async function saveWorkoutSetIntensifierDetails(
   payload: IntensifierPayload,
 ) {
   const userId = await requireUserId();
-  const existing = await prisma.workoutSet.findFirst({
+  return prisma.$transaction(async tx => {
+    const identity = await tx.workoutSet.findFirst({ where: { id: setId, sessionExercise: { session: { userId, status: editableSessionStatusWhere() } } }, select: { sessionExerciseId: true } });
+    if (!identity) return { ok: false as const, error: "Set not found or session is not editable." };
+    await tx.$queryRaw`SELECT id FROM workout_session_exercises WHERE id = ${identity.sessionExerciseId}::uuid FOR UPDATE`;
+  const existing = await tx.workoutSet.findFirst({
     where: {
       id: setId,
       sessionExercise: {
         session: { userId, status: editableSessionStatusWhere() },
       },
     },
-    select: { intensifierDetails: true },
+    select: { intensifierDetails: true, sessionExercise: { select: { exerciseChoiceIntent: true } } },
   });
 
   if (!existing) {
@@ -302,6 +307,8 @@ export async function saveWorkoutSetIntensifierDetails(
       error: "Set not found or session is not editable.",
     };
   }
+
+  if (isOneOffAlternative(existing.sessionExercise.exerciseChoiceIntent)) return { ok: false as const, error: "One-off alternatives do not record load or rep details." };
 
   const current = parseStoredDetails(existing.intensifierDetails);
   const intensifier = sanitizeDetails(payload);
@@ -315,7 +322,7 @@ export async function saveWorkoutSetIntensifierDetails(
     details.filmed ||
     details.executionCompromised;
 
-  await prisma.workoutSet.update({
+  await tx.workoutSet.update({
     where: { id: setId },
     data: {
       intensifierDetails: hasDetails
@@ -325,6 +332,7 @@ export async function saveWorkoutSetIntensifierDetails(
   });
 
   return { ok: true as const };
+  });
 }
 
 export async function saveWorkoutSetExecution(

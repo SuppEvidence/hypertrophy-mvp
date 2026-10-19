@@ -98,6 +98,10 @@ await check("automatic adjustment changes prescription, never observed values", 
 await check("cross-user requests do not access coach", async () => {
   await runLiveWorkoutCoach("other", input); assert.equal(calls, 0); assert.equal(state.actions.length, 0);
 });
+await check("one-off alternative makes no model call or coach action", async () => {
+  state.exercise.exerciseChoiceIntent = "ONE_OFF_EQUIVALENT";
+  await runLiveWorkoutCoach("owner", input); assert.equal(calls, 0); assert.equal(state.actions.length, 0);
+});
 await check("single-set exercise makes no model call", async () => {
   state.exercise.sets = state.exercise.sets.slice(0, 1); await runLiveWorkoutCoach("owner", input); assert.equal(calls, 0);
 });

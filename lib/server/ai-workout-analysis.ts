@@ -1,4 +1,5 @@
 "use server";
+import { isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
 
 import { getNutritionTrainingContext } from "./nutrition-context";
 
@@ -469,7 +470,7 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
 
   const exerciseContexts = session.exercises.map((sessionExercise) => {
     const previousExposures = (
-      historyByExercise.get(sessionExercise.exerciseId) ?? []
+      isOneOffAlternative(sessionExercise.exerciseChoiceIntent) ? [] : historyByExercise.get(sessionExercise.exerciseId) ?? []
     )
       .filter(
         (exposure) =>
@@ -500,6 +501,7 @@ async function buildWorkoutContext(sessionId: string, userId: string) {
       sessionExerciseId: sessionExercise.id,
       exerciseId: sessionExercise.exerciseId,
       exerciseName: sessionExercise.exercise.name,
+      loggingMode: isOneOffAlternative(sessionExercise.exerciseChoiceIntent) ? "ONE_OFF_VOLUME_AND_RIR" : "STANDARD",
       exerciseMechanics: summarizeExerciseMechanics(sessionExercise.exercise.coachingProfiles[0]?.mechanicsProfile, mechanicsBasis(sessionExercise.exercise, sessionExercise.exercise.coachingProfiles[0]?.executionSetup ?? null)),
       movementPattern: sessionExercise.exercise.movementGroup.name,
       derivedExerciseType:

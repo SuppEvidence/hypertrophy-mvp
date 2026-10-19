@@ -1,3 +1,4 @@
+import { isTemporaryExerciseChoice, isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
 import type { WeeklyCandidate, WeeklyCoachDelta, WeeklyCoachPlan, WeeklyExercise } from "@/lib/coaching/weekly-coach-policy";
 
 type ActualWorkout = { occurrenceId: string; items: Array<{ exerciseId: string; sourceSlotId: string | null;
@@ -32,13 +33,13 @@ export function carryForwardWeek(input: {
     const performed = completed.get(prior.id);
     const templateId = templates.includes(prior.templateId) ? prior.templateId : templates[index % templates.length];
     const chosen = performed?.items.length ? performed.items.flatMap((item, itemIndex) => {
-      if (item.exerciseChoiceIntent !== "TEMPORARY") return [item];
+      if (!isTemporaryExerciseChoice(item.exerciseChoiceIntent)) return [item];
       const planned = item.sourceSlotId
         ? prior.items.find((row) => row.sourceSlotId === item.sourceSlotId)
         : prior.items[itemIndex];
       // An extra exercise with no matching planned slot was used only for that day.
       if (!planned) return [];
-      if (item.exerciseId === planned.exerciseId) return [item];
+      if (item.exerciseId === planned.exerciseId && !isOneOffAlternative(item.exerciseChoiceIntent)) return [item];
       return [{ exerciseId: planned.exerciseId, sourceSlotId: planned.sourceSlotId,
         setTypeIds: Array.from({ length: item.setTypeIds.length }, (_, setIndex) =>
           planned.setTypeIds[setIndex] ?? baseType), revertedTemporary: true }];

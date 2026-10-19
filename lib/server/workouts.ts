@@ -1,4 +1,6 @@
 "use server";
+import { isOneOffAlternative } from "@/lib/workouts/one-off-alternative";
+import { autosaveWorkoutSetCore } from "@/lib/server/workout-set-autosave";
 
 import { getWorkoutExerciseGuidance } from "@/lib/server/workout-exercise-guidance";
 
@@ -41,11 +43,7 @@ function revalidateCompletedWorkoutViews() {
   revalidatePath("/performance");
 }
 
-function parseNullableNumberInput(value: unknown) {
-  if (value === null || value === undefined || value === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
+
 
 function estimateE1rm(weight: number, reps: number) {
   return weight * (1 + reps / 30);
@@ -71,7 +69,7 @@ async function buildWeightSuggestionsForSession(
   const prisma = getUserExercisePrisma(userId);
   if (!activeSession) return {};
 
-  const exerciseIds = Array.from(new Set(activeSession.exercises.map((item) => item.exerciseId)));
+  const exerciseIds = Array.from(new Set(activeSession.exercises.filter(item => !isOneOffAlternative(item.exerciseChoiceIntent)).map((item) => item.exerciseId)));
   if (exerciseIds.length === 0) return {};
 
   const recentExposureLimit = Math.min(Math.max(exerciseIds.length * 16, 60), 240);
@@ -111,6 +109,7 @@ async function buildWeightSuggestionsForSession(
   const suggestions: Record<string, WeightSuggestion> = {};
 
   for (const item of activeSession.exercises) {
+    if (isOneOffAlternative(item.exerciseChoiceIntent)) continue;
     const minReps = item.prescribedMinReps ?? item.templateExercise?.minReps ?? null;
     const maxReps = item.prescribedMaxReps ?? item.templateExercise?.maxReps ?? null;
     const targetReps = minReps && maxReps ? Math.round((minReps + maxReps) / 2) : maxReps ?? minReps ?? null;
@@ -224,7 +223,7 @@ export async function getWorkoutLoggerData(params?: { programId?: string; templa
     selectedProgram && selectedTemplate && !activeSession
       ? rememberedTemplateExerciseChoices(userId, selectedProgram.id, selectedTemplate.id)
       : Promise.resolve(new Map<string, RememberedExerciseChoice>()),
-    getWorkoutExerciseGuidance(userId, activeSession?.exercises.map(item => item.exerciseId) ?? []),
+    getWorkoutExerciseGuidance(userId, activeSession?.exercises.filter(item => !isOneOffAlternative(item.exerciseChoiceIntent)).map(item => item.exerciseId) ?? []),
   ]);
 
   const selectedTemplatePrescription = preview.prescription;
@@ -655,42 +654,7 @@ export async function autosaveWorkoutSet(
   setId: string,
   payload: { weight?: string; reps?: string; rir?: string; setTypeId?: string; isCompleted?: boolean; repRangeStatus?: string; effortStatus?: string; painFlag?: boolean; painNote?: string },
 ) {
-  const userId = await requireUserId();
-  const prisma = getUserExercisePrisma(userId);
-  const input = workoutSetSchema.safeParse({
-    weight: parseNullableNumberInput(payload.weight),
-    reps: parseNullableNumberInput(payload.reps),
-    rir: parseNullableNumberInput(payload.rir),
-    setTypeId: payload.setTypeId,
-    isCompleted: Boolean(payload.isCompleted),
-    repRangeStatus: payload.repRangeStatus ?? "IN_RANGE",
-    effortStatus: payload.effortStatus ?? "PRODUCTIVE",
-    painFlag: Boolean(payload.painFlag),
-    painNote: payload.painNote ?? "",
-  });
-  if (!input.success) return { ok: false, error: "Invalid set values." };
-
-  const result = await prisma.workoutSet.updateMany({
-    where: {
-      id: setId,
-      sessionExercise: { session: { userId, status: editableSessionStatusWhere() } },
-    },
-    data: {
-      weight: input.data.weight,
-      reps: input.data.reps,
-      rir: input.data.rir,
-      setTypeId: input.data.setTypeId,
-      isCompleted: input.data.isCompleted,
-      repRangeStatus: input.data.repRangeStatus,
-      effortStatus: input.data.effortStatus,
-      painFlag: input.data.painFlag,
-      painNote: input.data.painNote || null,
-    },
-  });
-
-  return result.count === 1
-    ? { ok: true }
-    : { ok: false, error: "Set not found or session is not editable." };
+  return autosaveWorkoutSetCore(setId, payload);
 }
 
 export async function updateWorkoutSet(setId: string, formData: FormData) {
@@ -714,20 +678,14 @@ export async function updateWorkoutSet(setId: string, formData: FormData) {
     painNote: formData.get("painNote") ?? "",
   });
 
-  await prisma.workoutSet.update({
-    where: { id: existing.id },
-    data: {
-      weight: input.weight,
-      reps: input.reps,
-      rir: input.rir,
-      setTypeId: input.setTypeId,
-      isCompleted: input.isCompleted,
-      repRangeStatus: input.repRangeStatus,
-      effortStatus: input.effortStatus,
-      painFlag: input.painFlag,
-      painNote: input.painNote || null,
-    },
+  const saved = await autosaveWorkoutSetCore(setId, {
+    weight: input.weight == null ? "" : String(input.weight),
+    reps: input.reps == null ? "" : String(input.reps),
+    rir: input.rir == null ? "" : String(input.rir),
+    setTypeId: input.setTypeId, isCompleted: input.isCompleted,
+    painFlag: input.painFlag, painNote: input.painNote,
   });
+  if (!saved.ok) redirect(`/log?sessionId=${existing.sessionExercise.sessionId}`);
 
   if (existing.sessionExercise.session.status === "COMPLETED") revalidateCompletedWorkoutViews();
   redirect(`/log?sessionId=${existing.sessionExercise.sessionId}`);
@@ -753,22 +711,29 @@ export async function addWorkoutSet(formData: FormData) {
   });
   const nextSetNumber = (existing.sets[0]?.setNumber ?? 0) + 1;
   const plannedSetTypeId = existing.templateExercise?.setPlans.find((plan) => plan.setNumber === nextSetNumber)?.setTypeId;
-  const setTypeId = plannedSetTypeId ?? existing.templateExercise?.defaultSetTypeId ?? fallbackSetType?.id;
+  const setTypeId = isOneOffAlternative(existing.exerciseChoiceIntent)
+    ? existing.sets[0]?.setTypeId ?? fallbackSetType?.id
+    : plannedSetTypeId ?? existing.templateExercise?.defaultSetTypeId ?? fallbackSetType?.id;
   if (!setTypeId) redirect(`/log?sessionId=${existing.sessionId}`);
 
-  await prisma.workoutSet.create({
-    data: {
-      sessionExerciseId: existing.id,
-      setNumber: nextSetNumber,
-      setTypeId,
-      weight: existing.sets[0]?.weight ?? null,
-      reps: existing.sets[0]?.reps ?? null,
-      rir: existing.sets[0]?.rir ?? existing.templateExercise?.rirTarget ?? null,
-      isCompleted: false,
-      repRangeStatus: "IN_RANGE",
-      effortStatus: "PRODUCTIVE",
-      painFlag: false,
-    },
+  await prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM workout_session_exercises WHERE id = ${existing.id}::uuid FOR UPDATE`;
+    const current = await tx.workoutSessionExercise.findFirst({
+      where: { id: existing.id, session: { userId, status: editableSessionStatusWhere() } },
+      include: { sets: { orderBy: { setNumber: "desc" }, take: 1 } },
+    });
+    if (!current) return;
+    const oneOff = isOneOffAlternative(current.exerciseChoiceIntent);
+    await tx.workoutSet.create({ data: {
+      sessionExerciseId: current.id,
+      setNumber: (current.sets[0]?.setNumber ?? 0) + 1,
+      setTypeId: oneOff ? current.sets[0]?.setTypeId ?? setTypeId : setTypeId,
+      weight: oneOff ? null : current.sets[0]?.weight ?? null,
+      reps: oneOff ? null : current.sets[0]?.reps ?? null,
+      rir: oneOff ? null : current.sets[0]?.rir ?? existing.templateExercise?.rirTarget ?? null,
+      isCompleted: false, repRangeStatus: oneOff ? "NOT_LOGGED" : "IN_RANGE",
+      effortStatus: oneOff ? "NOT_SURE" : "PRODUCTIVE", painFlag: false,
+    } });
   });
 
   if (existing.session.status === "COMPLETED") revalidateCompletedWorkoutViews();
@@ -799,6 +764,11 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
   });
   if (!existing) redirect("/log");
 
+  if (isOneOffAlternative(existing.exerciseChoiceIntent)) {
+    await prisma.workoutSessionExercise.update({ where: { id: existing.id }, data: { notes: String(formData.get("notes") ?? "").trim().slice(0, 2000) || null } });
+    redirect(`/log?sessionId=${existing.sessionId}`);
+  }
+
   const input = stimulusSessionExerciseSchema.parse({
     exerciseId: formData.get("exerciseId"),
     notes: formData.get("notes") ?? "",
@@ -815,7 +785,7 @@ export async function updateSessionExercise(sessionExerciseId: string, formData:
   }
 
   await prisma.workoutSessionExercise.update({
-    where: { id: existing.id },
+    where: { id: existing.id, exerciseChoiceIntent: existing.exerciseChoiceIntent },
     data: {
       exerciseId: input.exerciseId,
       exerciseChoiceIntent: formData.get("exerciseChoiceIntent") === "TEMPORARY" ? "TEMPORARY" : "PERSISTENT",
